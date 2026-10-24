@@ -2,7 +2,7 @@
 
 A personal AI news reader. Pulls RSS feeds and YouTube channels into one chronological feed, extracts full article text, plays videos inline, and installs as a PWA on your phone.
 
-Single user, no accounts. Next.js 16 · Postgres (Neon) · Vercel.
+Single user, no accounts. Next.js 16 · Postgres (Neon) · Vercel. MIT licensed.
 
 ## Deploy (about 5 minutes, free)
 
