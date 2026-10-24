@@ -79,8 +79,8 @@ export function Sidebar({
 
   return (
     <nav aria-label="Feeds" className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 pb-2 pl-[18px] pr-2.5 pt-[17px]">
-        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] bg-[var(--accent)] text-white">
+      <div className="mt-2.5 flex h-[54px] shrink-0 items-center gap-2 pl-[18px] pr-2.5">
+        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] bg-(--logo) text-white">
           <ArcIcon size={14} strokeWidth={2.4} />
         </span>
         <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>

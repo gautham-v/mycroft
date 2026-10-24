@@ -269,8 +269,8 @@ export function MycroftApp() {
             ? "Labs"
             : nav.filter === "blogs"
               ? "Blogs"
-              : "Feed";
-  const phoneTitle = tab === "sources" ? "Sources" : nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : "Feed";
+              : "All";
+  const phoneTitle = tab === "sources" ? "Sources" : nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : "All";
   const subline = `updated ${
     stats?.lastRefreshAt ? (relativeTime(stats.lastRefreshAt, now) === "now" ? "just now" : `${relativeTime(stats.lastRefreshAt, now)} ago`) : "never"
   }`;
@@ -389,7 +389,7 @@ export function MycroftApp() {
         </header>
 
         {/* Desktop header */}
-        <header className={`hidden shrink-0 items-center gap-2 pb-2.5 pr-3 pt-3.5 lg:flex ${sidebarCollapsed ? "pl-3" : "pl-[18px]"}`}>
+        <header className={`hidden h-[54px] shrink-0 items-center gap-2 pr-3 lg:flex ${sidebarCollapsed ? "pl-3" : "pl-[18px]"}`}>
           {sidebarCollapsed && (
             <button
               type="button"
@@ -403,9 +403,9 @@ export function MycroftApp() {
               <SidebarIcon size={17} />
             </button>
           )}
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--ink)]">{listTitle}</h1>
-            <p className="mt-px truncate text-[12px] text-[var(--muted)]">{subline}</p>
+          <div className="flex min-w-0 flex-1 items-baseline gap-2">
+            <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{listTitle}</h1>
+            <p className="truncate text-[13px] text-[var(--muted)]">{subline}</p>
           </div>
           {refreshButton}
         </header>

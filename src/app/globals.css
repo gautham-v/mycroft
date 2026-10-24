@@ -18,6 +18,7 @@
   --hairline: #e5e5ea;
   --code: #f0f0f3;
   --accent: #007aff;
+  --logo: #0f6e6e;
   --danger: #ff3b30;
   color-scheme: light;
 }
@@ -38,6 +39,7 @@
     --hairline: #232326;
     --code: #242427;
     --accent: #0a84ff;
+    --logo: #2f9c9c;
     --danger: #ff453a;
     color-scheme: dark;
   }
