@@ -386,7 +386,7 @@ export function MycroftApp() {
           {refreshButton}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="panel-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
           {tab === "sources" ? phoneSources : list}
         </div>
 
@@ -420,7 +420,7 @@ export function MycroftApp() {
 
       {/* Reader */}
       <main
-        className={`min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] lg:m-2.5 lg:rounded-xl ${selectedId != null ? "block" : "hidden md:block"}`}
+        className={`panel-scroll min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] lg:m-2.5 lg:rounded-xl ${selectedId != null ? "block" : "hidden md:block"}`}
         aria-label="Reader"
         data-path={pathname}
       >
