@@ -170,7 +170,7 @@ export function Reader({
         </h1>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px] text-[var(--muted)]">
           <span>{item.source.title}</span>
-          {item.author && <span>{item.author}</span>}
+          {item.author && item.author !== item.source.title && <span>{item.author}</span>}
           {item.hn_comments_url && (
             <a
               href={item.hn_comments_url}

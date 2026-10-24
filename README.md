@@ -6,11 +6,13 @@ Single user, no accounts. Next.js 16 · Postgres (Neon) · Vercel. MIT licensed.
 
 ## Deploy (about 5 minutes, free)
 
-1. **Import the repo on Vercel.** Go to [vercel.com/new](https://vercel.com/new), pick `gautham-v/mycroft`. Use your **personal (Hobby)** account, not a Team — Teams are on the paid Pro plan. Leave the framework and build settings as detected. Click **Deploy**. The first build will succeed but the app will error at runtime until step 2.
+1. **Import the repo on Vercel.** Go to [vercel.com/new](https://vercel.com/new) and pick your fork of this repo. Leave the framework and build settings as detected.
 
-2. **Add a database.** In the project, open **Storage → Create Database → Neon (Postgres)**. Accept the free plan. Vercel adds `DATABASE_URL` to the project automatically. Then go to **Deployments → ⋯ → Redeploy** so the app picks up the variable.
+2. **Add a database.** On the same import screen, under Optional Integrations, click **Add** next to Neon, choose the Free plan, and when asked for an environment-variable prefix enter `DATABASE` so the app gets `DATABASE_URL`. (Or add it later from the project's **Storage** tab and redeploy.) Then click **Deploy**.
 
    Tables are created and the starter sources are seeded on first request. No migration step.
+
+   If your Vercel team has Deployment Protection on, turn off "Vercel Authentication" in Settings → Deployment Protection, otherwise the PWA and cron can't reach the app.
 
 3. **Optional env vars** (Settings → Environment Variables):
    - `APP_PASSWORD` — a password for the whole app. Off when unset. Set it if the URL might leak; the app is otherwise public.
@@ -20,7 +22,7 @@ Single user, no accounts. Next.js 16 · Postgres (Neon) · Vercel. MIT licensed.
 
 ## How it stays fresh
 
-Feeds are fetched when you open the app (or bring it back to the foreground) if the last fetch is older than 15 minutes, and when you tap refresh. A daily Vercel cron (`vercel.json`) also runs at noon UTC — Hobby plans allow one cron per day.
+Feeds are fetched when you open the app (or bring it back to the foreground) if the last fetch is older than 15 minutes, and when you tap refresh. A Vercel cron (`vercel.json`) also runs every 30 minutes. On the Hobby plan crons are limited to once a day; change the schedule to `0 12 * * *` there.
 
 ## Sources
 
