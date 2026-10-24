@@ -82,6 +82,7 @@ export interface RefreshResult {
   ran: boolean;
   lastRefreshAt: string | null;
   results?: { sourceId: number; title: string; ok: boolean; added: number; error?: string }[];
+  pruned?: number;
 }
 
 export interface ApiError {
