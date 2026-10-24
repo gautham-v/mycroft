@@ -86,6 +86,17 @@ function useSidebarCollapsed() {
   return useSyncExternalStore(subscribeSidebar, getSidebarCollapsed, () => false);
 }
 
+// Tablet/desktop (md and up): the reader column is always visible, so a default selection makes sense.
+const MD_QUERY = "(min-width: 768px)";
+function subscribeMd(l: () => void) {
+  const mq = window.matchMedia(MD_QUERY);
+  mq.addEventListener("change", l);
+  return () => mq.removeEventListener("change", l);
+}
+function useIsMd() {
+  return useSyncExternalStore(subscribeMd, () => window.matchMedia(MD_QUERY).matches, () => false);
+}
+
 function useNow(intervalMs = 30_000) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -104,8 +115,8 @@ export function MycroftApp() {
     () => ({ view: parsed.view, source: parsed.source, filter: parsed.filter }),
     [parsed.view, parsed.source, parsed.filter],
   );
-  const selectedId = parsed.item;
   const tab = parsed.tab;
+  const isMd = useIsMd();
 
   const { items, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
   const { sources, reload: reloadSources } = useSources();
@@ -115,6 +126,9 @@ export function MycroftApp() {
   const [extraItem, setExtraItem] = useState<Item | null>(null);
   const now = useNow();
   const sidebarCollapsed = useSidebarCollapsed();
+  // With no ?item in the URL, tablet/desktop shows the first item instead of an empty reader.
+  // The URL is left alone so the list keeps its "nothing opened" state on phones and in history.
+  const selectedId = parsed.item ?? (isMd && tab !== "sources" && items[0] ? items[0].id : null);
   // Full-screen reader (desktop): hides sidebar and list while an item is open. Session-only.
   const [focus, setFocus] = useState(false);
   const focused = focus && selectedId != null;
