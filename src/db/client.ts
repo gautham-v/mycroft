@@ -89,7 +89,7 @@ export async function getDb(): Promise<DB> {
   if (!_ready) {
     _ready = (async () => {
       await ensureSchema();
-      // Upsert by feed_url, so safe to run every cold start; picks up new seeds.
+      // No-op once the meta "seeded" flag exists, so user removals stick.
       await seedSources(db);
     })().catch((e) => {
       _ready = null;

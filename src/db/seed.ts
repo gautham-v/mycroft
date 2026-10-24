@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
@@ -41,8 +41,18 @@ export const SEED_SOURCES: SeedSource[] = [
 /** Fallback feed URLs tried when the primary returns an error. */
 export const FEED_FALLBACKS: Record<string, string[]> = {};
 
-/** Idempotent upsert by feed_url. */
-export async function seedSources(db: NeonHttpDatabase<typeof schema>): Promise<void> {
+const SEEDED_KEY = "seeded";
+
+/**
+ * Insert the built-in sources once per database. Guarded by a `meta` flag so a
+ * source the user removed is not re-created on the next cold start.
+ * Pass `force` (the `db:seed` script) to re-upsert the list anyway.
+ */
+export async function seedSources(db: NeonHttpDatabase<typeof schema>, opts: { force?: boolean } = {}): Promise<void> {
+  if (!opts.force) {
+    const [row] = await db.select().from(schema.meta).where(eq(schema.meta.key, SEEDED_KEY));
+    if (row) return;
+  }
   await db
     .insert(schema.sources)
     .values(SEED_SOURCES)
@@ -55,4 +65,8 @@ export async function seedSources(db: NeonHttpDatabase<typeof schema>): Promise<
         group: sql`excluded."group"`,
       },
     });
+  await db
+    .insert(schema.meta)
+    .values({ key: SEEDED_KEY, value: new Date().toISOString() })
+    .onConflictDoNothing();
 }

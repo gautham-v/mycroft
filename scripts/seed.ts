@@ -3,7 +3,7 @@ import { seedSources } from "../src/db/seed";
 
 async function main() {
   const db = await getDb();
-  await seedSources(db);
+  await seedSources(db, { force: true });
   console.log("Seeded sources.");
 }
 main().catch((e) => {
