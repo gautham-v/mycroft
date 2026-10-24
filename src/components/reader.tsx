@@ -2,13 +2,20 @@
 import { Fragment, useEffect, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { SourceBadge } from "./badge";
-import { BackIcon, BookmarkIcon, CheckIcon, CollapseIcon, CommentIcon, ExpandIcon, ExternalIcon, ShareIcon } from "./icons";
-import { formatDate, hostOf, stripHtml } from "./text";
+import {
+  BackIcon,
+  BookmarkIcon,
+  CheckIcon,
+  CollapseIcon,
+  CommentIcon,
+  ExpandIcon,
+  ExternalIcon,
+  ShareIcon,
+} from "./icons";
+import { formatDate, formatDuration, hostOf, stripHtml } from "./text";
 
 type ContentState =
-  | { status: "loading" }
-  | { status: "ok"; html: string; leadImage: string | null }
-  | { status: "failed" };
+  { status: "loading" } | { status: "ok"; html: string; leadImage: string | null } | { status: "failed" };
 
 function useContent(item: Item) {
   const [state, setState] = useState<{ id: number; s: ContentState } | null>(null);
@@ -164,83 +171,134 @@ export function Reader({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
-        <h1 className="text-balance font-serif text-[30px] font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)] md:text-[36px]">
-          <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-            {item.title}
-          </a>
-        </h1>
-        <div className="mt-3.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[14px] text-[var(--muted)]">
-          <span className="font-medium text-[var(--ink)]">{item.source.title}</span>
-          {item.author && item.author !== item.source.title && <span>{item.author}</span>}
-          {item.hn_comments_url && (
-            <a
-              href={item.hn_comments_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
-            >
-              <CommentIcon size={14} />
-              Discussion
-            </a>
-          )}
-        </div>
-      </div>
+      {isVideo ? (
+        <VideoBody item={item} summaryText={summaryText} />
+      ) : (
+        <>
+          <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
+            <h1 className="text-balance font-serif text-[30px] font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)] md:text-[36px]">
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                {item.title}
+              </a>
+            </h1>
+            <div className="mt-3.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[14px] text-[var(--muted)]">
+              <span className="font-medium text-[var(--ink)]">{item.source.title}</span>
+              {item.author && item.author !== item.source.title && <span>{item.author}</span>}
+              {item.hn_comments_url && (
+                <a
+                  href={item.hn_comments_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
+                >
+                  <CommentIcon size={14} />
+                  Discussion
+                </a>
+              )}
+            </div>
+          </div>
 
-      <div className="prose-mycroft mx-auto mt-7 px-5 md:px-0">
-        {isVideo ? (
-          <>
-            {item.video_id && (
-              <div className="relative mb-6 aspect-video w-full overflow-hidden rounded-[6px] bg-black">
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${item.video_id}`}
-                  title={item.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  className="absolute inset-0 h-full w-full border-0"
-                />
-              </div>
+          <div className="prose-mycroft mx-auto mt-7 px-5 md:px-0">
+            <>
+              {hero && !contentHasHero && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={hero} alt="" />
+              )}
+              {content.status === "loading" && (
+                <div aria-busy="true" aria-label="Loading article" className="space-y-3">
+                  {[100, 96, 88, 100, 72, 0, 100, 92, 60].map((w, i) =>
+                    w ? (
+                      <div key={i} className="h-4 animate-pulse rounded bg-[var(--code)]" style={{ width: `${w}%` }} />
+                    ) : (
+                      <div key={i} className="h-3" />
+                    ),
+                  )}
+                </div>
+              )}
+              {content.status === "ok" && <div dangerouslySetInnerHTML={{ __html: content.html }} />}
+              {content.status === "failed" && (
+                <div>
+                  {summaryText && <p>{summaryText}</p>}
+                  <p className="not-prose mt-6">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 font-sans text-[15px] font-medium !text-white !no-underline"
+                    >
+                      Open original
+                      <ExternalIcon size={16} />
+                    </a>
+                  </p>
+                </div>
+              )}
+            </>
+          </div>
+        </>
+      )}
+    </article>
+  );
+}
+
+function VideoBody({ item, summaryText }: { item: Item; summaryText: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const dur = formatDuration(item.duration_sec);
+  const long = summaryText.length > 280 || summaryText.split("\n").length > 3;
+  return (
+    <>
+      {item.video_id && (
+        <div className="bg-black px-0 lg:px-4">
+          <div className="relative mx-auto aspect-video w-full max-w-[960px]">
+            <iframe
+              key={item.video_id}
+              src={`https://www.youtube-nocookie.com/embed/${item.video_id}?autoplay=1&rel=0`}
+              title={item.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="absolute inset-0 h-full w-full border-0"
+            />
+          </div>
+        </div>
+      )}
+      <div className="mx-auto max-w-[640px] px-5 pt-6 md:px-0">
+        <h1 className="text-balance text-[20px] font-semibold leading-[1.3] tracking-[-0.01em] text-[var(--ink)] md:text-[22px]">
+          {item.title}
+        </h1>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-2 text-[13px] text-[var(--muted)]">
+          <span className="inline-flex items-center gap-2 font-medium text-[var(--ink)]">
+            <SourceBadge host={item.source.host} title={item.source.title} size={22} />
+            {item.source.title}
+          </span>
+          {dur && <span className="tabular-nums">{dur}</span>}
+          <span>{formatDate(item.published_at)}</span>
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--hairline)] px-2.5 text-[12.5px] text-[var(--ink)] hover:bg-[var(--hover)]"
+          >
+            Watch on YouTube
+            <ExternalIcon size={13} />
+          </a>
+        </div>
+        {summaryText && (
+          <div className="mt-5 text-[14.5px] leading-[1.55] text-[var(--ink)]">
+            <div className={expanded ? "" : "line-clamp-3"}>
+              <Linkified text={item.summary ?? ""} />
+            </div>
+            {long && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-1.5 text-[13px] font-medium text-[var(--accent)] hover:underline"
+              >
+                {expanded ? "Show less" : "Show more"}
+              </button>
             )}
-            {summaryText && <Linkified text={item.summary ?? ""} />}
-          </>
-        ) : (
-          <>
-            {hero && !contentHasHero && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={hero} alt="" />
-            )}
-            {content.status === "loading" && (
-              <div aria-busy="true" aria-label="Loading article" className="space-y-3">
-                {[100, 96, 88, 100, 72, 0, 100, 92, 60].map((w, i) =>
-                  w ? (
-                    <div key={i} className="h-4 animate-pulse rounded bg-[var(--code)]" style={{ width: `${w}%` }} />
-                  ) : (
-                    <div key={i} className="h-3" />
-                  ),
-                )}
-              </div>
-            )}
-            {content.status === "ok" && <div dangerouslySetInnerHTML={{ __html: content.html }} />}
-            {content.status === "failed" && (
-              <div>
-                {summaryText && <p>{summaryText}</p>}
-                <p className="not-prose mt-6">
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 font-sans text-[15px] font-medium !text-white !no-underline"
-                  >
-                    Open original
-                    <ExternalIcon size={16} />
-                  </a>
-                </p>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
-    </article>
+    </>
   );
 }
 
