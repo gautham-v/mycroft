@@ -90,10 +90,20 @@ function absolutizeDom(root: Doc | Element, base: string) {
 const TINY_IMG = 64;
 const AUTHOR_HREF = /\/(authors?|author-profile|people|staff|contributors?)\//i;
 
+const AVATAR_SRC = /gravatar\.com|\/avatars?\/|[?&]s=(?:[1-9]\d?|1[0-2]\d)(?:&|$)/i;
+const AVATAR_CLASS = /\b(avatar|author)/i;
+const GENERIC_LEAD = /logo|favicon|\bicon|avatar|gravatar|placeholder|default[-_]?(?:og|share|social)/i;
+
 function isTinyImg(img: Element): boolean {
   const w = Number(img.getAttribute("width"));
   const h = Number(img.getAttribute("height"));
-  return w > 0 && h > 0 && w <= TINY_IMG && h <= TINY_IMG;
+  if (w > 0 && h > 0 && w <= TINY_IMG && h <= TINY_IMG) return true;
+  return AVATAR_SRC.test(img.getAttribute("src") ?? "") || AVATAR_CLASS.test(img.getAttribute("class") ?? "");
+}
+
+/** Site logos and avatars make poor heroes; prefer nothing over those. */
+function usableLead(u: string | null): string | null {
+  return u && !GENERIC_LEAD.test(u) ? u : null;
 }
 
 /**
@@ -142,9 +152,9 @@ export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
   absolutizeDom(document, base);
   // Readability's types expect a DOM Document; linkedom is compatible at runtime.
   const article = new Readability(document as unknown as Document, { charThreshold: 200 }).parse();
-  if (!article?.content) return { contentHtml: null, leadImage: abs(og, base) };
+  if (!article?.content) return { contentHtml: null, leadImage: usableLead(abs(og, base)) };
   const clean = sanitizeArticle(stripAuthorCards(article.content)).trim();
-  return { contentHtml: clean || null, leadImage: abs(og, base) };
+  return { contentHtml: clean || null, leadImage: usableLead(abs(og, base)) ?? firstImage(clean) };
 }
 
 // The content route has maxDuration = 20s; keep plain fetch + fallback inside this budget.
@@ -163,12 +173,16 @@ async function extractPlain(url: string): Promise<ExtractResult> {
   return extractFromHtml(html, res.url || url);
 }
 
+/** First content image that is big enough to be a hero (declared width ≥ 400, or undeclared). */
 function firstImage(html: string): string | null {
-  return (
-    parseHTML(`<!doctype html><html><body>${html}</body></html>`)
-      .document.querySelector("img[src]")
-      ?.getAttribute("src") ?? null
-  );
+  const imgs = [...parseHTML(`<!doctype html><html><body>${html}</body></html>`).document.querySelectorAll("img[src]")];
+  for (const img of imgs) {
+    const w = Number(img.getAttribute("width"));
+    const src = img.getAttribute("src") ?? "";
+    if (isTinyImg(img) || (w > 0 && w < 400) || GENERIC_LEAD.test(src)) continue;
+    return src;
+  }
+  return null;
 }
 
 /** Render a JavaScript-only page via Jina Reader (returns the rendered DOM as HTML) and extract from it. */
