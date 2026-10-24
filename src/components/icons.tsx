@@ -125,3 +125,8 @@ export const SidebarIcon = (p: P) => (
     <path d="M9.5 4.5v15" />
   </Base>
 );
+export const ChevronIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M9 6l6 6-6 6" />
+  </Base>
+);

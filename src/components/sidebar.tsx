@@ -1,13 +1,15 @@
 "use client";
+import { useSyncExternalStore } from "react";
 import type { Filter, Source, View } from "@/lib/types";
-import { SourceBadge } from "./badge";
-import { ArcIcon, BookmarkIcon, InboxIcon, PlusIcon, SidebarIcon, VideoIcon } from "./icons";
+import { ArcIcon, BookmarkIcon, ChevronIcon, InboxIcon, PlusIcon, SidebarIcon, VideoIcon } from "./icons";
 
 export interface NavState {
   view: View;
   source: number | null;
   filter: Filter | null;
 }
+
+const ROW = "flex h-[32px] w-full items-center gap-[10px] rounded-[4px] px-2 text-left text-[14px]";
 
 function Row({
   active,
@@ -17,7 +19,7 @@ function Row({
 }: {
   active: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label: string;
 }) {
   return (
@@ -26,30 +28,94 @@ function Row({
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`flex h-[34px] w-full items-center gap-[10px] rounded-[4px] px-2 text-left text-[14px] text-[var(--ink)] ${
-          active ? "bg-[var(--nav-selection)]" : "hover:bg-[var(--nav-hover)]"
-        }`}
+        className={`${ROW} text-[var(--ink)] ${active ? "bg-[var(--nav-selection)]" : "hover:bg-[var(--nav-hover)]"}`}
       >
-        <span className="flex w-[22px] shrink-0 justify-center text-[var(--muted)]">{icon}</span>
+        {icon && <span className="flex w-[20px] shrink-0 justify-center text-[var(--muted)]">{icon}</span>}
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </button>
     </li>
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="px-2 pb-1 pt-3.5 text-[11px] font-semibold tracking-[0.01em] text-[var(--faint)]">
-      {children}
-    </h3>
-  );
+const STORE = "mycroft.sidebar.collapsed";
+
+let cached: Set<string> | null = null;
+let cachedRaw: string | null = null;
+const listeners = new Set<() => void>();
+const EMPTY = new Set<string>();
+
+function read(): Set<string> {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(STORE);
+  } catch {}
+  if (cached && raw === cachedRaw) return cached;
+  cachedRaw = raw;
+  cached = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  return cached;
 }
 
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "hn100", label: "HN ≥ 100" },
-  { id: "labs", label: "Labs" },
-  { id: "blogs", label: "Blogs" },
-];
+function useCollapsed(): [Set<string>, (id: string) => void] {
+  const set = useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    read,
+    () => EMPTY,
+  );
+  const toggle = (id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    try {
+      localStorage.setItem(STORE, JSON.stringify([...next]));
+    } catch {}
+    cached = next;
+    cachedRaw = JSON.stringify([...next]);
+    listeners.forEach((l) => l());
+  };
+  return [set, toggle];
+}
+
+function Section({
+  id,
+  title,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="pt-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`sidebar-${id}`}
+        className="group flex h-[26px] w-full items-center gap-1 rounded-[4px] px-2 text-left text-[11px] font-semibold tracking-[0.01em] text-[var(--faint)] hover:text-[var(--muted)]"
+      >
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {!open && <span className="tabular-nums">{count}</span>}
+        <ChevronIcon
+          size={12}
+          strokeWidth={2.2}
+          className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+      <ul id={`sidebar-${id}`} hidden={!open}>
+        {children}
+      </ul>
+    </div>
+  );
+}
 
 export function Sidebar({
   nav,
@@ -64,18 +130,12 @@ export function Sidebar({
   onAdd: () => void;
   onCollapse?: () => void;
 }) {
-  const rss = sources.filter((s) => s.kind !== "youtube");
-  const yt = sources.filter((s) => s.kind === "youtube");
+  const [collapsed, toggle] = useCollapsed();
+  const groups: [string, string, Source[]][] = [
+    ["sources", "Sources", sources.filter((s) => s.kind !== "youtube")],
+    ["youtube", "YouTube", sources.filter((s) => s.kind === "youtube")],
+  ];
   const isView = (v: View) => nav.view === v && nav.source == null && nav.filter == null;
-  const sourceRow = (s: Source) => (
-    <Row
-      key={s.id}
-      active={nav.source === s.id}
-      onClick={() => setNav({ view: "all", source: s.id, filter: null })}
-      icon={<SourceBadge host={s.host} title={s.title} size={22} />}
-      label={s.title}
-    />
-  );
 
   return (
     <nav aria-label="Feeds" className="flex h-full flex-col">
@@ -99,44 +159,33 @@ export function Sidebar({
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
-        <Label>Views</Label>
-        <ul>
-          <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={19} />} label="All" />
-          <Row active={isView("saved")} onClick={() => setNav({ view: "saved", source: null, filter: null })} icon={<BookmarkIcon size={19} />} label="Saved" />
-          <Row active={isView("video")} onClick={() => setNav({ view: "video", source: null, filter: null })} icon={<VideoIcon size={19} />} label="Video" />
+        <ul className="pt-1">
+          <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={18} />} label="All" />
+          <Row active={isView("saved")} onClick={() => setNav({ view: "saved", source: null, filter: null })} icon={<BookmarkIcon size={18} />} label="Saved" />
+          <Row active={isView("video")} onClick={() => setNav({ view: "video", source: null, filter: null })} icon={<VideoIcon size={18} />} label="Video" />
         </ul>
-        {rss.length > 0 && (
-          <>
-            <Label>Sources</Label>
-            <ul>{rss.map(sourceRow)}</ul>
-          </>
+        {groups.map(([id, title, list]) =>
+          list.length > 0 ? (
+            <Section key={id} id={id} title={title} count={list.length} open={!collapsed.has(id)} onToggle={() => toggle(id)}>
+              {list.map((s) => (
+                <Row
+                  key={s.id}
+                  active={nav.source === s.id}
+                  onClick={() => setNav({ view: "all", source: s.id, filter: null })}
+                  label={s.title}
+                />
+              ))}
+            </Section>
+          ) : null,
         )}
-        {yt.length > 0 && (
-          <>
-            <Label>YouTube</Label>
-            <ul>{yt.map(sourceRow)}</ul>
-          </>
-        )}
-        <Label>Filters</Label>
-        <ul>
-          {FILTERS.map((f) => (
-            <Row
-              key={f.id}
-              active={nav.filter === f.id}
-              onClick={() => setNav({ view: "all", source: null, filter: f.id })}
-              icon={<span className="text-[14px]">#</span>}
-              label={f.label}
-            />
-          ))}
-        </ul>
       </div>
       <div className="shrink-0 px-2.5 pb-3 pt-1">
         <button
           type="button"
           onClick={onAdd}
-          className="flex h-[34px] w-full items-center gap-[10px] rounded-[4px] px-2 text-left text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+          className={`${ROW} text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]`}
         >
-          <span className="flex w-[22px] shrink-0 justify-center">
+          <span className="flex w-[20px] shrink-0 justify-center">
             <PlusIcon size={16} />
           </span>
           Add source
