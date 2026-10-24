@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { SourceBadge } from "./badge";
 import { BackIcon, BookmarkIcon, CheckIcon, CommentIcon, ExternalIcon, ShareIcon } from "./icons";
-import { formatDate, hostOf, readMinutes, stripHtml } from "./text";
+import { formatDate, hostOf, stripHtml } from "./text";
 
 type ContentState =
   | { status: "loading" }
@@ -93,10 +93,7 @@ export function Reader({
   const isVideo = item.source.kind === "youtube";
   const host = hostOf(item.url) || item.source.host;
   const summaryText = stripHtml(item.summary);
-  const lengthText = content.status === "ok" ? stripHtml(content.html) : summaryText;
   const meta = [host, formatDate(item.published_at)];
-  if (!isVideo && lengthText && content.status === "ok") meta.push(`${readMinutes(lengthText)} min read`);
-  if (item.hn_points != null) meta.push(`${item.hn_points} pts`);
 
   const share = async () => {
     if (typeof navigator !== "undefined" && "share" in navigator) {
@@ -168,7 +165,7 @@ export function Reader({
               className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
             >
               <CommentIcon size={14} />
-              Comments{item.hn_comments != null ? ` (${item.hn_comments})` : ""}
+              Discussion
             </a>
           )}
         </div>

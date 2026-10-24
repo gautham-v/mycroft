@@ -40,8 +40,6 @@ export const ItemRow = memo(function ItemRow({
 }) {
   const snippet = stripHtml(item.summary);
   const meta: string[] = [];
-  if (item.hn_points != null) meta.push(`${item.hn_points} pts`);
-  if (item.hn_comments != null) meta.push(`${item.hn_comments} comments`);
   meta.push(relativeTime(item.published_at));
 
   return (
