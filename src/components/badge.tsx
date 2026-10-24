@@ -34,7 +34,7 @@ export function SourceBadge({ host, title, size = 32 }: { host: string; title: s
       height={size}
       loading="lazy"
       onError={() => setFailed(true)}
-      className="shrink-0 border border-[var(--hairline)] bg-white object-contain p-[3px]"
+      className="shrink-0 object-cover"
       style={style}
     />
   );
