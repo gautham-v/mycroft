@@ -56,6 +56,7 @@ export const ItemRow = memo(function ItemRow({
           selected ? "bg-[var(--selection)]" : "hover:bg-[var(--hover)]"
         }`}
       >
+        <Thumb item={item} />
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-medium leading-[1.3] tracking-[-0.005em] text-[var(--ink)]">{item.title}</span>
           {snippet && (
@@ -69,7 +70,6 @@ export const ItemRow = memo(function ItemRow({
             </span>
           </span>
         </span>
-        <Thumb item={item} />
       </a>
     </li>
   );

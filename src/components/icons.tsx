@@ -49,6 +49,22 @@ export const ExternalIcon = (p: P) => (
     <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
   </Base>
 );
+export const ExpandIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M15 4h5v5" />
+    <path d="M20 4l-6 6" />
+    <path d="M9 20H4v-5" />
+    <path d="M4 20l6-6" />
+  </Base>
+);
+export const CollapseIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M20 9h-5V4" />
+    <path d="M15 9l6-6" />
+    <path d="M4 15h5v5" />
+    <path d="M9 15l-6 6" />
+  </Base>
+);
 export const ShareIcon = (p: P) => (
   <Base {...p}>
     <path d="M12 3v12" />

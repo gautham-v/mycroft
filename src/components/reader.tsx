@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { SourceBadge } from "./badge";
-import { BackIcon, BookmarkIcon, CheckIcon, CommentIcon, ExternalIcon, ShareIcon } from "./icons";
+import { BackIcon, BookmarkIcon, CheckIcon, CollapseIcon, CommentIcon, ExpandIcon, ExternalIcon, ShareIcon } from "./icons";
 import { formatDate, hostOf, stripHtml } from "./text";
 
 type ContentState =
@@ -56,14 +56,17 @@ function ActionButton({
   onClick,
   href,
   children,
+  desktopOnly = false,
 }: {
   label: string;
   onClick?: () => void;
   href?: string;
   children: React.ReactNode;
+  desktopOnly?: boolean;
 }) {
-  const cls =
-    "inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] lg:h-[30px] lg:w-[30px]";
+  const cls = `${
+    desktopOnly ? "hidden lg:inline-flex" : "inline-flex"
+  } h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] lg:h-[30px] lg:w-[30px]`;
   if (href)
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" className={cls} aria-label={label} title={label}>
@@ -82,11 +85,15 @@ export function Reader({
   onBack,
   onToggleSaved,
   showBack,
+  focused = false,
+  onToggleFocus,
 }: {
   item: Item;
   onBack: () => void;
   onToggleSaved: (item: Item) => void;
   showBack: boolean;
+  focused?: boolean;
+  onToggleFocus?: () => void;
 }) {
   const content = useContent(item);
   const [copied, setCopied] = useState(false);
@@ -144,6 +151,15 @@ export function Reader({
             <ActionButton label={copied ? "Link copied" : "Share"} onClick={share}>
               {copied ? <CheckIcon size={17} className="text-[var(--accent)]" /> : <ShareIcon size={17} />}
             </ActionButton>
+            {onToggleFocus && (
+              <ActionButton
+                label={focused ? "Exit full screen (esc)" : "Full screen (⇧⌘F)"}
+                onClick={onToggleFocus}
+                desktopOnly
+              >
+                {focused ? <CollapseIcon size={17} /> : <ExpandIcon size={17} />}
+              </ActionButton>
+            )}
           </div>
         </div>
       </div>

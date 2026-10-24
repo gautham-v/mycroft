@@ -115,13 +115,21 @@ export function MycroftApp() {
   const [extraItem, setExtraItem] = useState<Item | null>(null);
   const now = useNow();
   const sidebarCollapsed = useSidebarCollapsed();
+  // Full-screen reader (desktop): hides sidebar and list while an item is open. Session-only.
+  const [focus, setFocus] = useState(false);
+  const focused = focus && selectedId != null;
 
-  // Cmd/Ctrl+\ toggles the desktop sidebar.
+  // Cmd/Ctrl+\ toggles the desktop sidebar; Shift+Cmd/Ctrl+F toggles the full-screen reader; Esc exits it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "\\") {
         e.preventDefault();
         setSidebarCollapsed(!getSidebarCollapsed());
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFocus((v) => !v);
+      } else if (e.key === "Escape") {
+        setFocus(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -323,6 +331,8 @@ export function MycroftApp() {
       onBack={closeItem}
       onToggleSaved={toggleSaved}
       showBack
+      focused={focused}
+      onToggleFocus={() => setFocus((v) => !v)}
     />
   ) : selectedId != null ? (
     <div className="h-full bg-[var(--surface)]" aria-busy="true" />
@@ -341,7 +351,7 @@ export function MycroftApp() {
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[var(--ground)]">
       {/* Sidebar (desktop) */}
-      <aside id="sidebar" className={`hidden w-[230px] shrink-0 ${sidebarCollapsed ? "" : "lg:block"}`}>
+      <aside id="sidebar" className={`hidden w-[230px] shrink-0 ${sidebarCollapsed || focused ? "" : "lg:block"}`}>
         <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} onCollapse={() => setSidebarCollapsed(true)} />
       </aside>
 
@@ -350,7 +360,7 @@ export function MycroftApp() {
         aria-label="Items"
         className={`relative flex min-w-0 flex-col bg-[var(--surface)] md:w-[380px] md:shrink-0 md:border-r md:border-[var(--hairline)] lg:my-2.5 lg:w-[410px] lg:overflow-hidden lg:rounded-xl lg:border-r-0 ${
           sidebarCollapsed ? "lg:ml-2.5" : ""
-        } ${selectedId != null ? "hidden md:flex" : "flex flex-1 md:flex-none"}`}
+        } ${selectedId != null ? (focused ? "hidden md:flex lg:hidden" : "hidden md:flex") : "flex flex-1 md:flex-none"}`}
       >
         {/* Phone/tablet header */}
         <header className="shrink-0 pt-[env(safe-area-inset-top)] lg:hidden">
@@ -420,7 +430,7 @@ export function MycroftApp() {
 
       {/* Reader */}
       <main
-        className={`panel-scroll min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] lg:m-2.5 lg:rounded-xl ${selectedId != null ? "block" : "hidden md:block"}`}
+        className={`panel-scroll min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] ${focused ? "" : "lg:m-2.5 lg:rounded-xl"} ${selectedId != null ? "block" : "hidden md:block"}`}
         aria-label="Reader"
         data-path={pathname}
       >
