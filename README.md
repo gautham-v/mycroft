@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mycroft
 
-## Getting Started
+A personal AI news reader. Pulls RSS feeds and YouTube channels into one chronological feed, extracts full article text, plays videos inline, and installs as a PWA on your phone.
 
-First, run the development server:
+Single user, no accounts. Next.js 16 · Postgres (Neon) · Vercel.
+
+## Deploy (about 5 minutes, free)
+
+1. **Import the repo on Vercel.** Go to [vercel.com/new](https://vercel.com/new), pick `gautham-v/mycroft`. Use your **personal (Hobby)** account, not a Team — Teams are on the paid Pro plan. Leave the framework and build settings as detected. Click **Deploy**. The first build will succeed but the app will error at runtime until step 2.
+
+2. **Add a database.** In the project, open **Storage → Create Database → Neon (Postgres)**. Accept the free plan. Vercel adds `DATABASE_URL` to the project automatically. Then go to **Deployments → ⋯ → Redeploy** so the app picks up the variable.
+
+   Tables are created and the starter sources are seeded on first request. No migration step.
+
+3. **Optional env vars** (Settings → Environment Variables):
+   - `APP_PASSWORD` — a password for the whole app. Off when unset. Set it if the URL might leak; the app is otherwise public.
+   - `CRON_SECRET` — any random string. Lets the daily Vercel cron hit `/api/refresh` when `APP_PASSWORD` is on.
+
+4. **Install on iPhone.** Open the Vercel URL in Safari → Share → **Add to Home Screen**. It runs full-screen with its own icon. On Android, Chrome offers "Install app".
+
+## How it stays fresh
+
+Feeds are fetched when you open the app (or bring it back to the foreground) if the last fetch is older than 15 minutes, and when you tap refresh. A daily Vercel cron (`vercel.json`) also runs at noon UTC — Hobby plans allow one cron per day.
+
+## Sources
+
+Starter list is in `src/db/seed.ts`. Add more from the sidebar (desktop) or Sources tab (phone): paste a site URL, a feed URL, or a YouTube channel URL (`youtube.com/@handle`), and the app finds the feed.
+
+Known: Anthropic and Meta AI don't publish RSS feeds for their blogs, so they're not seeded (Anthropic's YouTube channel is). Ars Technica and The Verge block non-browser user agents; the fetcher sends a browser-like UA.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # set DATABASE_URL to any Postgres (Neon free tier works)
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Scripts: `pnpm db:push` (apply schema), `pnpm db:seed`, `pnpm test:parse` (feed parser checks), `pnpm tsx scripts/live-check.ts` (hit every seeded feed), `pnpm tsx scripts/make-icons.ts` (regenerate PWA icons).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/db` — Drizzle schema, Neon client with lazy `ensureSchema()` + seed
+- `src/lib` — feed fetching/parsing, readability extraction, feed URL detection
+- `src/app/api` — route handlers (`/items`, `/sources`, `/refresh`, `/stats`, …)
+- `src/components` — UI (phone list, three-pane desktop, reader)
+- `public/sw.js`, `public/manifest.webmanifest` — PWA
