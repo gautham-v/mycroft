@@ -6,7 +6,7 @@ import { relativeTime } from "@/lib/time";
 import { patchItem, useItems, useSources, useStats } from "@/hooks/use-data";
 import { AddSourceDialog } from "./add-source";
 import { SourceBadge } from "./badge";
-import { BookmarkIcon, CheckIcon, InboxIcon, ListIcon, PlusIcon, RefreshIcon, SidebarIcon } from "./icons";
+import { BookmarkIcon, InboxIcon, ListIcon, PlusIcon, RefreshIcon, SidebarIcon } from "./icons";
 import { ItemRow } from "./item-row";
 import { Reader, ReaderEmpty } from "./reader";
 import { Sidebar, type NavState } from "./sidebar";
@@ -107,9 +107,9 @@ export function MycroftApp() {
   const selectedId = parsed.item;
   const tab = parsed.tab;
 
-  const { items, setItems, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
+  const { items, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
   const { sources, reload: reloadSources } = useSources();
-  const { stats, setStats, reload: reloadStats } = useStats();
+  const { stats, reload: reloadStats } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [extraItem, setExtraItem] = useState<Item | null>(null);
@@ -194,30 +194,12 @@ export function MycroftApp() {
     };
   }, [selectedId, loading, items, extraItem]);
 
-  const adjustUnread = useCallback(
-    (delta: number) => setStats((s) => (s ? { ...s, unread: Math.max(0, s.unread + delta) } : s)),
-    [setStats],
-  );
-
   const updateItem = useCallback(
     (item: Item, patch: Partial<Item>) => {
       patchLocal(item.id, patch);
       setExtraItem((e) => (e && e.id === item.id ? { ...e, ...patch } : e));
     },
     [patchLocal],
-  );
-
-  const setRead = useCallback(
-    (item: Item, read: boolean) => {
-      if (item.is_read === read) return;
-      updateItem(item, { is_read: read });
-      adjustUnread(read ? -1 : 1);
-      void patchItem(item.id, { is_read: read }).catch(() => {
-        updateItem(item, { is_read: !read });
-        adjustUnread(read ? 1 : -1);
-      });
-    },
-    [updateItem, adjustUnread],
   );
 
   const toggleSaved = useCallback(
@@ -231,36 +213,15 @@ export function MycroftApp() {
 
   const openItem = useCallback(
     (item: Item) => {
-      setRead(item, true);
       go({ ...nav, item: item.id, tab: null }, selectedId != null && window.matchMedia("(min-width: 768px)").matches);
     },
-    [go, nav, selectedId, setRead],
+    [go, nav, selectedId],
   );
 
   const closeItem = useCallback(() => {
     if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) router.back();
     else go({ ...nav, item: null });
   }, [router, go, nav]);
-
-  const markAllRead = useCallback(async () => {
-    const unread = items.filter((i) => !i.is_read);
-    setItems((prev) => prev.map((i) => ({ ...i, is_read: true })));
-    try {
-      await fetch("/api/items/mark-read", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          all: true,
-          view: nav.view,
-          ...(nav.source != null ? { source: nav.source } : {}),
-          ...(nav.filter ? { filter: nav.filter } : {}),
-        }),
-      });
-    } catch {
-      /* offline */
-    }
-    if (unread.length) void reloadStats();
-  }, [items, setItems, nav, reloadStats]);
 
   // --- infinite scroll ---------------------------------------------------------
   const sentinel = useRef<HTMLLIElement>(null);
@@ -288,7 +249,7 @@ export function MycroftApp() {
               ? "Blogs"
               : "Feed";
   const phoneTitle = tab === "sources" ? "Sources" : nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : "Feed";
-  const subline = `${stats?.unread ?? 0} unread · updated ${
+  const subline = `updated ${
     stats?.lastRefreshAt ? (relativeTime(stats.lastRefreshAt, now) === "now" ? "just now" : `${relativeTime(stats.lastRefreshAt, now)} ago`) : "never"
   }`;
   const activeChip =
@@ -340,7 +301,7 @@ export function MycroftApp() {
       )}
       {!loading && !error && items.length === 0 && (
         <li className="px-6 py-16 text-center">
-          <p className="text-[15px] font-medium text-[var(--ink)]">{nav.view === "saved" ? "Nothing saved yet" : "All caught up"}</p>
+          <p className="text-[15px] font-medium text-[var(--ink)]">{nav.view === "saved" ? "Nothing saved yet" : "Nothing here yet"}</p>
           <p className="mt-1 text-[13px] text-[var(--muted)]">No items in this view</p>
         </li>
       )}
@@ -361,7 +322,6 @@ export function MycroftApp() {
       item={selected}
       onBack={closeItem}
       onToggleSaved={toggleSaved}
-      onToggleRead={(i) => setRead(i, !i.is_read)}
       showBack
     />
   ) : selectedId != null ? (
@@ -423,18 +383,7 @@ export function MycroftApp() {
             <h1 className="truncate text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--ink)]">{listTitle}</h1>
             <p className="mt-px truncate text-[12px] text-[var(--muted)]">{subline}</p>
           </div>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => void markAllRead()}
-              aria-label="Mark all read"
-              title="Mark all read"
-              className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-            >
-              <CheckIcon size={17} />
-            </button>
-            {refreshButton}
-          </div>
+          {refreshButton}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">

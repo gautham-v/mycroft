@@ -52,7 +52,6 @@ export function toItem(i: ItemRow, s: SourceRow): Item {
     hn_points: i.hnPoints,
     hn_comments: i.hnComments,
     hn_comments_url: i.hnCommentsUrl,
-    is_read: i.isRead,
     is_saved: i.isSaved,
     has_content: i.contentHtml != null,
     source: {

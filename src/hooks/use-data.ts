@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Filter, Item, ItemsResponse, Source, SourcesResponse, Stats, View } from "@/lib/types";
+import type { Filter, Item, ItemsResponse, PatchItemBody, Source, SourcesResponse, Stats, View } from "@/lib/types";
 
 export interface ItemsQuery {
   view: View;
@@ -116,7 +116,7 @@ export function useStats() {
   return { stats, setStats, reload };
 }
 
-export async function patchItem(id: number, body: { is_read?: boolean; is_saved?: boolean }) {
+export async function patchItem(id: number, body: PatchItemBody) {
   const res = await fetch(`/api/items/${id}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },

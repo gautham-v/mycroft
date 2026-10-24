@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { SourceBadge } from "./badge";
-import { BackIcon, BookmarkIcon, CheckIcon, CircleCheckIcon, CircleIcon, CommentIcon, ExternalIcon, ShareIcon } from "./icons";
+import { BackIcon, BookmarkIcon, CheckIcon, CommentIcon, ExternalIcon, ShareIcon } from "./icons";
 import { formatDate, hostOf, readMinutes, stripHtml } from "./text";
 
 type ContentState =
@@ -81,13 +81,11 @@ export function Reader({
   item,
   onBack,
   onToggleSaved,
-  onToggleRead,
   showBack,
 }: {
   item: Item;
   onBack: () => void;
   onToggleSaved: (item: Item) => void;
-  onToggleRead: (item: Item) => void;
   showBack: boolean;
 }) {
   const content = useContent(item);
@@ -148,9 +146,6 @@ export function Reader({
             </ActionButton>
             <ActionButton label={copied ? "Link copied" : "Share"} onClick={share}>
               {copied ? <CheckIcon size={17} className="text-[var(--accent)]" /> : <ShareIcon size={17} />}
-            </ActionButton>
-            <ActionButton label={item.is_read ? "Mark unread" : "Mark read"} onClick={() => onToggleRead(item)}>
-              {item.is_read ? <CircleCheckIcon size={17} /> : <CircleIcon size={17} />}
             </ActionButton>
           </div>
         </div>

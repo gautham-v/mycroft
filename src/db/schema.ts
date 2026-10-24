@@ -45,14 +45,12 @@ export const items = pgTable(
     hnPoints: integer("hn_points"),
     hnComments: integer("hn_comments"),
     hnCommentsUrl: text("hn_comments_url"),
-    isRead: boolean("is_read").notNull().default(false),
     isSaved: boolean("is_saved").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("items_source_guid_uq").on(t.sourceId, t.guid),
     index("items_published_at_idx").on(t.publishedAt.desc()),
-    index("items_is_read_idx").on(t.isRead),
   ],
 );
 

@@ -32,7 +32,6 @@ export interface Item {
   hn_points: number | null;
   hn_comments: number | null;
   hn_comments_url: string | null;
-  is_read: boolean;
   is_saved: boolean;
   /** true when full text has already been extracted & cached */
   has_content: boolean;
@@ -64,7 +63,6 @@ export interface SourcesResponse {
 }
 
 export interface Stats {
-  unread: number;
   /** ISO or null if never refreshed */
   lastRefreshAt: string | null;
 }
@@ -86,10 +84,5 @@ export interface ApiError {
 }
 
 export interface PatchItemBody {
-  is_read?: boolean;
   is_saved?: boolean;
 }
-
-export type MarkReadBody =
-  | { ids: number[] }
-  | { all: true; view?: View; source?: number; filter?: Filter };

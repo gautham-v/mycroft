@@ -61,11 +61,6 @@ export const CheckIcon = (p: P) => (
     <path d="M5 12.5l4.5 4.5L19 7.5" />
   </Base>
 );
-export const CircleIcon = (p: P) => (
-  <Base {...p}>
-    <circle cx="12" cy="12" r="7" />
-  </Base>
-);
 export const BackIcon = (p: P) => (
   <Base {...p}>
     <path d="M15 5l-7 7 7 7" />
@@ -106,12 +101,6 @@ export const VideoIcon = (p: P) => (
 export const CommentIcon = (p: P) => (
   <Base {...p}>
     <path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
-  </Base>
-);
-export const CircleCheckIcon = (p: P) => (
-  <Base {...p}>
-    <circle cx="12" cy="12" r="8" />
-    <path d="M8.5 12.25l2.5 2.5 4.5-5" />
   </Base>
 );
 export const SidebarIcon = (p: P) => (

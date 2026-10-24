@@ -39,14 +39,15 @@ const SCHEMA_SQL = [
     "hn_points" integer,
     "hn_comments" integer,
     "hn_comments_url" text,
-    "is_read" boolean DEFAULT false NOT NULL,
     "is_saved" boolean DEFAULT false NOT NULL,
     "created_at" timestamp with time zone DEFAULT now() NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS "meta" ("key" text PRIMARY KEY NOT NULL, "value" text NOT NULL)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "items_source_guid_uq" ON "items" ("source_id","guid")`,
   `CREATE INDEX IF NOT EXISTS "items_published_at_idx" ON "items" ("published_at" DESC NULLS LAST)`,
-  `CREATE INDEX IF NOT EXISTS "items_is_read_idx" ON "items" ("is_read")`,
+  // Read/unread was removed; drop the column (and its index) from databases created before that.
+  `DROP INDEX IF EXISTS "items_is_read_idx"`,
+  `ALTER TABLE "items" DROP COLUMN IF EXISTS "is_read"`,
 ];
 
 function rawDb(): DB {
