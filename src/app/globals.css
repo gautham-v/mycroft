@@ -153,8 +153,10 @@ body {
 .prose-mycroft img,
 .prose-mycroft video {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
+  margin-inline: auto;
   border-radius: 10px;
   margin-top: 1.4em;
   margin-bottom: 1.4em;

@@ -83,7 +83,7 @@ export function Sidebar({
         <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] bg-(--logo) text-white">
           <ArcIcon size={14} strokeWidth={2.4} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
+        <span className="min-w-0 flex-1 truncate font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
         {onCollapse && (
           <button
             type="button"

@@ -33,7 +33,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           .set({ contentHtml: out.contentHtml, ...(lead ? {} : { thumbnailUrl: out.leadImage }) })
           .where(eq(items.id, id));
       }
-      return json({ contentHtml: out.contentHtml, leadImage: lead ?? out.leadImage } satisfies ContentResponse);
+      return json({
+        contentHtml: out.contentHtml,
+        leadImage: lead ?? out.leadImage,
+        ...(out.rendered ? { rendered: true } : {}),
+      } satisfies ContentResponse);
     } catch (e) {
       return json(
         { error: `Extraction failed: ${errMsg(e)}`, contentHtml: null, leadImage: lead },

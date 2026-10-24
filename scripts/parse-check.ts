@@ -1,5 +1,6 @@
 import { parseFeedXml } from "../src/lib/parse";
-import { extractFromHtml } from "../src/lib/extract";
+import assert from "node:assert/strict";
+import { extractArticle, extractFromHtml } from "../src/lib/extract";
 import { findAlternateFeeds, findChannelIdInHtml } from "../src/lib/feed-detect";
 import { relativeTime } from "../src/lib/time";
 
@@ -39,5 +40,76 @@ async function main() {
   console.log("ALT:", findAlternateFeeds('<link rel="alternate" type="application/rss+xml" href="/feed.xml">', "https://x.com/blog"));
   console.log("CHAN:", findChannelIdInHtml('foo "channelId":"UCsBjURrPoezykLs9EqgamOA" bar'));
   console.log("TIME:", relativeTime(Date.now() - 23 * 60e3), relativeTime(Date.now() - 3 * 3600e3), relativeTime(Date.now() - 2 * 86400e3));
+  await checkRenderedFallback();
+}
+
+const SHELL = `<html><head><meta property="og:image" content="https://spa.example.com/og.png"></head><body><div id="root"></div><script src="/app.js"></script></body></html>`;
+
+async function withFetch(routes: (url: string) => Response, fn: (calls: string[]) => Promise<void>) {
+  const real = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+    return routes(url);
+  }) as typeof fetch;
+  try {
+    await fn(calls);
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+const html = (body: string, ct = "text/html") => new Response(body, { headers: { "content-type": ct } });
+
+async function checkRenderedFallback() {
+  // Empty React shell -> Jina fallback; og:image from the original page wins.
+  await withFetch(
+    (u) => (u.startsWith("https://r.jina.ai/") ? html(ARTICLE, "text/plain") : html(SHELL)),
+    async (calls) => {
+      const out = await extractArticle("https://spa.example.com/post");
+      assert.equal(calls[1], "https://r.jina.ai/https://spa.example.com/post");
+      assert.equal(out.rendered, true);
+      assert.match(out.contentHtml ?? "", /meaningful article text/);
+      assert.equal(out.leadImage, "https://spa.example.com/og.png");
+    },
+  );
+  // Normal article -> no fallback.
+  await withFetch(
+    () => html(ARTICLE),
+    async (calls) => {
+      const out = await extractArticle("https://site.example.com/a/b.html");
+      assert.equal(calls.length, 1);
+      assert.equal(out.rendered, undefined);
+      assert.ok(out.contentHtml);
+    },
+  );
+  // Shell + Jina error -> null, no throw.
+  await withFetch(
+    (u) => (u.startsWith("https://r.jina.ai/") ? new Response("nope", { status: 500 }) : html(SHELL)),
+    async () => {
+      const out = await extractArticle("https://spa.example.com/post");
+      assert.equal(out.contentHtml, null);
+      assert.equal(out.leadImage, "https://spa.example.com/og.png");
+    },
+  );
+  // Original fetch fails -> fallback; lead image from rendered content when no og:image anywhere.
+  const noOg = ARTICLE.replace(/<meta property="og:image"[^>]*>/, "");
+  await withFetch(
+    (u) => (u.startsWith("https://r.jina.ai/") ? html(noOg, "text/plain") : new Response("", { status: 403 })),
+    async () => {
+      const out = await extractArticle("https://site.example.com/a/b.html");
+      assert.equal(out.rendered, true);
+      assert.equal(out.leadImage, "https://site.example.com/a/pics/one.jpg");
+    },
+  );
+  // Original fails and Jina fails -> original error is rethrown, as before.
+  await withFetch(
+    (u) => new Response("", { status: u.startsWith("https://r.jina.ai/") ? 500 : 403 }),
+    async () => {
+      await assert.rejects(extractArticle("https://site.example.com/a/b.html"), /HTTP 403/);
+    },
+  );
+  console.log("RENDERED FALLBACK: ok");
 }
 main();

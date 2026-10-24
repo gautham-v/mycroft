@@ -15,7 +15,9 @@ import {
 import { formatDate, formatDuration, hostOf, stripHtml } from "./text";
 
 type ContentState =
-  { status: "loading" } | { status: "ok"; html: string; leadImage: string | null } | { status: "failed" };
+  | { status: "loading" }
+  | { status: "ok"; html: string; leadImage: string | null; rendered: boolean }
+  | { status: "failed" };
 
 function useContent(item: Item) {
   const [state, setState] = useState<{ id: number; s: ContentState } | null>(null);
@@ -29,7 +31,9 @@ function useContent(item: Item) {
         if (cancelled) return;
         setState({
           id: item.id,
-          s: d.contentHtml ? { status: "ok", html: d.contentHtml, leadImage: d.leadImage } : { status: "failed" },
+          s: d.contentHtml
+            ? { status: "ok", html: d.contentHtml, leadImage: d.leadImage, rendered: !!d.rendered }
+            : { status: "failed" },
         });
       })
       .catch(() => !cancelled && setState({ id: item.id, s: { status: "failed" } }));
@@ -196,6 +200,9 @@ export function Reader({
                 </a>
               )}
             </div>
+            {content.status === "ok" && content.rendered && (
+              <p className="mt-1.5 text-[12px] text-[var(--muted)]">Rendered copy</p>
+            )}
           </div>
 
           <div className="prose-mycroft mx-auto mt-7 px-5 md:px-0">

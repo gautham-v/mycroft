@@ -70,6 +70,8 @@ export interface Stats {
 export interface ContentResponse {
   contentHtml: string | null;
   leadImage: string | null;
+  /** Content came from the rendered-page (Jina Reader) fallback. */
+  rendered?: boolean;
 }
 
 export interface RefreshResult {
