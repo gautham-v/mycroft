@@ -20,11 +20,15 @@
   --accent: #007aff;
   --logo: #0f6e6e;
   --danger: #ff3b30;
+  --ok: #34c759;
   color-scheme: light;
 }
 
+/* Dark tokens apply for the OS preference unless the user forced light, or when forced dark
+   (data-theme is set by the settings store and the inline script in layout.tsx). The two
+   blocks must stay identical: a selector list cannot span a media query. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --ground: #000000;
     --surface: #161618;
     --selection: #3a3a3d;
@@ -41,8 +45,30 @@
     --accent: #0a84ff;
     --logo: #2f9c9c;
     --danger: #ff453a;
+    --ok: #30d158;
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --ground: #000000;
+  --surface: #161618;
+  --selection: #3a3a3d;
+  --hover: #1c1c1f;
+  --nav-hover: #1c1c1f;
+  --nav-selection: #3a3a3d;
+  --ink: #f5f5f7;
+  --body: #d1d1d6;
+  --muted: #98989d;
+  --faint: #636366;
+  --border: #2c2c2e;
+  --hairline: #232326;
+  --code: #242427;
+  --accent: #0a84ff;
+  --logo: #2f9c9c;
+  --danger: #ff453a;
+  --ok: #30d158;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -116,6 +142,17 @@ body {
   line-height: 1.6;
   color: var(--ink);
   overflow-wrap: break-word;
+}
+/* Reader settings (src/hooks/use-settings.ts): data-font and data-size on the prose container.
+   Default (no attribute / "m") is the original 17.5px serif. */
+.prose-mycroft[data-font="sans"] {
+  font-family: var(--font-sans);
+}
+.prose-mycroft[data-size="s"] {
+  font-size: 16px;
+}
+.prose-mycroft[data-size="l"] {
+  font-size: 19.5px;
 }
 .prose-mycroft > * + *,
 .prose-mycroft > div > * + * {

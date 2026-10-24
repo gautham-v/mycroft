@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
+import { useSettings, type Settings } from "@/hooks/use-settings";
 import { SourceBadge } from "./badge";
 import {
   BackIcon,
@@ -43,6 +44,14 @@ function useContent(item: Item) {
   }, [item.id, item.source.kind]);
   return state && state.id === item.id ? state.s : ({ status: "loading" } as ContentState);
 }
+
+// Article headline size per text-size setting; "m" is the original size. Body size lives in
+// globals.css (.prose-mycroft[data-size]).
+const HEADLINE_SIZE: Record<Settings["textSize"], string> = {
+  s: "text-[26px] md:text-[32px]",
+  m: "text-[30px] md:text-[36px]",
+  l: "text-[34px] md:text-[40px]",
+};
 
 const URL_RE = /(https?:\/\/[^\s<>"')]+[^\s<>"').,;:!?])/g;
 
@@ -107,6 +116,7 @@ export function Reader({
   onToggleFocus?: () => void;
 }) {
   const content = useContent(item);
+  const [settings] = useSettings();
   const [copied, setCopied] = useState(false);
   const isVideo = item.source.kind === "youtube";
   const host = hostOf(item.url) || item.source.host;
@@ -176,11 +186,13 @@ export function Reader({
       </div>
 
       {isVideo ? (
-        <VideoBody item={item} summaryText={summaryText} />
+        <VideoBody item={item} summaryText={summaryText} autoplay={settings.autoplay} theater={settings.theater} />
       ) : (
         <>
           <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
-            <h1 className="text-balance font-serif text-[30px] font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)] md:text-[36px]">
+            <h1
+              className={`text-balance ${settings.readerFont === "sans" ? "font-sans" : "font-serif"} ${HEADLINE_SIZE[settings.textSize]} font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)]`}
+            >
               <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
                 {item.title}
               </a>
@@ -205,7 +217,11 @@ export function Reader({
             )}
           </div>
 
-          <div className="prose-mycroft mx-auto mt-7 px-5 md:px-0">
+          <div
+            className="prose-mycroft mx-auto mt-7 px-5 md:px-0"
+            data-font={settings.readerFont}
+            data-size={settings.textSize}
+          >
             <>
               {hero && !contentHasHero && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -247,27 +263,40 @@ export function Reader({
   );
 }
 
-function VideoBody({ item, summaryText }: { item: Item; summaryText: string }) {
+function VideoBody({
+  item,
+  summaryText,
+  autoplay,
+  theater,
+}: {
+  item: Item;
+  summaryText: string;
+  autoplay: boolean;
+  theater: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const dur = formatDuration(item.duration_sec);
   const long = summaryText.length > 280 || summaryText.split("\n").length > 3;
+  const player = item.video_id && (
+    <iframe
+      key={item.video_id}
+      src={`https://www.youtube-nocookie.com/embed/${item.video_id}?${autoplay ? "autoplay=1&" : ""}rel=0`}
+      title={item.title}
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowFullScreen
+      className="absolute inset-0 h-full w-full border-0"
+    />
+  );
   return (
     <>
-      {item.video_id && (
+      {/* Theater: full-width black band above the title. Otherwise the player sits in the text
+          column below the title and meta row, like an article's hero image. */}
+      {theater && player && (
         <div className="bg-black px-0 lg:px-4">
-          <div className="relative mx-auto aspect-video w-full max-w-[960px]">
-            <iframe
-              key={item.video_id}
-              src={`https://www.youtube-nocookie.com/embed/${item.video_id}?autoplay=1&rel=0`}
-              title={item.title}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              className="absolute inset-0 h-full w-full border-0"
-            />
-          </div>
+          <div className="relative mx-auto aspect-video w-full max-w-[960px]">{player}</div>
         </div>
       )}
-      <div className="mx-auto max-w-[640px] px-5 pt-6 md:px-0">
+      <div className={`mx-auto max-w-[640px] px-5 md:px-0 ${theater ? "pt-6" : "pt-8 lg:pt-10"}`}>
         <h1 className="text-balance text-[20px] font-semibold leading-[1.3] tracking-[-0.01em] text-[var(--ink)] md:text-[22px]">
           {item.title}
         </h1>
@@ -288,6 +317,9 @@ function VideoBody({ item, summaryText }: { item: Item; summaryText: string }) {
             <ExternalIcon size={13} />
           </a>
         </div>
+        {!theater && player && (
+          <div className="relative mt-5 aspect-video w-full overflow-hidden rounded-[10px] bg-black">{player}</div>
+        )}
         {summaryText && (
           <div className="mt-5 text-[14.5px] leading-[1.55] text-[var(--ink)]">
             <div className={expanded ? "" : "line-clamp-3"}>

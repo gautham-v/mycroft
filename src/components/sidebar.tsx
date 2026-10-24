@@ -1,7 +1,7 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import type { Filter, Source, View } from "@/lib/types";
-import { ArcIcon, BookmarkIcon, ChevronIcon, InboxIcon, PlusIcon, SidebarIcon, VideoIcon } from "./icons";
+import { ArcIcon, BookmarkIcon, ChevronIcon, GearIcon, InboxIcon, PlusIcon, SidebarIcon, VideoIcon } from "./icons";
 
 export interface NavState {
   view: View;
@@ -34,6 +34,19 @@ function Row({
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </button>
     </li>
+  );
+}
+
+function FooterRow({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${ROW} text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]`}
+    >
+      <span className="flex w-[20px] shrink-0 justify-center">{icon}</span>
+      {label}
+    </button>
   );
 }
 
@@ -122,12 +135,14 @@ export function Sidebar({
   setNav,
   sources,
   onAdd,
+  onSettings,
   onCollapse,
 }: {
   nav: NavState;
   setNav: (n: NavState) => void;
   sources: Source[];
   onAdd: () => void;
+  onSettings: () => void;
   onCollapse?: () => void;
 }) {
   const [collapsed, toggle] = useCollapsed();
@@ -140,9 +155,7 @@ export function Sidebar({
   return (
     <nav aria-label="Feeds" className="flex h-full flex-col">
       <div className="mt-2.5 flex h-[54px] shrink-0 items-center gap-2 pl-[18px] pr-2.5">
-        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] bg-(--logo) text-white">
-          <ArcIcon size={14} strokeWidth={2.4} />
-        </span>
+        <ArcIcon size={20} strokeWidth={2.6} className="shrink-0 text-(--logo)" />
         <span className="min-w-0 flex-1 truncate font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
         {onCollapse && (
           <button
@@ -180,16 +193,8 @@ export function Sidebar({
         )}
       </div>
       <div className="shrink-0 px-2.5 pb-3 pt-1">
-        <button
-          type="button"
-          onClick={onAdd}
-          className={`${ROW} text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]`}
-        >
-          <span className="flex w-[20px] shrink-0 justify-center">
-            <PlusIcon size={16} />
-          </span>
-          Add source
-        </button>
+        <FooterRow onClick={onAdd} icon={<PlusIcon size={16} />} label="Add source" />
+        <FooterRow onClick={onSettings} icon={<GearIcon size={16} />} label="Settings" />
       </div>
     </nav>
   );

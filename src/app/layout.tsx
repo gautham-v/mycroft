@@ -32,9 +32,15 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// Applies the stored theme (see src/hooks/use-settings.ts) during HTML parsing, before first paint.
+const THEME_SCRIPT = `(function(){try{var t=JSON.parse(localStorage.getItem("mycroft.settings")||"{}").theme;if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="antialiased">
+    <html lang="en" className="antialiased" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         {children}
         <ServiceWorkerRegister />

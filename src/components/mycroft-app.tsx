@@ -1,14 +1,15 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { Filter, Item, Source, View } from "@/lib/types";
+import type { Filter, Item, View } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { patchItem, useItems, useSources, useStats } from "@/hooks/use-data";
+import { applyTheme, getSettings } from "@/hooks/use-settings";
 import { AddSourceDialog } from "./add-source";
-import { SourceBadge } from "./badge";
-import { BookmarkIcon, InboxIcon, ListIcon, PlusIcon, RefreshIcon, SidebarIcon } from "./icons";
+import { BookmarkIcon, GearIcon, InboxIcon, RefreshIcon, SidebarIcon } from "./icons";
 import { ItemRow } from "./item-row";
 import { Reader, ReaderEmpty } from "./reader";
+import { SettingsDialog } from "./settings-dialog";
 import { Sidebar, type NavState } from "./sidebar";
 
 const VIEWS: View[] = ["all", "saved", "video"];
@@ -24,16 +25,16 @@ function parseNav(sp: URLSearchParams) {
     filter: f && FILTERS.includes(f) ? f : null,
     source: Number.isFinite(s) && s > 0 ? s : null,
     item: Number.isFinite(i) && i > 0 ? i : null,
-    tab: sp.get("tab") === "sources" ? ("sources" as const) : null,
+    // Legacy deep link from the old phone Sources tab: opens Settings; dropped from the URL on close.
+    settings: sp.get("tab") === "sources",
   };
 }
 
-function buildQs(n: NavState & { item?: number | null; tab?: "sources" | null }) {
+function buildQs(n: NavState & { item?: number | null }) {
   const p = new URLSearchParams();
   if (n.view !== "all") p.set("view", n.view);
   if (n.source != null) p.set("source", String(n.source));
   if (n.filter) p.set("filter", n.filter);
-  if (n.tab) p.set("tab", n.tab);
   if (n.item != null) p.set("item", String(n.item));
   const s = p.toString();
   return s ? `/?${s}` : "/";
@@ -115,7 +116,6 @@ export function MycroftApp() {
     () => ({ view: parsed.view, source: parsed.source, filter: parsed.filter }),
     [parsed.view, parsed.source, parsed.filter],
   );
-  const tab = parsed.tab;
   const isMd = useIsMd();
 
   const { items, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
@@ -123,15 +123,21 @@ export function MycroftApp() {
   const { stats, reload: reloadStats } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const showSettings = settingsOpen || parsed.settings;
   const [extraItem, setExtraItem] = useState<Item | null>(null);
   const now = useNow();
   const sidebarCollapsed = useSidebarCollapsed();
   // With no ?item in the URL, tablet/desktop shows the first item instead of an empty reader.
   // The URL is left alone so the list keeps its "nothing opened" state on phones and in history.
-  const selectedId = parsed.item ?? (isMd && tab !== "sources" && items[0] ? items[0].id : null);
+  const selectedId = parsed.item ?? (isMd && items[0] ? items[0].id : null);
   // Full-screen reader (desktop): hides sidebar and list while an item is open. Session-only.
   const [focus, setFocus] = useState(false);
   const focused = focus && selectedId != null;
+
+  // The layout's inline script sets data-theme before paint; React's dev Strict Mode remount clears
+  // it, so re-apply from storage. Later changes are applied by useSettings' setter.
+  useLayoutEffect(() => applyTheme(getSettings().theme), []);
 
   // Cmd/Ctrl+\ toggles the desktop sidebar; Shift+Cmd/Ctrl+F toggles the full-screen reader; Esc exits it.
   useEffect(() => {
@@ -151,14 +157,19 @@ export function MycroftApp() {
   }, []);
 
   const go = useCallback(
-    (n: NavState & { item?: number | null; tab?: "sources" | null }, replace = false) => {
+    (n: NavState & { item?: number | null }, replace = false) => {
       const url = buildQs(n);
       if (replace) router.replace(url, { scroll: false });
       else router.push(url, { scroll: false });
     },
     [router],
   );
-  const setNav = useCallback((n: NavState) => go({ ...n, item: null, tab: null }), [go]);
+  const setNav = useCallback((n: NavState) => go({ ...n, item: null }), [go]);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    if (parsed.settings) go({ ...nav, item: parsed.item }, true);
+  }, [parsed.settings, parsed.item, go, nav]);
 
   // --- refresh ---------------------------------------------------------------
   const reloadAll = useCallback(async () => {
@@ -235,7 +246,7 @@ export function MycroftApp() {
 
   const openItem = useCallback(
     (item: Item) => {
-      go({ ...nav, item: item.id, tab: null }, selectedId != null && window.matchMedia("(min-width: 768px)").matches);
+      go({ ...nav, item: item.id }, selectedId != null && window.matchMedia("(min-width: 768px)").matches);
     },
     [go, nav, selectedId],
   );
@@ -270,7 +281,7 @@ export function MycroftApp() {
             : nav.filter === "blogs"
               ? "Blogs"
               : "All";
-  const phoneTitle = tab === "sources" ? "Sources" : nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : "All";
+  const phoneTitle = nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : "All";
   const subline = `updated ${
     stats?.lastRefreshAt ? (relativeTime(stats.lastRefreshAt, now) === "now" ? "just now" : `${relativeTime(stats.lastRefreshAt, now)} ago`) : "never"
   }`;
@@ -354,19 +365,11 @@ export function MycroftApp() {
     <ReaderEmpty />
   );
 
-  const phoneSources = (
-    <SourcesList
-      sources={sources}
-      onPick={(s) => setNav({ view: "all", source: s.id, filter: null })}
-      onAdd={() => setAddOpen(true)}
-    />
-  );
-
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[var(--ground)]">
       {/* Sidebar (desktop) */}
       <aside id="sidebar" className={`hidden w-[230px] shrink-0 ${sidebarCollapsed || focused ? "" : "lg:block"}`}>
-        <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} onCollapse={() => setSidebarCollapsed(true)} />
+        <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} onSettings={() => setSettingsOpen(true)} onCollapse={() => setSidebarCollapsed(true)} />
       </aside>
 
       {/* List column */}
@@ -385,7 +388,7 @@ export function MycroftApp() {
             </div>
             {refreshButton}
           </div>
-          <div className="pt-3">{tab !== "sources" && chips}</div>
+          <div className="pt-3">{chips}</div>
         </header>
 
         {/* Desktop header */}
@@ -411,7 +414,7 @@ export function MycroftApp() {
         </header>
 
         <div className="panel-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          {tab === "sources" ? phoneSources : list}
+          {list}
         </div>
 
         {/* Bottom tab bar (phone only) */}
@@ -422,22 +425,17 @@ export function MycroftApp() {
           <ul className="grid grid-cols-3">
             <TabButton
               label="Feed"
-              active={tab == null && nav.view !== "saved"}
+              active={!showSettings && nav.view !== "saved"}
               icon={<InboxIcon size={20} />}
               onClick={() => setNav({ view: "all", source: null, filter: null })}
             />
             <TabButton
               label="Saved"
-              active={tab == null && nav.view === "saved"}
+              active={!showSettings && nav.view === "saved"}
               icon={<BookmarkIcon size={20} />}
               onClick={() => setNav({ view: "saved", source: null, filter: null })}
             />
-            <TabButton
-              label="Sources"
-              active={tab === "sources"}
-              icon={<ListIcon size={20} />}
-              onClick={() => go({ ...nav, item: null, tab: "sources" })}
-            />
+            <TabButton label="Settings" active={showSettings} icon={<GearIcon size={20} />} onClick={() => setSettingsOpen(true)} />
           </ul>
         </nav>
       </section>
@@ -450,6 +448,23 @@ export function MycroftApp() {
       >
         {reader}
       </main>
+
+      <SettingsDialog
+        open={showSettings}
+        onClose={closeSettings}
+        sources={sources}
+        now={now}
+        onAdd={() => setAddOpen(true)}
+        onRemoved={(id) => {
+          void reloadSources();
+          void reload();
+          if (nav.source === id) setNav({ view: "all", source: null, filter: null });
+        }}
+        onOpen={(s) => {
+          closeSettings();
+          setNav({ view: "all", source: s.id, filter: null });
+        }}
+      />
 
       <AddSourceDialog
         open={addOpen}
@@ -478,51 +493,6 @@ function TabButton({ label, active, icon, onClick }: { label: string; active: bo
         {label}
       </button>
     </li>
-  );
-}
-
-function SourcesList({ sources, onPick, onAdd }: { sources: Source[]; onPick: (s: Source) => void; onAdd: () => void }) {
-  const groups: [string, Source[]][] = [
-    ["Sources", sources.filter((s) => s.kind !== "youtube")],
-    ["YouTube", sources.filter((s) => s.kind === "youtube")],
-  ];
-  return (
-    <div className="pb-6">
-      {groups.map(([label, list]) =>
-        list.length ? (
-          <section key={label}>
-            <h2 className="px-4 pb-1 pt-4 text-[13px] font-semibold text-[var(--muted)]">{label}</h2>
-            <ul>
-              {list.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => onPick(s)}
-                    className="flex min-h-[52px] w-full items-center gap-3 border-b border-[var(--hairline)] px-4 text-left"
-                  >
-                    <SourceBadge host={s.host} title={s.title} size={28} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-medium text-[var(--ink)]">{s.title}</span>
-                      {s.last_error && <span className="block truncate text-[12px] text-[var(--danger)]">Error: {s.last_error}</span>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null,
-      )}
-      <div className="px-4 pt-5">
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--code)] text-[14px] font-medium text-[var(--accent)]"
-        >
-          <PlusIcon size={16} />
-          Add source
-        </button>
-      </div>
-    </div>
   );
 }
 
