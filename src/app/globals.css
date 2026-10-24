@@ -48,6 +48,7 @@
 @theme inline {
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --font-serif: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --color-accent: var(--accent);
 }
 
@@ -110,7 +111,8 @@ body {
 /* Reading body */
 .prose-mycroft {
   max-width: 640px;
-  font-size: 17px;
+  font-family: var(--font-serif);
+  font-size: 17.5px;
   line-height: 1.6;
   color: var(--ink);
   overflow-wrap: break-word;

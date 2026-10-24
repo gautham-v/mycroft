@@ -165,7 +165,7 @@ export function Reader({
       </div>
 
       <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
-        <h1 className="text-balance text-[28px] font-bold leading-[1.12] tracking-[-0.025em] text-[var(--ink)] md:text-[34px]">
+        <h1 className="text-balance font-serif text-[30px] font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)] md:text-[36px]">
           <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
             {item.title}
           </a>
@@ -191,7 +191,7 @@ export function Reader({
         {isVideo ? (
           <>
             {item.video_id && (
-              <div className="relative mb-6 aspect-video w-full overflow-hidden rounded-[10px] bg-black">
+              <div className="relative mb-6 aspect-video w-full overflow-hidden rounded-[6px] bg-black">
                 <iframe
                   src={`https://www.youtube-nocookie.com/embed/${item.video_id}`}
                   title={item.title}
@@ -229,7 +229,7 @@ export function Reader({
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 text-[15px] font-medium !text-white !no-underline"
+                    className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 font-sans text-[15px] font-medium !text-white !no-underline"
                   >
                     Open original
                     <ExternalIcon size={16} />

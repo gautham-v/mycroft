@@ -26,7 +26,7 @@ function Row({
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`flex h-[34px] w-full items-center gap-[10px] rounded-[7px] px-2 text-left text-[14px] text-[var(--ink)] ${
+        className={`flex h-[34px] w-full items-center gap-[10px] rounded-[4px] px-2 text-left text-[14px] text-[var(--ink)] ${
           active ? "bg-[var(--nav-selection)]" : "hover:bg-[var(--nav-hover)]"
         }`}
       >
@@ -134,7 +134,7 @@ export function Sidebar({
         <button
           type="button"
           onClick={onAdd}
-          className="flex h-[34px] w-full items-center gap-[10px] rounded-[7px] px-2 text-left text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+          className="flex h-[34px] w-full items-center gap-[10px] rounded-[4px] px-2 text-left text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
         >
           <span className="flex w-[22px] shrink-0 justify-center">
             <PlusIcon size={16} />

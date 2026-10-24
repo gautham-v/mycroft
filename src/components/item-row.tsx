@@ -10,7 +10,7 @@ function Thumb({ item }: { item: Item }) {
   if (!item.thumbnail_url) return null;
   const dur = item.source.kind === "youtube" ? formatDuration(item.duration_sec) : null;
   return (
-    <span className="relative block h-[50px] w-[76px] shrink-0 overflow-hidden rounded-[7px] bg-[var(--code)]">
+    <span className="relative block h-[50px] w-[76px] shrink-0 overflow-hidden rounded-[3px] bg-[var(--code)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={item.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
       {item.source.kind === "youtube" && (
@@ -52,7 +52,7 @@ export const ItemRow = memo(function ItemRow({
           onOpen(item);
         }}
         aria-current={selected ? "true" : undefined}
-        className={`flex gap-3 rounded-[9px] px-2.5 py-[11px] ${
+        className={`flex gap-3 rounded-[4px] px-2.5 py-[11px] ${
           selected ? "bg-[var(--selection)]" : "hover:bg-[var(--hover)]"
         }`}
       >

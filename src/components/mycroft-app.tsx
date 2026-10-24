@@ -372,7 +372,7 @@ export function MycroftApp() {
       {/* List column */}
       <section
         aria-label="Items"
-        className={`relative flex min-w-0 flex-col bg-[var(--surface)] md:w-[380px] md:shrink-0 md:border-r md:border-[var(--hairline)] lg:my-2.5 lg:w-[410px] lg:overflow-hidden lg:rounded-xl lg:border-r-0 ${
+        className={`relative flex min-w-0 flex-col bg-[var(--surface)] md:w-[380px] md:shrink-0 md:border-r md:border-[var(--hairline)] lg:my-2.5 lg:w-[410px] lg:overflow-hidden lg:rounded-[6px] lg:border-r-0 ${
           sidebarCollapsed ? "lg:ml-2.5" : ""
         } ${selectedId != null ? (focused ? "hidden md:flex lg:hidden" : "hidden md:flex") : "flex flex-1 md:flex-none"}`}
       >
@@ -444,7 +444,7 @@ export function MycroftApp() {
 
       {/* Reader */}
       <main
-        className={`panel-scroll min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] ${focused ? "" : "lg:m-2.5 lg:rounded-xl"} ${selectedId != null ? "block" : "hidden md:block"}`}
+        className={`panel-scroll min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] ${focused ? "" : "lg:m-2.5 lg:rounded-[6px]"} ${selectedId != null ? "block" : "hidden md:block"}`}
         aria-label="Reader"
         data-path={pathname}
       >
