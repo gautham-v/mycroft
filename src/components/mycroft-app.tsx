@@ -300,9 +300,9 @@ export function MycroftApp() {
       onClick={() => void runRefresh(true)}
       disabled={refreshing}
       aria-label={refreshing ? "Refreshing" : "Refresh feeds"}
-      className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink)] hover:bg-[var(--surface)] disabled:opacity-70"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink)] hover:bg-[var(--hover)] disabled:opacity-70 lg:h-[30px] lg:w-[30px] lg:text-[var(--muted)] lg:hover:text-[var(--ink)]"
     >
-      <RefreshIcon size={20} className={refreshing ? "animate-spin" : ""} />
+      <RefreshIcon size={20} className={`lg:size-[17px] ${refreshing ? "animate-spin" : ""}`} />
     </button>
   );
 
@@ -316,10 +316,8 @@ export function MycroftApp() {
             type="button"
             aria-pressed={active}
             onClick={() => setNav(c.nav)}
-            className={`h-8 shrink-0 rounded-full border px-3.5 text-[13px] font-medium ${
-              active
-                ? "border-[var(--ink)] bg-[var(--ink)] text-white"
-                : "border-[var(--border)] bg-[var(--surface)] text-[var(--body)]"
+            className={`h-8 shrink-0 rounded-full px-3.5 text-[13px] font-medium ${
+              active ? "bg-[var(--ink)] text-[var(--surface)]" : "bg-[var(--code)] text-[var(--ink)]"
             }`}
           >
             {c.label}
@@ -330,7 +328,7 @@ export function MycroftApp() {
   );
 
   const list = (
-    <ul aria-label={listTitle} aria-busy={loading}>
+    <ul aria-label={listTitle} aria-busy={loading} className="px-2 pb-2">
       {loading && items.length === 0 && <ListSkeleton />}
       {!loading && error && items.length === 0 && (
         <li className="px-6 py-16 text-center text-[14px] text-[var(--muted)]">
@@ -343,14 +341,14 @@ export function MycroftApp() {
       {!loading && !error && items.length === 0 && (
         <li className="px-6 py-16 text-center">
           <p className="text-[15px] font-medium text-[var(--ink)]">{nav.view === "saved" ? "Nothing saved yet" : "All caught up"}</p>
-          <p className="mt-1 font-mono text-[12px] text-[var(--muted)]">No items in this view</p>
+          <p className="mt-1 text-[13px] text-[var(--muted)]">No items in this view</p>
         </li>
       )}
       {items.map((item) => (
         <ItemRow key={item.id} item={item} selected={item.id === selectedId} onOpen={openItem} />
       ))}
       {nextCursor && (
-        <li ref={sentinel} className="py-6 text-center font-mono text-[12px] text-[var(--muted)]">
+        <li ref={sentinel} className="py-6 text-center text-[13px] text-[var(--muted)]">
           {loadingMore ? "Loading..." : ""}
         </li>
       )}
@@ -383,23 +381,23 @@ export function MycroftApp() {
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[var(--ground)]">
       {/* Sidebar (desktop) */}
-      <aside id="sidebar" className={`hidden w-[240px] shrink-0 ${sidebarCollapsed ? "" : "lg:block"}`}>
+      <aside id="sidebar" className={`hidden w-[230px] shrink-0 ${sidebarCollapsed ? "" : "lg:block"}`}>
         <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} onCollapse={() => setSidebarCollapsed(true)} />
       </aside>
 
       {/* List column */}
       <section
         aria-label="Items"
-        className={`relative flex min-w-0 flex-col border-[var(--border)] md:w-[380px] md:shrink-0 md:border-r lg:w-[420px] ${
-          selectedId != null ? "hidden md:flex" : "flex flex-1 md:flex-none"
-        }`}
+        className={`relative flex min-w-0 flex-col bg-[var(--surface)] md:w-[380px] md:shrink-0 md:border-r md:border-[var(--hairline)] lg:my-2.5 lg:w-[410px] lg:overflow-hidden lg:rounded-xl lg:border-r-0 ${
+          sidebarCollapsed ? "lg:ml-2.5" : ""
+        } ${selectedId != null ? "hidden md:flex" : "flex flex-1 md:flex-none"}`}
       >
         {/* Phone/tablet header */}
         <header className="shrink-0 pt-[env(safe-area-inset-top)] lg:hidden">
           <div className="flex items-center justify-between gap-2 pl-4 pr-2 pt-3">
             <div className="min-w-0">
-              <h1 className="truncate text-[28px] font-semibold leading-tight tracking-[-0.02em] text-[var(--ink)]">{phoneTitle}</h1>
-              <p className="mt-0.5 font-mono text-[12px] text-[var(--muted)]">{subline}</p>
+              <h1 className="truncate text-[28px] font-bold leading-tight tracking-[-0.02em] text-[var(--ink)]">{phoneTitle}</h1>
+              <p className="mt-0.5 text-[12px] text-[var(--muted)]">{subline}</p>
             </div>
             {refreshButton}
           </div>
@@ -407,7 +405,7 @@ export function MycroftApp() {
         </header>
 
         {/* Desktop header */}
-        <header className={`hidden h-14 shrink-0 items-center gap-1 border-b border-[var(--hairline)] pr-2 lg:flex ${sidebarCollapsed ? "pl-2" : "pl-4"}`}>
+        <header className={`hidden shrink-0 items-center gap-2 pb-2.5 pr-3 pt-3.5 lg:flex ${sidebarCollapsed ? "pl-3" : "pl-[18px]"}`}>
           {sidebarCollapsed && (
             <button
               type="button"
@@ -416,24 +414,24 @@ export function MycroftApp() {
               aria-controls="sidebar"
               aria-expanded={false}
               title="Show sidebar (⌘\\)"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--body)] hover:bg-[var(--surface)]"
+              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
             >
-              <SidebarIcon size={18} />
+              <SidebarIcon size={17} />
             </button>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[16px] font-semibold text-[var(--ink)]">{listTitle}</h1>
-            <p className="font-mono text-[11px] text-[var(--muted)]">{subline}</p>
+            <h1 className="truncate text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--ink)]">{listTitle}</h1>
+            <p className="mt-px truncate text-[12px] text-[var(--muted)]">{subline}</p>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={() => void markAllRead()}
               aria-label="Mark all read"
               title="Mark all read"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--body)] hover:bg-[var(--surface)]"
+              className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
             >
-              <CheckIcon size={18} />
+              <CheckIcon size={17} />
             </button>
             {refreshButton}
           </div>
@@ -446,7 +444,7 @@ export function MycroftApp() {
         {/* Bottom tab bar (phone only) */}
         <nav
           aria-label="Primary"
-          className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--hairline)] bg-[var(--surface)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
         >
           <ul className="grid grid-cols-3">
             <TabButton
@@ -473,7 +471,7 @@ export function MycroftApp() {
 
       {/* Reader */}
       <main
-        className={`min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] ${selectedId != null ? "block" : "hidden md:block"}`}
+        className={`min-w-0 flex-1 overflow-y-auto bg-[var(--surface)] lg:m-2.5 lg:rounded-xl ${selectedId != null ? "block" : "hidden md:block"}`}
         aria-label="Reader"
         data-path={pathname}
       >
@@ -520,7 +518,7 @@ function SourcesList({ sources, onPick, onAdd }: { sources: Source[]; onPick: (s
       {groups.map(([label, list]) =>
         list.length ? (
           <section key={label}>
-            <h2 className="px-4 pb-1 pt-4 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">{label}</h2>
+            <h2 className="px-4 pb-1 pt-4 text-[13px] font-semibold text-[var(--muted)]">{label}</h2>
             <ul>
               {list.map((s) => (
                 <li key={s.id}>
@@ -532,7 +530,7 @@ function SourcesList({ sources, onPick, onAdd }: { sources: Source[]; onPick: (s
                     <SourceBadge host={s.host} title={s.title} size={28} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] font-medium text-[var(--ink)]">{s.title}</span>
-                      {s.last_error && <span className="block truncate font-mono text-[11px] text-[var(--danger)]">Error: {s.last_error}</span>}
+                      {s.last_error && <span className="block truncate text-[12px] text-[var(--danger)]">Error: {s.last_error}</span>}
                     </span>
                   </button>
                 </li>
@@ -545,7 +543,7 @@ function SourcesList({ sources, onPick, onAdd }: { sources: Source[]; onPick: (s
         <button
           type="button"
           onClick={onAdd}
-          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[14px] font-medium text-[var(--body)]"
+          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--code)] text-[14px] font-medium text-[var(--accent)]"
         >
           <PlusIcon size={16} />
           Add source
@@ -559,8 +557,8 @@ function ListSkeleton() {
   return (
     <>
       {Array.from({ length: 8 }).map((_, i) => (
-        <li key={i} className="flex gap-3 border-b border-[var(--hairline)] px-4 py-3.5">
-          <span className="mt-1 h-8 w-8 shrink-0 animate-pulse rounded-lg bg-[var(--code)]" />
+        <li key={i} className="item-row flex gap-3 px-2.5 py-[11px]">
+          <span className="mt-px h-6 w-6 shrink-0 animate-pulse rounded-[7px] bg-[var(--code)]" />
           <span className="flex-1 space-y-2">
             <span className="block h-4 w-[85%] animate-pulse rounded bg-[var(--code)]" />
             <span className="block h-3 w-[40%] animate-pulse rounded bg-[var(--code)]" />

@@ -26,11 +26,11 @@ function Row({
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left text-[14px] ${
-          active ? "bg-[var(--surface)] font-medium text-[var(--accent)]" : "text-[var(--body)] hover:bg-[var(--surface)]/70"
+        className={`flex h-[30px] w-full items-center gap-[9px] rounded-[7px] px-2 text-left text-[13.5px] text-[var(--ink)] ${
+          active ? "bg-[var(--nav-selection)]" : "hover:bg-[var(--nav-hover)]"
         }`}
       >
-        <span className="flex w-5 shrink-0 justify-center">{icon}</span>
+        <span className="flex w-[18px] shrink-0 justify-center text-[var(--muted)]">{icon}</span>
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </button>
     </li>
@@ -39,7 +39,7 @@ function Row({
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="mb-1 mt-5 px-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+    <h3 className="px-2 pb-1 pt-3.5 text-[11px] font-semibold tracking-[0.01em] text-[var(--faint)]">
       {children}
     </h3>
   );
@@ -78,12 +78,12 @@ export function Sidebar({
   );
 
   return (
-    <nav aria-label="Feeds" className="flex h-full flex-col border-r border-[var(--border)] bg-[var(--ground)]">
-      <div className="flex h-14 shrink-0 items-center gap-2 px-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--accent)] text-white">
-          <ArcIcon size={16} strokeWidth={2.4} />
+    <nav aria-label="Feeds" className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 pb-2 pl-[18px] pr-2.5 pt-[17px]">
+        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] bg-[var(--accent)] text-white">
+          <ArcIcon size={14} strokeWidth={2.4} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-[16px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
+        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
         {onCollapse && (
           <button
             type="button"
@@ -92,13 +92,13 @@ export function Sidebar({
             aria-controls="sidebar"
             aria-expanded="true"
             title="Hide sidebar (⌘\\)"
-            className="-mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--body)]"
+            className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
           >
-            <SidebarIcon size={18} />
+            <SidebarIcon size={17} />
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
         <Label>Views</Label>
         <ul>
           <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={16} />} label="All" />
@@ -124,19 +124,21 @@ export function Sidebar({
               key={f.id}
               active={nav.filter === f.id}
               onClick={() => setNav({ view: "all", source: null, filter: f.id })}
-              icon={<span className="font-mono text-[12px] text-[var(--muted)]">#</span>}
+              icon={<span className="text-[13px]">#</span>}
               label={f.label}
             />
           ))}
         </ul>
       </div>
-      <div className="shrink-0 border-t border-[var(--hairline)] p-3">
+      <div className="shrink-0 px-2.5 pb-3 pt-1">
         <button
           type="button"
           onClick={onAdd}
-          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[13px] font-medium text-[var(--body)] hover:bg-[var(--ground)]"
+          className="flex h-[30px] w-full items-center gap-[9px] rounded-[7px] px-2 text-left text-[13px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
         >
-          <PlusIcon size={15} />
+          <span className="flex w-[18px] shrink-0 justify-center">
+            <PlusIcon size={15} />
+          </span>
           Add source
         </button>
       </div>

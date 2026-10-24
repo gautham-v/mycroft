@@ -45,23 +45,23 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
       ref={ref}
       onClose={onClose}
       aria-labelledby="add-source-title"
-      className="m-auto w-[min(92vw,420px)] rounded-xl border border-[var(--border)] bg-[var(--surface)] p-0 text-[var(--body)] backdrop:bg-black/30"
+      className="m-auto w-[min(92vw,420px)] rounded-xl border border-[var(--hairline)] bg-[var(--surface)] p-0 shadow-2xl text-[var(--body)] backdrop:bg-black/30"
     >
       <form onSubmit={submit} className="p-5">
         <div className="flex items-center justify-between">
-          <h2 id="add-source-title" className="text-[16px] font-semibold text-[var(--ink)]">
+          <h2 id="add-source-title" className="text-[17px] font-semibold tracking-[-0.01em] text-[var(--ink)]">
             Add source
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--ground)]"
+            className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)]"
           >
             <CloseIcon size={18} />
           </button>
         </div>
-        <label htmlFor="add-source-url" className="mt-3 block font-mono text-[11px] uppercase tracking-wider text-[var(--muted)]">
+        <label htmlFor="add-source-url" className="mt-3 block text-[13px] text-[var(--muted)]">
           Feed, site, or YouTube channel URL
         </label>
         <input
@@ -84,7 +84,7 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg border border-[var(--border)] px-4 text-[14px] font-medium hover:bg-[var(--ground)]"
+            className="h-10 rounded-lg border border-[var(--border)] px-4 text-[14px] font-medium text-[var(--ink)] hover:bg-[var(--hover)]"
           >
             Cancel
           </button>

@@ -1,10 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Inter } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
-
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"], weight: ["400", "500", "600"], display: "swap" });
-const plexMono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], weight: ["400", "500"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "Mycroft",
@@ -24,9 +20,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // Desktop (lg+) shows the ground behind inset panels; smaller screens show the full-bleed panel.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FAFAF8" },
-    { media: "(prefers-color-scheme: dark)", color: "#141412" },
+    { media: "(prefers-color-scheme: light) and (min-width: 1024px)", color: "#F2F2F4" },
+    { media: "(prefers-color-scheme: dark) and (min-width: 1024px)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
+    { media: "(prefers-color-scheme: dark)", color: "#161618" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -35,7 +34,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} ${plexMono.variable} antialiased`}>
+    <html lang="en" className="antialiased">
       <body>
         {children}
         <ServiceWorkerRegister />

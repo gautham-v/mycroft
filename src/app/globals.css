@@ -1,40 +1,51 @@
 @import "tailwindcss";
 
+/* Neutral Apple greys, blue accent. On desktop the sidebar sits on --ground and the list
+   and reader are inset --surface panels; below lg the panels go full-bleed. */
 :root {
-  --ground: #fafaf8;
+  --ground: #f2f2f4;
   --surface: #ffffff;
-  --ink: #1a1a1a;
-  --body: #2a2a2a;
-  --muted: #6b6b6b;
-  --faint: #9a9a9a;
-  --border: #e2e1dc;
-  --hairline: #ecebe6;
-  --code: #f3f2ee;
-  --accent: #0f6e6e;
-  --danger: #a3261b;
+  --selection: #e8e8ec;
+  --hover: #f4f4f6;
+  /* Sidebar rows sit on --ground, so they need a darker hover/selection than panel rows. */
+  --nav-hover: #e9e9ed;
+  --nav-selection: #e1e1e6;
+  --ink: #1d1d1f;
+  --body: #3a3a3c;
+  --muted: #6e6e73;
+  --faint: #aeaeb2;
+  --border: #d2d2d7;
+  --hairline: #e5e5ea;
+  --code: #f0f0f3;
+  --accent: #007aff;
+  --danger: #ff3b30;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ground: #141412;
-    --surface: #1c1c1a;
-    --ink: #f0efe9;
-    --body: #d6d5cf;
-    --muted: #9a9992;
-    --faint: #6e6d67;
-    --border: #2e2d29;
-    --hairline: #262521;
-    --code: #232220;
-    --accent: #4fb3b3;
-    --danger: #e07068;
+    --ground: #000000;
+    --surface: #161618;
+    --selection: #3a3a3d;
+    --hover: #1c1c1f;
+    --nav-hover: #1c1c1f;
+    --nav-selection: #3a3a3d;
+    --ink: #f5f5f7;
+    --body: #d1d1d6;
+    --muted: #98989d;
+    --faint: #636366;
+    --border: #2c2c2e;
+    --hairline: #232326;
+    --code: #242427;
+    --accent: #0a84ff;
+    --danger: #ff453a;
     color-scheme: dark;
   }
 }
 
 @theme inline {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --color-accent: var(--accent);
 }
 
@@ -57,6 +68,28 @@ body {
   border-radius: 4px;
 }
 
+/* Item rows: inset hairline dividers that start after the source icon (10px pad + 24px icon +
+   12px gap), hidden around the selected or hovered row. */
+.item-row {
+  position: relative;
+}
+.item-row + .item-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 46px;
+  right: 10px;
+  height: 1px;
+  background: var(--hairline);
+  pointer-events: none;
+}
+.item-row[data-selected]::before,
+.item-row[data-selected] + .item-row::before,
+.item-row:hover::before,
+.item-row:hover + .item-row::before {
+  display: none;
+}
+
 .no-scrollbar {
   scrollbar-width: none;
 }
@@ -69,7 +102,7 @@ body {
   max-width: 640px;
   font-size: 17px;
   line-height: 1.6;
-  color: var(--body);
+  color: var(--ink);
   overflow-wrap: break-word;
 }
 .prose-mycroft > * + *,
@@ -122,8 +155,7 @@ body {
 }
 .prose-mycroft figcaption {
   margin-top: -0.8em;
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .prose-mycroft ul { list-style: disc; padding-left: 1.4em; }

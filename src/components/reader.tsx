@@ -63,7 +63,7 @@ function ActionButton({
   children: React.ReactNode;
 }) {
   const cls =
-    "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--body)] hover:bg-[var(--ground)]";
+    "inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] lg:h-[30px] lg:w-[30px]";
   if (href)
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" className={cls} aria-label={label} title={label}>
@@ -123,23 +123,23 @@ export function Reader({
 
   return (
     <article className="min-h-full bg-[var(--surface)] pb-[calc(env(safe-area-inset-bottom)+32px)]">
-      <div className="sticky top-0 z-10 border-b border-[var(--hairline)] bg-[var(--surface)]/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur md:px-8">
-        <div className="flex min-h-14 flex-wrap items-center gap-2 py-2">
+      <div className="sticky top-0 z-10 border-b border-[var(--hairline)] bg-[var(--surface)]/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:border-b-0">
+        <div className="flex min-h-14 flex-wrap items-center gap-2 py-2 lg:min-h-[54px] lg:gap-1.5">
           {showBack && (
             <button
               type="button"
               onClick={onBack}
               aria-label="Back to list"
-              className="-ml-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink)] hover:bg-[var(--ground)]"
+              className="-ml-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink)] hover:bg-[var(--hover)] lg:ml-0 lg:h-[30px] lg:w-[30px] lg:text-[var(--muted)] lg:hover:text-[var(--ink)]"
             >
-              <BackIcon size={22} />
+              <BackIcon size={22} className="lg:size-[18px]" />
             </button>
           )}
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <SourceBadge host={item.source.host} title={item.source.title} size={28} />
-            <span className="truncate font-mono text-[12px] text-[var(--muted)]">{meta.filter(Boolean).join(" · ")}</span>
+            <SourceBadge host={item.source.host} title={item.source.title} size={20} />
+            <span className="truncate text-[13px] text-[var(--muted)]">{meta.filter(Boolean).join(" · ")}</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-0.5">
             <ActionButton label={item.is_saved ? "Remove from saved" : "Save"} onClick={() => onToggleSaved(item)}>
               <BookmarkIcon size={17} filled={item.is_saved} className={item.is_saved ? "text-[var(--accent)]" : ""} />
             </ActionButton>
@@ -156,14 +156,14 @@ export function Reader({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.01em] text-[var(--ink)] md:text-[32px]">
+      <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
+        <h1 className="text-balance text-[28px] font-bold leading-[1.12] tracking-[-0.025em] text-[var(--ink)] md:text-[34px]">
           <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
             {item.title}
           </a>
         </h1>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px] text-[var(--muted)]">
-          <span>{item.source.title}</span>
+        <div className="mt-3.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[14px] text-[var(--muted)]">
+          <span className="font-medium text-[var(--ink)]">{item.source.title}</span>
           {item.author && item.author !== item.source.title && <span>{item.author}</span>}
           {item.hn_comments_url && (
             <a
@@ -172,14 +172,14 @@ export function Reader({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
             >
-              <CommentIcon size={13} />
+              <CommentIcon size={14} />
               Comments{item.hn_comments != null ? ` (${item.hn_comments})` : ""}
             </a>
           )}
         </div>
       </div>
 
-      <div className="prose-mycroft mx-auto mt-6 px-5 md:px-0">
+      <div className="prose-mycroft mx-auto mt-7 px-5 md:px-0">
         {isVideo ? (
           <>
             {item.video_id && (
@@ -241,7 +241,7 @@ export function ReaderEmpty() {
     <div className="flex h-full items-center justify-center bg-[var(--surface)]">
       <div className="text-center">
         <p className="text-[15px] font-medium text-[var(--ink)]">Nothing selected</p>
-        <p className="mt-1 font-mono text-[12px] text-[var(--muted)]">Pick an item from the list</p>
+        <p className="mt-1 text-[13px] text-[var(--muted)]">Pick an item from the list</p>
       </div>
     </div>
   );
