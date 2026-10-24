@@ -1,7 +1,7 @@
 "use client";
 import type { Filter, Source, View } from "@/lib/types";
 import { SourceBadge } from "./badge";
-import { ArcIcon, BookmarkIcon, InboxIcon, PlusIcon, VideoIcon } from "./icons";
+import { ArcIcon, BookmarkIcon, InboxIcon, PlusIcon, SidebarIcon, VideoIcon } from "./icons";
 
 export interface NavState {
   view: View;
@@ -56,11 +56,13 @@ export function Sidebar({
   setNav,
   sources,
   onAdd,
+  onCollapse,
 }: {
   nav: NavState;
   setNav: (n: NavState) => void;
   sources: Source[];
   onAdd: () => void;
+  onCollapse?: () => void;
 }) {
   const rss = sources.filter((s) => s.kind !== "youtube");
   const yt = sources.filter((s) => s.kind === "youtube");
@@ -81,7 +83,20 @@ export function Sidebar({
         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--accent)] text-white">
           <ArcIcon size={16} strokeWidth={2.4} />
         </span>
-        <span className="text-[16px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
+        <span className="min-w-0 flex-1 truncate text-[16px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label="Hide sidebar"
+            aria-controls="sidebar"
+            aria-expanded="true"
+            title="Hide sidebar (⌘\\)"
+            className="-mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--body)]"
+          >
+            <SidebarIcon size={18} />
+          </button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         <Label>Views</Label>

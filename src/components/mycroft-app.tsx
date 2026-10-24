@@ -384,7 +384,7 @@ export function MycroftApp() {
     <div className="flex h-dvh w-full overflow-hidden bg-[var(--ground)]">
       {/* Sidebar (desktop) */}
       <aside id="sidebar" className={`hidden w-[240px] shrink-0 ${sidebarCollapsed ? "" : "lg:block"}`}>
-        <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} />
+        <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} onCollapse={() => setSidebarCollapsed(true)} />
       </aside>
 
       {/* List column */}
@@ -407,18 +407,20 @@ export function MycroftApp() {
         </header>
 
         {/* Desktop header */}
-        <header className="hidden h-14 shrink-0 items-center gap-1 border-b border-[var(--hairline)] pl-2 pr-2 lg:flex">
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-            aria-controls="sidebar"
-            aria-expanded={!sidebarCollapsed}
-            title={`${sidebarCollapsed ? "Show sidebar" : "Hide sidebar"} (⌘\\)`}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--body)] hover:bg-[var(--surface)]"
-          >
-            <SidebarIcon size={18} />
-          </button>
+        <header className={`hidden h-14 shrink-0 items-center gap-1 border-b border-[var(--hairline)] pr-2 lg:flex ${sidebarCollapsed ? "pl-2" : "pl-4"}`}>
+          {sidebarCollapsed && (
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              aria-label="Show sidebar"
+              aria-controls="sidebar"
+              aria-expanded={false}
+              title="Show sidebar (⌘\\)"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--body)] hover:bg-[var(--surface)]"
+            >
+              <SidebarIcon size={18} />
+            </button>
+          )}
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[16px] font-semibold text-[var(--ink)]">{listTitle}</h1>
             <p className="font-mono text-[11px] text-[var(--muted)]">{subline}</p>
