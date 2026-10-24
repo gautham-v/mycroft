@@ -42,7 +42,7 @@ function FooterRow({ onClick, icon, label }: { onClick: () => void; icon: React.
     <button
       type="button"
       onClick={onClick}
-      className={`${ROW} text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]`}
+      className={`${ROW} min-w-0 flex-1 text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]`}
     >
       <span className="flex w-[20px] shrink-0 justify-center">{icon}</span>
       {label}
@@ -192,9 +192,17 @@ export function Sidebar({
           ) : null,
         )}
       </div>
-      <div className="shrink-0 px-2.5 pb-3 pt-1">
+      <div className="flex shrink-0 items-center gap-1 px-2.5 pb-3 pt-1">
         <FooterRow onClick={onAdd} icon={<PlusIcon size={16} />} label="Add source" />
-        <FooterRow onClick={onSettings} icon={<GearIcon size={16} />} label="Settings" />
+        <button
+          type="button"
+          onClick={onSettings}
+          aria-label="Settings"
+          title="Settings"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+        >
+          <GearIcon size={16} />
+        </button>
       </div>
     </nav>
   );
