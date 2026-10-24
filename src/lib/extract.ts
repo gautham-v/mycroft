@@ -108,10 +108,10 @@ function usableLead(u: string | null): string | null {
 
 /**
  * Readability keeps inline author cards (avatar + name + one-line bio) that sit inside the
- * article container. Drop short blocks that carry an avatar-sized image or an author link,
- * and any remaining avatar-sized images.
+ * article container, and link-only navigation tables on table-layout sites. Drop both,
+ * plus any remaining avatar-sized images.
  */
-export function stripAuthorCards(html: string): string {
+export function cleanArticle(html: string): string {
   const { document } = parseHTML(`<div id="__root">${html}</div>`);
   const root = document.getElementById("__root");
   if (!root) return html;
@@ -127,6 +127,32 @@ export function stripAuthorCards(html: string): string {
     if (hasAvatar || hasAuthorLink) el.remove();
   }
   root.querySelectorAll("img").forEach((img) => isTinyImg(img) && img.remove());
+  // Navigation tables (old-school sites): mostly links, little prose.
+  for (const table of [...root.querySelectorAll("table")]) {
+    if (!table.isConnected) continue;
+    const text = (table.textContent ?? "").replace(/\s+/g, " ").trim();
+    const links = [...table.querySelectorAll("a[href]")];
+    const linkText = links.reduce((n, a) => n + (a.textContent ?? "").trim().length, 0);
+    if (links.length >= 4 && text.length > 0 && linkText / text.length > 0.6) table.remove();
+  }
+  // Section labels left with nothing under them (their section was a stripped table or card):
+  // real headings, or short bold "Label:" lines on table-layout sites.
+  const isLabel = (el: Element) =>
+    /^H[1-6]$/.test(el.tagName) ||
+    (/^(B|STRONG|P)$/.test(el.tagName) && /^[^.]{1,40}:$/.test((el.textContent ?? "").trim()));
+  for (const h of [...root.querySelectorAll("h1, h2, h3, h4, h5, h6, b, strong, p")]) {
+    if (!h.isConnected || !isLabel(h)) continue;
+    const trailing: Element[] = [];
+    let next = h.nextElementSibling;
+    while (next && (/^(HR|BR)$/.test(next.tagName) || !(next.textContent ?? "").trim())) {
+      trailing.push(next);
+      next = next.nextElementSibling;
+    }
+    if (!next || isLabel(next)) {
+      trailing.forEach((t) => t.remove());
+      h.remove();
+    }
+  }
   return root.innerHTML;
 }
 
@@ -153,7 +179,7 @@ export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
   // Readability's types expect a DOM Document; linkedom is compatible at runtime.
   const article = new Readability(document as unknown as Document, { charThreshold: 200 }).parse();
   if (!article?.content) return { contentHtml: null, leadImage: usableLead(abs(og, base)) };
-  const clean = sanitizeArticle(stripAuthorCards(article.content)).trim();
+  const clean = sanitizeArticle(cleanArticle(article.content)).trim();
   return { contentHtml: clean || null, leadImage: usableLead(abs(og, base)) ?? firstImage(clean) };
 }
 
@@ -193,10 +219,49 @@ async function extractRendered(url: string, ms: number): Promise<ExtractResult |
   const res = await fetchWithTimeout(`https://r.jina.ai/${url}`, ms, { headers });
   if (!res.ok) return null;
   const out = extractFromHtml(await res.text(), url);
-  return out.contentHtml ? { ...out, rendered: true } : null;
+  if (!out.contentHtml || isLoginWall(out.contentHtml)) return null;
+  return { ...out, rendered: true };
+}
+
+const LOGIN_WALL = /\b(log ?in|sign ?in|sign ?up)\b.{0,40}\b(sign ?up|continue|to (?:see|view|read))/i;
+
+/** Rendered pages behind an auth wall come back as a short page about logging in. */
+function isLoginWall(html: string): boolean {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  return text.length < 2500 && LOGIN_WALL.test(text);
+}
+
+const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/([^/]+)\/status\/(\d+)/i;
+
+/** Tweets: X's pages are JavaScript-only and render to a login wall, but the official oEmbed works unauthenticated. */
+async function extractTweet(url: string): Promise<ExtractResult | null> {
+  const m = TWEET_RE.exec(url);
+  if (!m) return null;
+  const canonical = `https://x.com/${m[1]}/status/${m[2]}`;
+  const api = `https://publish.twitter.com/oembed?url=${encodeURIComponent(canonical)}&omit_script=true&dnt=true`;
+  const res = await fetchWithTimeout(api, EXTRACT_TIMEOUT_MS, { headers: { Accept: "application/json" } });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { html?: string; author_name?: string; author_url?: string };
+  if (!data.html) return null;
+  const { document } = parseHTML(`<div id="__root">${data.html}</div>`);
+  const root = document.getElementById("__root");
+  if (!root) return null;
+  const body = root.querySelector("blockquote p")?.innerHTML ?? "";
+  if (!body.trim()) return null;
+  const by = data.author_name ? `<p><a href="${data.author_url ?? canonical}">${data.author_name}</a> on X</p>` : "";
+  const html = sanitizeArticle(`<blockquote><p>${body}</p></blockquote>${by}`).trim();
+  return html ? { contentHtml: html, leadImage: null } : null;
 }
 
 export async function extractArticle(url: string): Promise<ExtractResult> {
+  if (TWEET_RE.test(url)) {
+    try {
+      const t = await extractTweet(url);
+      if (t) return t;
+    } catch {
+      /* fall through to the normal path */
+    }
+  }
   const started = Date.now();
   let plain: ExtractResult | null = null;
   let plainError: unknown = null;
