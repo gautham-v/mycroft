@@ -26,11 +26,11 @@ function Row({
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`flex h-[30px] w-full items-center gap-[9px] rounded-[7px] px-2 text-left text-[13.5px] text-[var(--ink)] ${
+        className={`flex h-[34px] w-full items-center gap-[10px] rounded-[7px] px-2 text-left text-[14px] text-[var(--ink)] ${
           active ? "bg-[var(--nav-selection)]" : "hover:bg-[var(--nav-hover)]"
         }`}
       >
-        <span className="flex w-[18px] shrink-0 justify-center text-[var(--muted)]">{icon}</span>
+        <span className="flex w-[22px] shrink-0 justify-center text-[var(--muted)]">{icon}</span>
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </button>
     </li>
@@ -72,7 +72,7 @@ export function Sidebar({
       key={s.id}
       active={nav.source === s.id}
       onClick={() => setNav({ view: "all", source: s.id, filter: null })}
-      icon={<SourceBadge host={s.host} title={s.title} size={18} />}
+      icon={<SourceBadge host={s.host} title={s.title} size={22} />}
       label={s.title}
     />
   );
@@ -101,9 +101,9 @@ export function Sidebar({
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
         <Label>Views</Label>
         <ul>
-          <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={16} />} label="All" />
-          <Row active={isView("saved")} onClick={() => setNav({ view: "saved", source: null, filter: null })} icon={<BookmarkIcon size={16} />} label="Saved" />
-          <Row active={isView("video")} onClick={() => setNav({ view: "video", source: null, filter: null })} icon={<VideoIcon size={16} />} label="Video" />
+          <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={19} />} label="All" />
+          <Row active={isView("saved")} onClick={() => setNav({ view: "saved", source: null, filter: null })} icon={<BookmarkIcon size={19} />} label="Saved" />
+          <Row active={isView("video")} onClick={() => setNav({ view: "video", source: null, filter: null })} icon={<VideoIcon size={19} />} label="Video" />
         </ul>
         {rss.length > 0 && (
           <>
@@ -124,7 +124,7 @@ export function Sidebar({
               key={f.id}
               active={nav.filter === f.id}
               onClick={() => setNav({ view: "all", source: null, filter: f.id })}
-              icon={<span className="text-[13px]">#</span>}
+              icon={<span className="text-[14px]">#</span>}
               label={f.label}
             />
           ))}
@@ -134,10 +134,10 @@ export function Sidebar({
         <button
           type="button"
           onClick={onAdd}
-          className="flex h-[30px] w-full items-center gap-[9px] rounded-[7px] px-2 text-left text-[13px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
+          className="flex h-[34px] w-full items-center gap-[10px] rounded-[7px] px-2 text-left text-[13.5px] text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--ink)]"
         >
-          <span className="flex w-[18px] shrink-0 justify-center">
-            <PlusIcon size={15} />
+          <span className="flex w-[22px] shrink-0 justify-center">
+            <PlusIcon size={16} />
           </span>
           Add source
         </button>
