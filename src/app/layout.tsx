@@ -3,11 +3,11 @@ import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mycroft",
+  title: "Openfeed",
   description: "A quiet RSS and YouTube reader.",
   manifest: "/manifest.webmanifest",
-  applicationName: "Mycroft",
-  appleWebApp: { capable: true, title: "Mycroft", statusBarStyle: "default" },
+  applicationName: "Openfeed",
+  appleWebApp: { capable: true, title: "Openfeed", statusBarStyle: "default" },
   // Next 16 emits only mobile-web-app-capable; older iOS still keys off the apple- prefixed tag.
   other: { "apple-mobile-web-app-capable": "yes" },
   icons: {
@@ -33,7 +33,7 @@ export const viewport: Viewport = {
 };
 
 // Applies the stored theme (see src/hooks/use-settings.ts) during HTML parsing, before first paint.
-const THEME_SCRIPT = `(function(){try{var t=JSON.parse(localStorage.getItem("mycroft.settings")||"{}").theme;if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
+const THEME_SCRIPT = `(function(){try{var t=JSON.parse(localStorage.getItem("openfeed.settings")||"{}").theme;if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

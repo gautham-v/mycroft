@@ -50,7 +50,7 @@ function FooterRow({ onClick, icon, label }: { onClick: () => void; icon: React.
   );
 }
 
-const STORE = "mycroft.sidebar.collapsed";
+const STORE = "openfeed.sidebar.collapsed";
 
 let cached: Set<string> | null = null;
 let cachedRaw: string | null = null;
@@ -156,7 +156,7 @@ export function Sidebar({
     <nav aria-label="Feeds" className="flex h-full flex-col">
       <div className="mt-2.5 flex h-[54px] shrink-0 items-center gap-2 pl-[18px] pr-2.5">
         <ArcIcon size={20} strokeWidth={2.6} className="shrink-0 text-(--logo)" />
-        <span className="min-w-0 flex-1 truncate font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Mycroft</span>
+        <span className="min-w-0 flex-1 truncate font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Openfeed</span>
         {onCollapse && (
           <button
             type="button"

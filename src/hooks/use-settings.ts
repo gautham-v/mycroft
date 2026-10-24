@@ -1,6 +1,6 @@
 "use client";
 /**
- * Client-side user settings, persisted to localStorage under `mycroft.settings` (JSON).
+ * Client-side user settings, persisted to localStorage under `openfeed.settings` (JSON).
  *
  *   const [settings, update] = useSettings();
  *   update({ theme: "dark" });          // shallow-merges, persists, notifies every subscriber
@@ -30,7 +30,7 @@ export type Settings = {
   theater: boolean;
 };
 
-export const SETTINGS_KEY = "mycroft.settings";
+export const SETTINGS_KEY = "openfeed.settings";
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
   theme: "system",

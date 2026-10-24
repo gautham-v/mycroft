@@ -1,4 +1,4 @@
-# Mycroft — build spec
+# Openfeed — build spec
 
 Single-user RSS/YouTube reader. Next.js 16 (App Router, `src/`), TypeScript, Tailwind v4, pnpm. Deployed on Vercel Hobby (free) with Neon Postgres (Vercel marketplace, `DATABASE_URL`). PWA installable on iPhone.
 
@@ -47,7 +47,7 @@ YouTube (`https://www.youtube.com/feeds/videos.xml?channel_id=`), kind youtube, 
 
 ## Fetching
 
-- `src/lib/fetcher.ts`: `refreshAll({force})` fetches every source in parallel (Promise.allSettled, 15s timeout each, User-Agent "Mycroft/0.1"). Uses `rss-parser` with custom fields for `media:group`/`media:thumbnail`/`yt:videoId`. Upsert items by (source_id, guid). YouTube: thumbnail `https://i.ytimg.com/vi/<id>/hqdefault.jpg`, summary from `media:description`. Generic: thumbnail from `media:content`/`enclosure` image or first `<img>` in content; else null. Set `meta.last_refresh_at`.
+- `src/lib/fetcher.ts`: `refreshAll({force})` fetches every source in parallel (Promise.allSettled, 15s timeout each, User-Agent "Openfeed/0.1"). Uses `rss-parser` with custom fields for `media:group`/`media:thumbnail`/`yt:videoId`. Upsert items by (source_id, guid). YouTube: thumbnail `https://i.ytimg.com/vi/<id>/hqdefault.jpg`, summary from `media:description`. Generic: thumbnail from `media:content`/`enclosure` image or first `<img>` in content; else null. Set `meta.last_refresh_at`.
 - Stale rule: refresh runs if `last_refresh_at` older than 15 min. Triggered by `GET /api/refresh` (also `POST`), called by the client on app open/foreground and by the refresh button. `vercel.json` cron `0 */6 * * *` → `/api/refresh` (Hobby allows daily; use `0 12 * * *`). Protect cron with `CRON_SECRET` header check when set.
 - Full text: `GET /api/items/[id]/content` extracts article with `@mozilla/readability` + `linkedom` (NOT jsdom — too heavy for serverless), sanitizes with `sanitize-html` (allow img, pre, code, a, headings, lists, blockquote, figure, figcaption, video, iframe only from youtube-nocookie), caches into `items.content_html`. Skip for youtube kind.
 
@@ -62,7 +62,7 @@ YouTube (`https://www.youtube.com/feeds/videos.xml?channel_id=`), kind youtube, 
 
 ## PWA
 
-- `public/manifest.webmanifest`: name "Mycroft", short_name "Mycroft", display standalone, background `#FAFAF8`, theme `#FAFAF8`, start_url `/`, icons 192/512 (+ maskable) generated as PNG from a simple SVG (rounded square, accent `#0F6E6E`, white feed-arc glyph) — generate PNGs in a script with `sharp` at build-prep time and commit them.
+- `public/manifest.webmanifest`: name "Openfeed", short_name "Openfeed", display standalone, background `#FAFAF8`, theme `#FAFAF8`, start_url `/`, icons 192/512 (+ maskable) generated as PNG from a simple SVG (rounded square, accent `#0F6E6E`, white feed-arc glyph) — generate PNGs in a script with `sharp` at build-prep time and commit them.
 - `<meta name="apple-mobile-web-app-capable">`, `apple-touch-icon` 180px, `viewport-fit=cover`, status bar style default.
 - Service worker `public/sw.js` registered on client: cache-first for static assets and app shell, network-first for `/api/*` with cache fallback so last-loaded list opens offline. Keep it hand-written and small; no workbox.
 

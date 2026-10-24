@@ -46,7 +46,7 @@ function useContent(item: Item) {
 }
 
 // Article headline size per text-size setting; "m" is the original size. Body size lives in
-// globals.css (.prose-mycroft[data-size]).
+// globals.css (.prose-openfeed[data-size]).
 const HEADLINE_SIZE: Record<Settings["textSize"], string> = {
   s: "text-[26px] md:text-[32px]",
   m: "text-[30px] md:text-[36px]",
@@ -218,7 +218,7 @@ export function Reader({
           </div>
 
           <div
-            className="prose-mycroft mx-auto mt-7 px-5 md:px-0"
+            className="prose-openfeed mx-auto mt-7 px-5 md:px-0"
             data-font={settings.readerFont}
             data-size={settings.textSize}
           >

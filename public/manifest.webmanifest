@@ -1,6 +1,6 @@
 {
-  "name": "Mycroft",
-  "short_name": "Mycroft",
+  "name": "Openfeed",
+  "short_name": "Openfeed",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

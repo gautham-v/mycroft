@@ -1,4 +1,4 @@
-# Mycroft
+# Openfeed
 
 A personal AI news reader. Pulls RSS feeds and YouTube channels into one chronological feed, extracts full article text, plays videos inline, and installs as a PWA on your phone.
 

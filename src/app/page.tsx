@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { MycroftApp } from "@/components/mycroft-app";
+import { OpenfeedApp } from "@/components/openfeed-app";
 
 export default function Page() {
   return (
     <Suspense fallback={<div className="h-dvh bg-[var(--ground)]" />}>
-      <MycroftApp />
+      <OpenfeedApp />
     </Suspense>
   );
 }

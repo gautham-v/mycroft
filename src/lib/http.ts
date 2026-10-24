@@ -1,4 +1,4 @@
-export const USER_AGENT = "Mozilla/5.0 (compatible; Mycroft/0.1; +https://github.com/gautham-v/mycroft)";
+export const USER_AGENT = "Mozilla/5.0 (compatible; Openfeed/0.1; +https://github.com/gautham-v/openfeed)";
 
 export async function fetchWithTimeout(
   url: string,

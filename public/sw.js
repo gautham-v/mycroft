@@ -1,7 +1,7 @@
-/* Mycroft service worker — hand-written, no workbox. */
+/* Openfeed service worker — hand-written, no workbox. */
 const VERSION = "v1";
-const STATIC = `mycroft-static-${VERSION}`;
-const RUNTIME = `mycroft-runtime-${VERSION}`;
+const STATIC = `openfeed-static-${VERSION}`;
+const RUNTIME = `openfeed-runtime-${VERSION}`;
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon-180.png"];
 const API_CACHED = ["/api/items", "/api/sources", "/api/stats"];
 

@@ -51,7 +51,7 @@ const CHIPS: Chip[] = [
 
 // Desktop sidebar collapsed state, persisted in localStorage. A tiny external store so the
 // server render (and first client render) uses the default and the saved value applies after hydration.
-const SIDEBAR_KEY = "mycroft:sidebar-collapsed";
+const SIDEBAR_KEY = "openfeed:sidebar-collapsed";
 let sidebarCollapsed: boolean | null = null;
 const sidebarListeners = new Set<() => void>();
 
@@ -107,7 +107,7 @@ function useNow(intervalMs = 30_000) {
   return now;
 }
 
-export function MycroftApp() {
+export function OpenfeedApp() {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
