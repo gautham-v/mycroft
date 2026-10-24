@@ -97,7 +97,7 @@ export function useSources() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
   }, [reload]);
-  return { sources, setSources, reload };
+  return { sources, reload };
 }
 
 export function useStats() {

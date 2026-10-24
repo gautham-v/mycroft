@@ -11,7 +11,25 @@
   --hairline: #ecebe6;
   --code: #f3f2ee;
   --accent: #0f6e6e;
+  --danger: #a3261b;
   color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #141412;
+    --surface: #1c1c1a;
+    --ink: #f0efe9;
+    --body: #d6d5cf;
+    --muted: #9a9992;
+    --faint: #6e6d67;
+    --border: #2e2d29;
+    --hairline: #262521;
+    --code: #232220;
+    --accent: #4fb3b3;
+    --danger: #e07068;
+    color-scheme: dark;
+  }
 }
 
 @theme inline {
@@ -26,7 +44,7 @@ body {
 }
 
 body {
-  background: #fafaf8;
+  background: var(--ground);
   color: var(--body);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;

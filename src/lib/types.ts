@@ -57,7 +57,6 @@ export interface Source {
   last_fetched_at: string | null;
   last_error: string | null;
   created_at: string;
-  unread: number;
 }
 
 export interface SourcesResponse {
@@ -66,9 +65,6 @@ export interface SourcesResponse {
 
 export interface Stats {
   unread: number;
-  saved: number;
-  /** unread video items */
-  video: number;
   /** ISO or null if never refreshed */
   lastRefreshAt: string | null;
 }

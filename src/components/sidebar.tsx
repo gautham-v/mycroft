@@ -1,5 +1,5 @@
 "use client";
-import type { Filter, Source, Stats, View } from "@/lib/types";
+import type { Filter, Source, View } from "@/lib/types";
 import { SourceBadge } from "./badge";
 import { ArcIcon, BookmarkIcon, InboxIcon, PlusIcon, VideoIcon } from "./icons";
 
@@ -14,13 +14,11 @@ function Row({
   onClick,
   icon,
   label,
-  count,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
-  count?: number;
 }) {
   return (
     <li>
@@ -34,7 +32,6 @@ function Row({
       >
         <span className="flex w-5 shrink-0 justify-center">{icon}</span>
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        {count != null && count > 0 && <span className="font-mono text-[11.5px] text-[var(--muted)]">{count}</span>}
       </button>
     </li>
   );
@@ -58,13 +55,11 @@ export function Sidebar({
   nav,
   setNav,
   sources,
-  stats,
   onAdd,
 }: {
   nav: NavState;
   setNav: (n: NavState) => void;
   sources: Source[];
-  stats: Stats | null;
   onAdd: () => void;
 }) {
   const rss = sources.filter((s) => s.kind !== "youtube");
@@ -77,7 +72,6 @@ export function Sidebar({
       onClick={() => setNav({ view: "all", source: s.id, filter: null })}
       icon={<SourceBadge host={s.host} title={s.title} size={18} />}
       label={s.title}
-      count={s.unread}
     />
   );
 
@@ -92,9 +86,9 @@ export function Sidebar({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         <Label>Views</Label>
         <ul>
-          <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={16} />} label="All" count={stats?.unread} />
-          <Row active={isView("saved")} onClick={() => setNav({ view: "saved", source: null, filter: null })} icon={<BookmarkIcon size={16} />} label="Saved" count={stats?.saved} />
-          <Row active={isView("video")} onClick={() => setNav({ view: "video", source: null, filter: null })} icon={<VideoIcon size={16} />} label="Video" count={stats?.video} />
+          <Row active={isView("all")} onClick={() => setNav({ view: "all", source: null, filter: null })} icon={<InboxIcon size={16} />} label="All" />
+          <Row active={isView("saved")} onClick={() => setNav({ view: "saved", source: null, filter: null })} icon={<BookmarkIcon size={16} />} label="Saved" />
+          <Row active={isView("video")} onClick={() => setNav({ view: "video", source: null, filter: null })} icon={<VideoIcon size={16} />} label="Video" />
         </ul>
         {rss.length > 0 && (
           <>

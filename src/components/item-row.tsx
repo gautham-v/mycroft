@@ -64,21 +64,11 @@ export const ItemRow = memo(function ItemRow({
           selected ? "border-l-[var(--accent)] bg-[var(--surface)]" : "border-l-transparent hover:bg-[var(--surface)]/60"
         }`}
       >
-        <span className="flex shrink-0 items-start gap-2 pt-1">
-          <span
-            aria-label={item.is_read ? undefined : "Unread"}
-            className={`mt-[12px] h-2 w-2 rounded-full ${item.is_read ? "bg-transparent" : "bg-[var(--accent)]"}`}
-          />
+        <span className="flex shrink-0 items-start pt-1">
           <SourceBadge host={item.source.host} title={item.source.title} size={32} />
         </span>
         <span className="min-w-0 flex-1">
-          <span
-            className={`block text-[15px] font-medium leading-snug ${
-              item.is_read ? "text-[var(--muted)]" : "text-[var(--ink)]"
-            }`}
-          >
-            {item.title}
-          </span>
+          <span className="block text-[15px] font-medium leading-snug text-[var(--ink)]">{item.title}</span>
           {snippet && (
             <span className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--muted)] md:hidden">{snippet}</span>
           )}

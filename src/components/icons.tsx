@@ -108,3 +108,15 @@ export const CommentIcon = (p: P) => (
     <path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
   </Base>
 );
+export const CircleCheckIcon = (p: P) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M8.5 12.25l2.5 2.5 4.5-5" />
+  </Base>
+);
+export const SidebarIcon = (p: P) => (
+  <Base {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M9.5 4.5v15" />
+  </Base>
+);

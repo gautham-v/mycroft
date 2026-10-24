@@ -1,12 +1,12 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Filter, Item, Source, View } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { patchItem, useItems, useSources, useStats } from "@/hooks/use-data";
 import { AddSourceDialog } from "./add-source";
 import { SourceBadge } from "./badge";
-import { BookmarkIcon, CheckIcon, InboxIcon, ListIcon, PlusIcon, RefreshIcon } from "./icons";
+import { BookmarkIcon, CheckIcon, InboxIcon, ListIcon, PlusIcon, RefreshIcon, SidebarIcon } from "./icons";
 import { ItemRow } from "./item-row";
 import { Reader, ReaderEmpty } from "./reader";
 import { Sidebar, type NavState } from "./sidebar";
@@ -48,6 +48,44 @@ const CHIPS: Chip[] = [
   { id: "video", label: "Video", nav: { view: "video", source: null, filter: null } },
 ];
 
+// Desktop sidebar collapsed state, persisted in localStorage. A tiny external store so the
+// server render (and first client render) uses the default and the saved value applies after hydration.
+const SIDEBAR_KEY = "mycroft:sidebar-collapsed";
+let sidebarCollapsed: boolean | null = null;
+const sidebarListeners = new Set<() => void>();
+
+function getSidebarCollapsed() {
+  if (sidebarCollapsed === null) {
+    try {
+      sidebarCollapsed = window.localStorage.getItem(SIDEBAR_KEY) === "1";
+    } catch {
+      sidebarCollapsed = false;
+    }
+  }
+  return sidebarCollapsed;
+}
+
+function setSidebarCollapsed(v: boolean) {
+  sidebarCollapsed = v;
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, v ? "1" : "0");
+  } catch {
+    /* storage unavailable; keep in-memory state */
+  }
+  sidebarListeners.forEach((l) => l());
+}
+
+function subscribeSidebar(l: () => void) {
+  sidebarListeners.add(l);
+  return () => {
+    sidebarListeners.delete(l);
+  };
+}
+
+function useSidebarCollapsed() {
+  return useSyncExternalStore(subscribeSidebar, getSidebarCollapsed, () => false);
+}
+
 function useNow(intervalMs = 30_000) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -70,12 +108,25 @@ export function MycroftApp() {
   const tab = parsed.tab;
 
   const { items, setItems, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
-  const { sources, setSources, reload: reloadSources } = useSources();
+  const { sources, reload: reloadSources } = useSources();
   const { stats, setStats, reload: reloadStats } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [extraItem, setExtraItem] = useState<Item | null>(null);
   const now = useNow();
+  const sidebarCollapsed = useSidebarCollapsed();
+
+  // Cmd/Ctrl+\ toggles the desktop sidebar.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "\\") {
+        e.preventDefault();
+        setSidebarCollapsed(!getSidebarCollapsed());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const go = useCallback(
     (n: NavState & { item?: number | null; tab?: "sources" | null }, replace = false) => {
@@ -144,19 +195,8 @@ export function MycroftApp() {
   }, [selectedId, loading, items, extraItem]);
 
   const adjustUnread = useCallback(
-    (item: Item, delta: number) => {
-      setStats((s) =>
-        s
-          ? {
-              ...s,
-              unread: Math.max(0, s.unread + delta),
-              video: item.source.kind === "youtube" ? Math.max(0, s.video + delta) : s.video,
-            }
-          : s,
-      );
-      setSources((ss) => ss.map((s) => (s.id === item.source_id ? { ...s, unread: Math.max(0, s.unread + delta) } : s)));
-    },
-    [setStats, setSources],
+    (delta: number) => setStats((s) => (s ? { ...s, unread: Math.max(0, s.unread + delta) } : s)),
+    [setStats],
   );
 
   const updateItem = useCallback(
@@ -171,10 +211,10 @@ export function MycroftApp() {
     (item: Item, read: boolean) => {
       if (item.is_read === read) return;
       updateItem(item, { is_read: read });
-      adjustUnread(item, read ? -1 : 1);
+      adjustUnread(read ? -1 : 1);
       void patchItem(item.id, { is_read: read }).catch(() => {
         updateItem(item, { is_read: !read });
-        adjustUnread(item, read ? 1 : -1);
+        adjustUnread(read ? 1 : -1);
       });
     },
     [updateItem, adjustUnread],
@@ -184,10 +224,9 @@ export function MycroftApp() {
     (item: Item) => {
       const saved = !item.is_saved;
       updateItem(item, { is_saved: saved });
-      setStats((s) => (s ? { ...s, saved: Math.max(0, s.saved + (saved ? 1 : -1)) } : s));
       void patchItem(item.id, { is_saved: saved }).catch(() => updateItem(item, { is_saved: !saved }));
     },
-    [updateItem, setStats],
+    [updateItem],
   );
 
   const openItem = useCallback(
@@ -220,8 +259,8 @@ export function MycroftApp() {
     } catch {
       /* offline */
     }
-    if (unread.length) void Promise.all([reloadStats(), reloadSources()]);
-  }, [items, setItems, nav, reloadStats, reloadSources]);
+    if (unread.length) void reloadStats();
+  }, [items, setItems, nav, reloadStats]);
 
   // --- infinite scroll ---------------------------------------------------------
   const sentinel = useRef<HTMLLIElement>(null);
@@ -344,8 +383,8 @@ export function MycroftApp() {
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[var(--ground)]">
       {/* Sidebar (desktop) */}
-      <aside className="hidden w-[240px] shrink-0 lg:block">
-        <Sidebar nav={nav} setNav={setNav} sources={sources} stats={stats} onAdd={() => setAddOpen(true)} />
+      <aside id="sidebar" className={`hidden w-[240px] shrink-0 ${sidebarCollapsed ? "" : "lg:block"}`}>
+        <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} />
       </aside>
 
       {/* List column */}
@@ -368,8 +407,19 @@ export function MycroftApp() {
         </header>
 
         {/* Desktop header */}
-        <header className="hidden h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--hairline)] pl-4 pr-2 lg:flex">
-          <div className="min-w-0">
+        <header className="hidden h-14 shrink-0 items-center gap-1 border-b border-[var(--hairline)] pl-2 pr-2 lg:flex">
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-controls="sidebar"
+            aria-expanded={!sidebarCollapsed}
+            title={`${sidebarCollapsed ? "Show sidebar" : "Hide sidebar"} (⌘\\)`}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--body)] hover:bg-[var(--surface)]"
+          >
+            <SidebarIcon size={18} />
+          </button>
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-[16px] font-semibold text-[var(--ink)]">{listTitle}</h1>
             <p className="font-mono text-[11px] text-[var(--muted)]">{subline}</p>
           </div>
@@ -377,10 +427,11 @@ export function MycroftApp() {
             <button
               type="button"
               onClick={() => void markAllRead()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-[var(--body)] hover:bg-[var(--surface)]"
+              aria-label="Mark all read"
+              title="Mark all read"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--body)] hover:bg-[var(--surface)]"
             >
-              <CheckIcon size={15} />
-              Mark all read
+              <CheckIcon size={18} />
             </button>
             {refreshButton}
           </div>
@@ -479,9 +530,8 @@ function SourcesList({ sources, onPick, onAdd }: { sources: Source[]; onPick: (s
                     <SourceBadge host={s.host} title={s.title} size={28} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] font-medium text-[var(--ink)]">{s.title}</span>
-                      {s.last_error && <span className="block truncate font-mono text-[11px] text-[#A3261B]">Error: {s.last_error}</span>}
+                      {s.last_error && <span className="block truncate font-mono text-[11px] text-[var(--danger)]">Error: {s.last_error}</span>}
                     </span>
-                    {s.unread > 0 && <span className="font-mono text-[12px] text-[var(--muted)]">{s.unread}</span>}
                   </button>
                 </li>
               ))}

@@ -1,23 +1,18 @@
 import { connection } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { items, sources } from "@/db/schema";
+import { sources } from "@/db/schema";
 import { detectFeed } from "@/lib/feed-detect";
 import { refreshSource } from "@/lib/fetcher";
 import { errMsg, errorJson, json } from "@/lib/http";
-import { toSource, unreadCount } from "@/lib/queries";
+import { toSource } from "@/lib/queries";
 
 export async function GET() {
   await connection();
   try {
     const db = await getDb();
-    const rows = await db
-      .select({ source: sources, unread: unreadCount })
-      .from(sources)
-      .leftJoin(items, eq(items.sourceId, sources.id))
-      .groupBy(sources.id)
-      .orderBy(asc(sources.group), asc(sources.title));
-    return json({ sources: rows.map((r) => toSource(r.source, Number(r.unread) || 0)) });
+    const rows = await db.select().from(sources).orderBy(asc(sources.group), asc(sources.title));
+    return json({ sources: rows.map(toSource) });
   } catch (e) {
     return errorJson(errMsg(e));
   }
@@ -35,7 +30,7 @@ export async function POST(req: Request) {
     }
     const db = await getDb();
     const [existing] = await db.select().from(sources).where(eq(sources.feedUrl, found.feedUrl));
-    if (existing) return json({ source: toSource(existing, 0), existed: true });
+    if (existing) return json({ source: toSource(existing), existed: true });
     const [created] = await db
       .insert(sources)
       .values({ ...found, group: typeof body.group === "string" && body.group ? body.group : found.group })
@@ -46,7 +41,7 @@ export async function POST(req: Request) {
       /* last_error recorded on source */
     }
     const [fresh] = await db.select().from(sources).where(eq(sources.id, created.id));
-    return json({ source: toSource(fresh ?? created, 0) }, { status: 201 });
+    return json({ source: toSource(fresh ?? created) }, { status: 201 });
   } catch (e) {
     return errorJson(errMsg(e));
   }

@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { SourceBadge } from "./badge";
-import { BackIcon, BookmarkIcon, CheckIcon, CircleIcon, CommentIcon, ExternalIcon, ShareIcon } from "./icons";
+import { BackIcon, BookmarkIcon, CheckIcon, CircleCheckIcon, CircleIcon, CommentIcon, ExternalIcon, ShareIcon } from "./icons";
 import { formatDate, hostOf, readMinutes, stripHtml } from "./text";
 
 type ContentState =
@@ -56,24 +56,22 @@ function ActionButton({
   onClick,
   href,
   children,
-  pressed,
 }: {
   label: string;
   onClick?: () => void;
   href?: string;
   children: React.ReactNode;
-  pressed?: boolean;
 }) {
   const cls =
-    "inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 text-[13px] font-medium text-[var(--body)] hover:bg-[var(--ground)]";
+    "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--body)] hover:bg-[var(--ground)]";
   if (href)
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className={cls} aria-label={label}>
+      <a href={href} target="_blank" rel="noopener noreferrer" className={cls} aria-label={label} title={label}>
         {children}
       </a>
     );
   return (
-    <button type="button" onClick={onClick} className={cls} aria-label={label} aria-pressed={pressed}>
+    <button type="button" onClick={onClick} className={cls} aria-label={label} title={label}>
       {children}
     </button>
   );
@@ -142,21 +140,17 @@ export function Reader({
             <span className="truncate font-mono text-[12px] text-[var(--muted)]">{meta.filter(Boolean).join(" · ")}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <ActionButton label={item.is_saved ? "Unsave" : "Save"} onClick={() => onToggleSaved(item)} pressed={item.is_saved}>
-              <BookmarkIcon size={16} filled={item.is_saved} className={item.is_saved ? "text-[var(--accent)]" : ""} />
-              <span className="hidden lg:inline">{item.is_saved ? "Saved" : "Save"}</span>
+            <ActionButton label={item.is_saved ? "Remove from saved" : "Save"} onClick={() => onToggleSaved(item)}>
+              <BookmarkIcon size={17} filled={item.is_saved} className={item.is_saved ? "text-[var(--accent)]" : ""} />
             </ActionButton>
             <ActionButton label="Open original" href={item.url}>
-              <ExternalIcon size={16} />
-              <span className="hidden lg:inline">Open</span>
+              <ExternalIcon size={17} />
             </ActionButton>
             <ActionButton label={copied ? "Link copied" : "Share"} onClick={share}>
-              <ShareIcon size={16} />
-              <span className="hidden lg:inline">{copied ? "Copied" : "Share"}</span>
+              {copied ? <CheckIcon size={17} className="text-[var(--accent)]" /> : <ShareIcon size={17} />}
             </ActionButton>
             <ActionButton label={item.is_read ? "Mark unread" : "Mark read"} onClick={() => onToggleRead(item)}>
-              {item.is_read ? <CircleIcon size={16} /> : <CheckIcon size={16} />}
-              <span className="hidden lg:inline">{item.is_read ? "Unread" : "Read"}</span>
+              {item.is_read ? <CircleCheckIcon size={17} /> : <CircleIcon size={17} />}
             </ActionButton>
           </div>
         </div>

@@ -76,7 +76,7 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
           className="mt-1.5 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--ground)] px-3 text-[15px] outline-none focus:border-[var(--accent)]"
         />
         {error && (
-          <p role="alert" className="mt-2 text-[13px] text-[#A3261B]">
+          <p role="alert" className="mt-2 text-[13px] text-[var(--danger)]">
             {error}
           </p>
         )}

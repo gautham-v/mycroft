@@ -66,7 +66,7 @@ export function toItem(i: ItemRow, s: SourceRow): Item {
   };
 }
 
-export function toSource(s: SourceRow, unread: number): Source {
+export function toSource(s: SourceRow): Source {
   return {
     id: s.id,
     title: s.title,
@@ -79,9 +79,7 @@ export function toSource(s: SourceRow, unread: number): Source {
     last_fetched_at: s.lastFetchedAt?.toISOString() ?? null,
     last_error: s.lastError,
     created_at: s.createdAt.toISOString(),
-    unread,
   };
 }
 
-export const unreadCount = sql<number>`count(*) filter (where ${items.isRead} = false)::int`;
 export { and };
