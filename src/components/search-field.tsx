@@ -28,7 +28,7 @@ export function SearchField({
   return (
     <div
       role="search"
-      className={`flex min-w-0 flex-1 items-center rounded-lg bg-[var(--code)] text-[var(--muted)] ${
+      className={`flex min-w-0 flex-1 items-center rounded-lg bg-[var(--code)] text-[var(--muted)] ring-1 ring-inset ring-transparent focus-within:ring-[var(--accent)]/60 ${
         phone ? "h-11 pl-3" : "h-[30px] pl-2"
       }`}
     >
@@ -58,7 +58,7 @@ export function SearchField({
         }}
         // An empty field folds back into the search button when focus leaves it.
         onBlur={() => empty && onClose()}
-        className={`min-w-0 flex-1 bg-transparent text-[var(--ink)] outline-none placeholder:text-[var(--faint)] [&::-webkit-search-cancel-button]:appearance-none ${
+        className={`min-w-0 flex-1 bg-transparent text-[var(--ink)] outline-none focus-visible:outline-none placeholder:text-[var(--faint)] [&::-webkit-search-cancel-button]:appearance-none ${
           phone ? "px-2 text-[16px]" : "px-1.5 text-[14px]"
         }`}
       />
