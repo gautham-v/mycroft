@@ -22,11 +22,20 @@ function Base({ size = 18, children, ...rest }: P) {
   );
 }
 
+// Hand-drawn feed mark: the arcs bow off a true circle and a turbulence filter roughens the stroke.
 export const ArcIcon = (p: P) => (
   <Base {...p}>
-    <path d="M5 11a8 8 0 0 1 8 8" />
-    <path d="M5 5a14 14 0 0 1 14 14" />
-    <circle cx="6" cy="18" r="1" fill="currentColor" />
+    <defs>
+      <filter id="arc-rough" x="-10%" y="-10%" width="120%" height="120%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3" seed="7" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.1" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </defs>
+    <g filter="url(#arc-rough)">
+      <path d="M4.4 11.6 C7.6 9.9 11.3 11.6 12.6 14.2 C13.5 16 13.7 17.6 12.7 19.7" />
+      <path d="M5.4 4.3 C10.4 5.2 15.1 6.1 17.9 10.6 C19.7 13.4 20.1 16.4 18.6 19.5" />
+    </g>
+    <path d="M5 17 c1.2-0.7 2.6 0.1 2.6 1.3 c0 1.2-1.3 2-2.4 1.5 c-1.1-0.4-1.3-2.1-0.2-2.8z" fill="currentColor" stroke="none" />
   </Base>
 );
 export const RefreshIcon = (p: P) => (
