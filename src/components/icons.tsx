@@ -145,3 +145,31 @@ export const GearIcon = (p: P) => (
     <circle cx="12" cy="12" r="3" />
   </Base>
 );
+export const ArticleIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z" />
+    <path d="M14 3.5v4h4M9.5 12h5M9.5 15.5h5" />
+  </Base>
+);
+export const PostIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M4 5.5h16v9H10l-4 3.5v-3.5H4z" />
+  </Base>
+);
+export const GripIcon = (p: P) => (
+  <Base {...p} stroke="none">
+    <circle cx="9" cy="6" r="1.4" fill="currentColor" />
+    <circle cx="15" cy="6" r="1.4" fill="currentColor" />
+    <circle cx="9" cy="12" r="1.4" fill="currentColor" />
+    <circle cx="15" cy="12" r="1.4" fill="currentColor" />
+    <circle cx="9" cy="18" r="1.4" fill="currentColor" />
+    <circle cx="15" cy="18" r="1.4" fill="currentColor" />
+  </Base>
+);
+export const MoreIcon = (p: P) => (
+  <Base {...p} stroke="none">
+    <circle cx="6" cy="12" r="1.6" fill="currentColor" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+    <circle cx="18" cy="12" r="1.6" fill="currentColor" />
+  </Base>
+);

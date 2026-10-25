@@ -4,7 +4,10 @@
 export type SourceKind = "rss" | "youtube" | "page";
 export type SourceGroup = "labs" | "blogs" | "news" | "aggregator" | "youtube" | (string & {});
 
-export type View = "all" | "saved" | "video";
+/** Content-type views. "articles" = everything that is not a video or a post source. */
+export type View = "all" | "saved" | "articles" | "posts" | "video";
+/** Derived from kind + url: how a source's items read. */
+export type SourceType = "article" | "post" | "video";
 export type Filter = "hn100" | "labs" | "blogs";
 
 /** Compact source embedded in each Item. */
@@ -52,15 +55,37 @@ export interface Source {
   feed_url: string;
   kind: SourceKind;
   group: SourceGroup;
+  type: SourceType;
   icon_url: string | null;
   host: string;
+  /** Sidebar folder; null = Unfiled. */
+  folder_id: number | null;
+  /** Order within its folder. */
+  position: number;
   last_fetched_at: string | null;
   last_error: string | null;
   created_at: string;
 }
 
+export interface Folder {
+  id: number;
+  title: string;
+  position: number;
+}
+
 export interface SourcesResponse {
   sources: Source[];
+  folders: Folder[];
+}
+
+/** PATCH /api/sources: move/reorder sources. Positions are assigned by array order within each folder. */
+export interface ReorderSourcesBody {
+  order: { id: number; folder_id: number | null }[];
+}
+
+/** PATCH /api/folders: new folder order (ids, first = top). */
+export interface ReorderFoldersBody {
+  order: number[];
 }
 
 export interface Stats {

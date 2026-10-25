@@ -35,8 +35,6 @@ const words = (s: string): string[] => s.toLowerCase().match(/[a-z0-9]+/g) ?? []
 /** X / Twitter profile pages: the server-rendered HTML lists posts as /<user>/status/<id>. */
 const isXHost = (host: string) => /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/i.test(host);
 const TWEET_PATH = /^\/[^/]+\/status\/\d+$/;
-/** Handle of the profile being scraped, set for the duration of scrapePage on an X profile. */
-let currentListingUser = "";
 
 /** Canonical form used as item url/guid and for "already seen" checks: no hash, no query, no trailing slash. */
 export function canonicalUrl(u: URL): string {
@@ -252,7 +250,7 @@ export function extractArticleMeta(html: string, pageUrl: string): ArticleMeta {
   const meta = metaReader(document);
   const ld = ldArticle(document);
   const page = new URL(pageUrl);
-  if (isXHost(page.hostname) && TWEET_PATH.test(page.pathname)) return tweetMeta(meta, ld, pageUrl);
+  if (isXHost(page.hostname) && TWEET_PATH.test(page.pathname)) return tweetMeta(meta, pageUrl, html);
   const docTitle = (document.querySelector("title")?.textContent ?? "").replace(/\s+/g, " ").trim();
   const h1 = (document.querySelector("h1")?.textContent ?? "").replace(/\s+/g, " ").trim();
   const docParts = docTitle.split(TITLE_SEP);
@@ -281,23 +279,33 @@ export function extractArticleMeta(html: string, pageUrl: string): ArticleMeta {
 }
 
 /**
- * A post on X: og:title is the author ("Kun Chen (@kunchenguid) on X") and the post text is
- * the description, so the text becomes the title. The avatar is not a thumbnail.
+ * A post on X: og:title is the author ("Kun Chen (@kunchenguid) on X") and the post text is the
+ * description. The first paragraph is the headline; the summary names a quoted post. No thumbnail:
+ * the reader shows the post's link card instead of a hero.
  */
-function tweetMeta(meta: ReturnType<typeof metaReader>, ld: ReturnType<typeof ldArticle>, pageUrl: string): ArticleMeta {
+function tweetMeta(meta: ReturnType<typeof metaReader>, pageUrl: string, html: string): ArticleMeta {
   const text = meta("og:description", "description", "twitter:description");
-  const image = pageImage(meta, ld, pageUrl);
-  // Headline: the first paragraph; the reader shows the whole post.
   const first = text?.split(/\n\s*\n/)[0] ?? null;
-  const poster = pageUrl ? new URL(pageUrl).pathname.split("/")[1] : "";
   const author = meta("og:title")?.replace(/\s+on X$/i, "") ?? null;
+  let summary: string | null = null;
+  const qi = html.indexOf('\\"quoted_tweet_results\\"');
+  if (qi >= 0) {
+    const qn = /\\"core\\":\{\\"name\\":\\"((?:\\\\.|[^\\])*?)\\",\\"screen_name\\"/.exec(html.slice(qi))?.[1];
+    const qt = /\\"full_text\\":\\"((?:\\\\.|[^\\])*?)\\"/.exec(html.slice(qi))?.[1];
+    if (qn && qt) {
+      try {
+        const name = JSON.parse(`"${JSON.parse(`"${qn}"`)}"`) as string;
+        const line = (JSON.parse(`"${JSON.parse(`"${qt}"`)}"`) as string).split(/\n/)[0];
+        summary = clip(`Quoting ${name}: ${line}`, 200);
+      } catch {}
+    }
+  }
   return {
     title: clip(first, 140) ?? clip(meta("og:title"), 300),
-    summary: null,
-    // Only name the author when the post is someone else's (a repost on the profile).
-    author: poster.toLowerCase() === currentListingUser ? null : clip(author, 120),
+    summary,
+    author: clip(author, 120),
     publishedAt: toDate(meta("article:published_time")),
-    thumbnailUrl: image && !/\/profile_images\//.test(image) ? image : null,
+    thumbnailUrl: null,
     ogType: "article",
   };
 }
@@ -330,8 +338,6 @@ export async function scrapePage(
   const res = await fetchHtml(listingUrl, LISTING_TIMEOUT_MS);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const finalUrl = res.url || listingUrl;
-  const fu = new URL(finalUrl);
-  currentListingUser = isXHost(fu.hostname) ? (fu.pathname.split("/")[1] ?? "").toLowerCase() : "";
   const links = findArticleLinks(await res.text(), finalUrl);
   if (!links.length) throw new Error("No article links found on the page");
 

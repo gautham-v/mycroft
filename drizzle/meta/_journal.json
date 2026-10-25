@@ -36,6 +36,13 @@
       "when": 1792898847038,
       "tag": "0004_thumbnail_checked",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792901532128,
+      "tag": "0005_folders",
+      "breakpoints": true
     }
   ]
 }

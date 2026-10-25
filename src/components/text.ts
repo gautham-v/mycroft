@@ -40,3 +40,13 @@ export function hostOf(url: string): string {
     return "";
   }
 }
+
+const X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/[^/]+\/status\/\d+/i;
+/** A post on X: the reader shows it as a post (no headline), the list leads with the author. */
+export const isXPost = (url: string) => X_POST.test(url);
+
+/** "Kun Chen (@kunchenguid)" → name and handle. */
+export function splitHandle(author: string | null): { name: string; handle: string | null } {
+  const m = /^(.*?)\s*\(@([A-Za-z0-9_]+)\)\s*$/.exec(author ?? "");
+  return m ? { name: m[1], handle: m[2] } : { name: author ?? "", handle: null };
+}

@@ -10,20 +10,22 @@ import { BookmarkIcon, GearIcon, InboxIcon, RefreshIcon, SidebarIcon } from "./i
 import { ItemRow } from "./item-row";
 import { Reader, ReaderEmpty } from "./reader";
 import { SettingsDialog } from "./settings-dialog";
-import { Sidebar, type NavState } from "./sidebar";
+import { HOME, Sidebar, type NavState } from "./sidebar";
 
-const VIEWS: View[] = ["all", "saved", "video"];
+const VIEWS: View[] = ["all", "saved", "articles", "posts", "video"];
 const FILTERS: Filter[] = ["hn100", "labs", "blogs"];
 
 function parseNav(sp: URLSearchParams) {
   const v = sp.get("view") as View | null;
   const f = sp.get("filter") as Filter | null;
   const s = Number(sp.get("source"));
+  const fo = Number(sp.get("folder"));
   const i = Number(sp.get("item"));
   return {
     view: v && VIEWS.includes(v) ? v : "all",
     filter: f && FILTERS.includes(f) ? f : null,
     source: Number.isFinite(s) && s > 0 ? s : null,
+    folder: Number.isFinite(fo) && fo > 0 ? fo : null,
     item: Number.isFinite(i) && i > 0 ? i : null,
     // Legacy deep link from the old phone Sources tab: opens Settings; dropped from the URL on close.
     settings: sp.get("tab") === "sources",
@@ -34,6 +36,7 @@ function buildQs(n: NavState & { item?: number | null }) {
   const p = new URLSearchParams();
   if (n.view !== "all") p.set("view", n.view);
   if (n.source != null) p.set("source", String(n.source));
+  if (n.folder != null) p.set("folder", String(n.folder));
   if (n.filter) p.set("filter", n.filter);
   if (n.item != null) p.set("item", String(n.item));
   const s = p.toString();
@@ -42,12 +45,17 @@ function buildQs(n: NavState & { item?: number | null }) {
 
 type Chip = { id: string; label: string; nav: NavState };
 const CHIPS: Chip[] = [
-  { id: "all", label: "All", nav: { view: "all", source: null, filter: null } },
-  { id: "hn100", label: "HN ≥ 100", nav: { view: "all", source: null, filter: "hn100" } },
-  { id: "labs", label: "Labs", nav: { view: "all", source: null, filter: "labs" } },
-  { id: "blogs", label: "Blogs", nav: { view: "all", source: null, filter: "blogs" } },
-  { id: "video", label: "Video", nav: { view: "video", source: null, filter: null } },
+  { id: "all", label: "All", nav: HOME },
+  { id: "articles", label: "Articles", nav: { ...HOME, view: "articles" } },
+  { id: "posts", label: "Posts", nav: { ...HOME, view: "posts" } },
+  { id: "video", label: "Video", nav: { ...HOME, view: "video" } },
+  { id: "hn100", label: "HN ≥ 100", nav: { ...HOME, filter: "hn100" } },
+  { id: "labs", label: "Labs", nav: { ...HOME, filter: "labs" } },
+  { id: "blogs", label: "Blogs", nav: { ...HOME, filter: "blogs" } },
 ];
+
+const VIEW_TITLES: Record<View, string> = { all: "All", saved: "Saved", articles: "Articles", posts: "Posts", video: "Video" };
+const FILTER_TITLES: Record<Filter, string> = { hn100: "HN ≥ 100", labs: "Labs", blogs: "Blogs" };
 
 // Desktop sidebar collapsed state, persisted in localStorage. A tiny external store so the
 // server render (and first client render) uses the default and the saved value applies after hydration.
@@ -113,13 +121,13 @@ export function OpenfeedApp() {
   const sp = useSearchParams();
   const parsed = useMemo(() => parseNav(new URLSearchParams(sp.toString())), [sp]);
   const nav: NavState = useMemo(
-    () => ({ view: parsed.view, source: parsed.source, filter: parsed.filter }),
-    [parsed.view, parsed.source, parsed.filter],
+    () => ({ view: parsed.view, source: parsed.source, folder: parsed.folder, filter: parsed.filter }),
+    [parsed.view, parsed.source, parsed.folder, parsed.filter],
   );
   const isMd = useIsMd();
 
   const { items, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
-  const { sources, reload: reloadSources } = useSources();
+  const { sources, folders, reload: reloadSources } = useSources();
   const { stats, reload: reloadStats } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -268,25 +276,20 @@ export function OpenfeedApp() {
 
   // --- labels -----------------------------------------------------------------
   const activeSource = nav.source != null ? sources.find((s) => s.id === nav.source) : null;
+  const activeFolder = nav.folder != null ? folders.find((f) => f.id === nav.folder) : null;
   const listTitle = activeSource
     ? activeSource.title
-    : nav.view === "saved"
-      ? "Saved"
-      : nav.view === "video"
-        ? "Video"
-        : nav.filter === "hn100"
-          ? "HN ≥ 100"
-          : nav.filter === "labs"
-            ? "Labs"
-            : nav.filter === "blogs"
-              ? "Blogs"
-              : "All";
-  const phoneTitle = nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : "All";
+    : activeFolder
+      ? activeFolder.title
+      : nav.filter
+        ? FILTER_TITLES[nav.filter]
+        : VIEW_TITLES[nav.view];
+  const phoneTitle = nav.view === "saved" ? "Saved" : activeSource ? activeSource.title : activeFolder ? activeFolder.title : "All";
   const subline = `updated ${
     stats?.lastRefreshAt ? (relativeTime(stats.lastRefreshAt, now) === "now" ? "just now" : `${relativeTime(stats.lastRefreshAt, now)} ago`) : "never"
   }`;
   const activeChip =
-    nav.source != null ? null : nav.view === "video" ? "video" : nav.view === "saved" ? null : (nav.filter ?? "all");
+    nav.source != null || nav.folder != null ? null : nav.view === "saved" ? null : nav.view !== "all" ? nav.view : (nav.filter ?? "all");
 
   const refreshButton = (
     <button
@@ -369,7 +372,16 @@ export function OpenfeedApp() {
     <div className="flex h-dvh w-full overflow-hidden bg-[var(--ground)]">
       {/* Sidebar (desktop) */}
       <aside id="sidebar" className={`hidden w-[230px] shrink-0 ${sidebarCollapsed || focused ? "" : "lg:block"}`}>
-        <Sidebar nav={nav} setNav={setNav} sources={sources} onAdd={() => setAddOpen(true)} onSettings={() => setSettingsOpen(true)} onCollapse={() => setSidebarCollapsed(true)} />
+        <Sidebar
+          nav={nav}
+          setNav={setNav}
+          sources={sources}
+          folders={folders}
+          onChanged={() => void reloadSources()}
+          onAdd={() => setAddOpen(true)}
+          onSettings={() => setSettingsOpen(true)}
+          onCollapse={() => setSidebarCollapsed(true)}
+        />
       </aside>
 
       {/* List column */}
@@ -427,13 +439,13 @@ export function OpenfeedApp() {
               label="Feed"
               active={!showSettings && nav.view !== "saved"}
               icon={<InboxIcon size={20} />}
-              onClick={() => setNav({ view: "all", source: null, filter: null })}
+              onClick={() => setNav(HOME)}
             />
             <TabButton
               label="Saved"
               active={!showSettings && nav.view === "saved"}
               icon={<BookmarkIcon size={20} />}
-              onClick={() => setNav({ view: "saved", source: null, filter: null })}
+              onClick={() => setNav({ ...HOME, view: "saved" })}
             />
             <TabButton label="Settings" active={showSettings} icon={<GearIcon size={20} />} onClick={() => setSettingsOpen(true)} />
           </ul>
@@ -453,16 +465,18 @@ export function OpenfeedApp() {
         open={showSettings}
         onClose={closeSettings}
         sources={sources}
+        folders={folders}
         now={now}
         onAdd={() => setAddOpen(true)}
+        onChanged={() => void reloadSources()}
         onRemoved={(id) => {
           void reloadSources();
           void reload();
-          if (nav.source === id) setNav({ view: "all", source: null, filter: null });
+          if (nav.source === id) setNav(HOME);
         }}
         onOpen={(s) => {
           closeSettings();
-          setNav({ view: "all", source: s.id, filter: null });
+          setNav({ ...HOME, source: s.id });
         }}
       />
 

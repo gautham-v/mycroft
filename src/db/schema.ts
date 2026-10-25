@@ -12,6 +12,14 @@ import {
 
 export const sourceKind = pgEnum("source_kind", ["rss", "youtube", "page"]);
 
+/** User-named sidebar sections. Sources with no folder show under "Unfiled". */
+export const folders = pgTable("folders", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const sources = pgTable("sources", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -24,6 +32,9 @@ export const sources = pgTable("sources", {
   lastError: text("last_error"),
   /** kind 'page': article URLs already scraped (stored, too old, or not articles), so refreshes skip them. */
   seenUrls: text("seen_urls").array(),
+  folderId: integer("folder_id").references(() => folders.id, { onDelete: "set null" }),
+  /** Order within its folder (or within Unfiled). */
+  position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -66,5 +77,6 @@ export const meta = pgTable("meta", {
 });
 
 export type SourceRow = typeof sources.$inferSelect;
+export type FolderRow = typeof folders.$inferSelect;
 export type ItemRow = typeof items.$inferSelect;
 export type NewItemRow = typeof items.$inferInsert;

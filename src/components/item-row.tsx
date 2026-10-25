@@ -4,7 +4,7 @@ import type { Item } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { SourceBadge } from "./badge";
 import { PlayIcon } from "./icons";
-import { formatDuration, stripHtml } from "./text";
+import { formatDuration, isXPost, splitHandle, stripHtml } from "./text";
 
 function Thumb({ item }: { item: Item }) {
   if (!item.thumbnail_url) return null;
@@ -57,6 +57,9 @@ export const ItemRow = memo(function ItemRow({
         }`}
       >
         <Thumb item={item} />
+        {isXPost(item.url) ? (
+          <PostRow item={item} meta={meta} />
+        ) : (
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-medium leading-[1.3] tracking-[-0.005em] text-[var(--ink)]">{item.title}</span>
           {snippet && (
@@ -70,7 +73,28 @@ export const ItemRow = memo(function ItemRow({
             </span>
           </span>
         </span>
+        )}
       </a>
     </li>
   );
 });
+
+/** A post on X: author line first, then the text, then "Quoting …" when it quotes a post. */
+function PostRow({ item, meta }: { item: Item; meta: string[] }) {
+  const { name, handle } = splitHandle(item.author);
+  const snippet = stripHtml(item.summary);
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--muted)]">
+        <SourceBadge host={item.source.host} title={item.source.title} size={16} />
+        <span className="truncate">
+          <b className="font-medium text-[var(--ink)]">{name || item.source.title}</b>
+          {handle && ` @${handle}`}
+          {meta.map((m) => ` · ${m}`).join("")}
+        </span>
+      </span>
+      <span className="mt-1 line-clamp-2 text-[14.5px] leading-[1.35] text-[var(--ink)]">{item.title}</span>
+      {snippet && <span className="mt-1 line-clamp-1 text-[13px] leading-snug text-[var(--muted)]">{snippet}</span>}
+    </span>
+  );
+}

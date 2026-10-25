@@ -1,10 +1,22 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Filter, Item, ItemsResponse, PatchItemBody, Source, SourcesResponse, Stats, View } from "@/lib/types";
+import type {
+  Filter,
+  Folder,
+  Item,
+  ItemsResponse,
+  PatchItemBody,
+  ReorderSourcesBody,
+  Source,
+  SourcesResponse,
+  Stats,
+  View,
+} from "@/lib/types";
 
 export interface ItemsQuery {
   view: View;
   source: number | null;
+  folder: number | null;
   filter: Filter | null;
 }
 
@@ -12,6 +24,7 @@ export function itemsQueryString(q: ItemsQuery, cursor?: string | null): string 
   const p = new URLSearchParams();
   p.set("view", q.view);
   if (q.source != null) p.set("source", String(q.source));
+  if (q.folder != null) p.set("folder", String(q.folder));
   if (q.filter) p.set("filter", q.filter);
   if (cursor) p.set("cursor", cursor);
   p.set("limit", "50");
@@ -85,10 +98,12 @@ export function useItems(q: ItemsQuery, enabled = true) {
 
 export function useSources() {
   const [sources, setSources] = useState<Source[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const reload = useCallback(async () => {
     try {
-      const data = await getJSON<SourcesResponse | Source[]>("/api/sources");
-      setSources(Array.isArray(data) ? data : data.sources);
+      const data = await getJSON<SourcesResponse>("/api/sources");
+      setSources(data.sources);
+      setFolders(data.folders ?? []);
     } catch {
       /* offline */
     }
@@ -97,8 +112,28 @@ export function useSources() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
   }, [reload]);
-  return { sources, reload };
+  return { sources, folders, setSources, setFolders, reload };
 }
+
+async function send<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(b?.error || `${method} ${res.status}`);
+  }
+  return (await res.json()) as T;
+}
+
+export const reorderSources = (order: ReorderSourcesBody["order"]) => send<{ ok: true }>("/api/sources", "PATCH", { order });
+export const moveSource = (id: number, folder_id: number | null) => send<{ source: Source }>(`/api/sources/${id}`, "PATCH", { folder_id });
+export const createFolder = (title: string) => send<{ folder: Folder }>("/api/folders", "POST", { title });
+export const renameFolder = (id: number, title: string) => send<{ folder: Folder }>(`/api/folders/${id}`, "PATCH", { title });
+export const deleteFolder = (id: number) => send<{ ok: true }>(`/api/folders/${id}`, "DELETE");
+export const reorderFolders = (order: number[]) => send<{ ok: true }>("/api/folders", "PATCH", { order });
 
 export function useStats() {
   const [stats, setStats] = useState<Stats | null>(null);

@@ -62,6 +62,8 @@ const SANITIZE: sanitizeHtml.IOptions = {
     td: ["colspan", "rowspan"],
     ...Object.fromEntries(SVG_TAGS.map((t) => [t, SVG_ATTRS])),
   },
+  // Posts from X are rendered as structured markup the reader styles (see tweetFromPage).
+  allowedClasses: { div: ["x-*"], span: ["x-*"], a: ["x-*"], img: ["x-*"] },
   selfClosing: [...sanitizeHtml.defaults.selfClosing, "source"],
   allowedSchemes: ["http", "https", "mailto"],
   // YouTube embeds (/embed/ on any youtube.com host) are rewritten to youtube-nocookie by the iframe
@@ -1290,31 +1292,121 @@ function escapedJsonString(raw: string, key: string, from = 0): string | null {
   }
 }
 
+/** Post text from X's escaped page data within [from, to): long posts keep the full text under NoteTweet. */
+function tweetText(raw: string, from: number, to: number): string | null {
+  const region = raw.slice(from, to);
+  const note = region.indexOf('\\"NoteTweet\\"');
+  return (note >= 0 ? escapedJsonString(region, "text", note) : null) ?? escapedJsonString(region, "full_text");
+}
+
+/** X account data after `from`: avatar, name and handle sit together in the page data. */
+function tweetUser(raw: string, from: number): { name: string; handle: string; avatar: string | null } | null {
+  const re = /(?:\\"avatar\\":\{\\"image_url\\":\\"([^"\\]*)\\"\},)?\\"core\\":\{\\"name\\":\\"((?:\\\\.|[^\\])*?)\\",\\"screen_name\\":\\"([A-Za-z0-9_]+)\\"/g;
+  re.lastIndex = from;
+  const m = re.exec(raw);
+  if (!m) return null;
+  try {
+    const name = JSON.parse(`"${JSON.parse(`"${m[2]}"`)}"`) as string;
+    return { name, handle: m[3], avatar: m[1] ? m[1].replace(/_normal(\.\w+)$/, "_bigger$1") : null };
+  } catch {
+    return null;
+  }
+}
+
+/** `\"created_at_ms\":1792865465000` after `from`, as a date line. */
+function tweetDate(raw: string, from: number): string | null {
+  const re = /\\"created_at_ms\\":(\d{10,})/g;
+  re.lastIndex = from;
+  const m = re.exec(raw);
+  if (!m) return null;
+  return new Date(Number(m[1])).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+/** A string binding of the post's link card: `\"key\":\"title\",\"value\":{\"string_value\":\"...\"`. */
+function cardString(card: string, key: string): string | null {
+  const re = new RegExp(`\\\\"key\\\\":\\\\"${key}\\\\",\\\\"value\\\\":\\{\\\\"string_value\\\\":\\\\"((?:\\\\\\\\.|[^\\\\])*?)\\\\"`);
+  const m = re.exec(card);
+  if (!m) return null;
+  try {
+    return JSON.parse(`"${JSON.parse(`"${m[1]}"`)}"`) as string;
+  } catch {
+    return null;
+  }
+}
+
+type TweetLinks = Map<string, { display: string; expanded: string }>;
+
+function whoHtml(u: { name: string; handle: string; avatar: string | null }, date: string | null): string {
+  const av = u.avatar ? `<img class="x-avatar" src="${escapeHtml(u.avatar)}" alt="">` : "";
+  const when = date ? `<span class="x-when">· ${escapeHtml(date)}</span>` : "";
+  return `<div class="x-who">${av}<span class="x-name">${escapeHtml(u.name)}</span><a class="x-handle" href="https://x.com/${u.handle}">@${u.handle}</a>${when}</div>`;
+}
+
+function bodyHtml(text: string, links: TweetLinks, drop?: string | null): string {
+  const paras = text
+    .split(/\n\s*\n/)
+    .map((p) => (drop ? p.replace(drop, "") : p).trim())
+    .filter(Boolean);
+  return `<div class="x-body">${paras.map((p) => `<p>${tweetInline(p, links)}</p>`).join("")}</div>`;
+}
+
+/**
+ * A post rendered as a post: author row, text, the quoted post as a card, the link card, a
+ * footer. The reader styles the x-* classes and drops its headline for these.
+ */
 async function tweetFromPage(canonical: string, user: string): Promise<ExtractResult | null> {
   const res = await fetchWithTimeout(canonical, EXTRACT_TIMEOUT_MS, { headers: BROWSER_HEADERS });
   if (!res.ok) return null;
   const raw = await res.text();
-  // Long posts keep their full text under note_tweet; short ones only have full_text.
-  const note = raw.indexOf('\\"NoteTweet\\"');
-  const text = (note >= 0 ? escapedJsonString(raw, "text", note) : null) ?? escapedJsonString(raw, "full_text");
+  // The quoted post's data is nested inside the main post's, after its own fields.
+  const qi = raw.indexOf('\\"quoted_tweet_results\\"');
+  const end = qi >= 0 ? qi : raw.length;
+  const text = tweetText(raw, 0, end);
   if (!text?.trim()) return null;
-  const links = new Map<string, { display: string; expanded: string }>();
+  const links: TweetLinks = new Map();
   const linkRe = /\\"display_url\\":\\"([^"\\]*)\\",\\"expanded_url\\":\\"([^"\\]*)\\",\\"indices\\":\[\d+,\d+\],\\"url\\":\\"([^"\\]*)\\"/g;
   for (let lm = linkRe.exec(raw); lm; lm = linkRe.exec(raw)) links.set(lm[3], { display: lm[1], expanded: lm[2] });
-  const name = /<meta property="og:title" content="([^"]*?)(?: on X)?"/.exec(raw)?.[1] ?? `@${user}`;
-  const paras = text
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => `<p>${tweetInline(p, links)}</p>`)
-    .join("");
-  const by = `<p><a href="https://x.com/${user}">${escapeHtml(name)}</a> on X</p>`;
-  const html = sanitizeArticle(`<blockquote>${paras}</blockquote>${by}`).trim();
+
+  const ogName = /<meta property="og:title" content="([^"]*?)(?: \(@[^)]*\))?(?: on X)?"/.exec(raw)?.[1];
+  const author = tweetUser(raw, 0) ?? { name: ogName ?? `@${user}`, handle: user, avatar: null };
+
+  // Link card (main post only: its data comes before the quoted post's).
+  let card = "";
+  let cardUrl: string | null = null;
+  const ci = raw.indexOf('\\"binding_values\\"');
+  if (ci >= 0 && ci < end) {
+    const region = raw.slice(ci, Math.min(ci + 6000, end));
+    const title = cardString(region, "title");
+    const domain = cardString(region, "vanity_url") ?? cardString(region, "domain");
+    cardUrl = cardString(region, "card_url");
+    const img = /\\"key\\":\\"thumbnail_image_large\\",\\"value\\":\{\\"image_value\\":\{\\"height\\":\d+,\\"url\\":\\"([^"\\]*)\\"/.exec(region)?.[1];
+    const href = (cardUrl && links.get(cardUrl)?.expanded) ?? cardUrl;
+    if (title && href) {
+      const pic = img ? `<img class="x-card-img" src="${escapeHtml(img)}" alt="">` : "";
+      card = `<a class="x-card" href="${escapeHtml(href)}">${pic}<span class="x-card-text"><span class="x-card-domain">${escapeHtml(domain ?? new URL(href).hostname)}</span><span class="x-card-title">${escapeHtml(title)}</span></span></a>`;
+    }
+  }
+
+  let quoted = "";
+  if (qi >= 0) {
+    const qid = /\\"rest_id\\":\\"(\d+)\\"/.exec(raw.slice(qi, qi + 400))?.[1];
+    const qu = tweetUser(raw, qi);
+    const qt = tweetText(raw, qi, raw.length);
+    if (qu && qt?.trim()) {
+      const href = qid ? `https://x.com/${qu.handle}/status/${qid}` : `https://x.com/${qu.handle}`;
+      quoted = `<div class="x-quote">${whoHtml(qu, tweetDate(raw, qi))}${bodyHtml(qt, links)}<a class="x-quote-link" href="${href}">View post</a></div>`;
+    }
+  }
+
+  const foot = `<div class="x-foot"><span>${escapeHtml(tweetDate(raw, 0) ?? "")}</span><a class="x-open" href="${canonical}">Open on X</a></div>`;
+  const html = sanitizeArticle(
+    `<div class="x-post">${whoHtml(author, null)}${bodyHtml(text, links, card ? cardUrl : null)}${quoted}${card}${foot}</div>`,
+  ).trim();
   return html ? { contentHtml: html, leadImage: null } : null;
 }
 
 /** Escape a paragraph of post text; link URLs (t.co expanded) and @mentions; keep line breaks. */
-function tweetInline(p: string, links: Map<string, { display: string; expanded: string }>): string {
+function tweetInline(p: string, links: TweetLinks): string {
   return p
     .split(/(https?:\/\/\S+|@[A-Za-z0-9_]{1,15})/)
     .map((tok, i) => {

@@ -13,7 +13,7 @@ import {
   ExternalIcon,
   ShareIcon,
 } from "./icons";
-import { formatDate, formatDuration, hostOf, stripHtml } from "./text";
+import { formatDate, formatDuration, hostOf, isXPost, stripHtml } from "./text";
 
 type ContentState =
   | { status: "loading" }
@@ -119,6 +119,8 @@ export function Reader({
   const [settings] = useSettings();
   const [copied, setCopied] = useState(false);
   const isVideo = item.source.kind === "youtube";
+  // Posts on X have no headline: the extracted markup carries the author row, text and cards.
+  const isPost = isXPost(item.url) && content.status !== "failed";
   const host = hostOf(item.url) || item.source.host;
   const summaryText = stripHtml(item.summary);
   const meta = [host, formatDate(item.published_at)];
@@ -141,7 +143,7 @@ export function Reader({
     }
   };
 
-  const hero = !isVideo ? item.thumbnail_url || (content.status === "ok" ? content.leadImage : null) : null;
+  const hero = !isVideo && !isPost ? item.thumbnail_url || (content.status === "ok" ? content.leadImage : null) : null;
   // A page's hero video comes first in the extracted HTML; it replaces the hero image.
   const contentHasHero =
     content.status === "ok" && hero != null && (content.html.includes(hero) || /^\s*<(?:iframe|video)\b/.test(content.html));
@@ -191,6 +193,7 @@ export function Reader({
         <VideoBody item={item} summaryText={summaryText} autoplay={settings.autoplay} theater={settings.theater} />
       ) : (
         <>
+          {!isPost && (
           <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
             <h1
               className={`text-balance ${settings.readerFont === "sans" ? "font-sans" : "font-serif"} ${HEADLINE_SIZE[settings.textSize]} font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)]`}
@@ -218,9 +221,10 @@ export function Reader({
               <p className="mt-1.5 text-[12px] text-[var(--muted)]">Rendered copy</p>
             )}
           </div>
+          )}
 
           <div
-            className="prose-openfeed mx-auto mt-7 px-5 md:px-0"
+            className={`prose-openfeed mx-auto px-5 md:px-0 ${isPost ? "mt-6 lg:mt-8" : "mt-7"}`}
             data-font={settings.readerFont}
             data-size={settings.textSize}
           >

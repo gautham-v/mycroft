@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import type { Source } from "@/lib/types";
+import type { Folder, Source } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
+import { moveSource } from "@/hooks/use-data";
 import { useSettings, type Settings } from "@/hooks/use-settings";
 import { CloseIcon, PlusIcon } from "./icons";
 
@@ -24,15 +25,20 @@ export function SettingsDialog({
   open,
   onClose,
   sources,
+  folders,
   now,
   onAdd,
+  onChanged,
   onRemoved,
   onOpen,
 }: {
   open: boolean;
   onClose: () => void;
   sources: Source[];
+  folders: Folder[];
   now: number;
+  /** Called after a source was moved to another folder. */
+  onChanged: () => void;
   /** Opens the app's AddSourceDialog (it stacks above this one). */
   onAdd: () => void;
   /** Called after a source is deleted on the server. */
@@ -120,7 +126,9 @@ export function SettingsDialog({
           aria-label={TABS.find((t) => t.id === tab)?.label}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+20px)] pt-4 md:px-5 md:pb-5 md:pt-4"
         >
-          {tab === "sources" && <SourcesPane sources={sources} now={now} onAdd={onAdd} onRemoved={onRemoved} onOpen={onOpen} />}
+          {tab === "sources" && (
+            <SourcesPane sources={sources} folders={folders} now={now} onAdd={onAdd} onChanged={onChanged} onRemoved={onRemoved} onOpen={onOpen} />
+          )}
           {tab === "appearance" && <AppearancePane />}
           {tab === "playback" && <PlaybackPane />}
         </div>
@@ -171,14 +179,18 @@ function hostOf(s: Source) {
 
 function SourcesPane({
   sources,
+  folders,
   now,
   onAdd,
+  onChanged,
   onRemoved,
   onOpen,
 }: {
   sources: Source[];
+  folders: Folder[];
   now: number;
   onAdd: () => void;
+  onChanged: () => void;
   onRemoved: (id: number) => void;
   onOpen: (s: Source) => void;
 }) {
@@ -212,14 +224,21 @@ function SourcesPane({
   };
 
   const visible = sources.filter((s) => !removed.has(s.id));
+  const byPos = (a: Source, b: Source) => a.position - b.position || a.title.localeCompare(b.title);
+  const orderedFolders = [...folders].sort((a, b) => a.position - b.position || a.id - b.id);
   const groups: [string, Source[]][] = [
-    ["Sources", visible.filter((s) => s.kind !== "youtube")],
-    ["YouTube", visible.filter((s) => s.kind === "youtube")],
+    ...orderedFolders.map((f): [string, Source[]] => [f.title, visible.filter((s) => s.folder_id === f.id).sort(byPos)]),
+    ["Unfiled", visible.filter((s) => s.folder_id == null).sort(byPos)],
   ];
+  const move = (s: Source, raw: string) => {
+    const folderId = raw === "" ? null : Number(raw);
+    if (folderId === s.folder_id) return;
+    void moveSource(s.id, folderId).then(onChanged, onChanged);
+  };
 
   return (
     <>
-      <PaneHeading title="Sources" hint="Removing a source also removes its items." />
+      <PaneHeading title="Sources" hint="Pick a folder to move a source. Removing a source also removes its items." />
       {visible.length === 0 && <p className="border-t border-[var(--hairline)] py-6 text-center text-[13px] text-[var(--muted)]">No sources yet</p>}
       {groups.map(([label, list]) =>
         list.length ? (
@@ -248,10 +267,25 @@ function SourcesPane({
                     ) : (
                       <p className="truncate text-[12px] text-[var(--muted)]">
                         {hostOf(s)}
-                        {s.kind === "page" && " · scraped page"} · {fetchedLabel(s.last_fetched_at, now)}
+                        {s.type === "post" ? " · posts" : s.kind === "page" ? " · scraped page" : ""} · {fetchedLabel(s.last_fetched_at, now)}
                       </p>
                     )}
                   </div>
+                  {folders.length > 0 && confirming !== s.id && (
+                    <select
+                      aria-label={`Folder for ${s.title}`}
+                      value={s.folder_id ?? ""}
+                      onChange={(e) => move(s, e.target.value)}
+                      className="h-7 max-w-[120px] shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 text-[12px] text-[var(--muted)]"
+                    >
+                      {orderedFolders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.title}
+                        </option>
+                      ))}
+                      <option value="">Unfiled</option>
+                    </select>
+                  )}
                   {confirming === s.id ? (
                     <div className="flex shrink-0 gap-1.5">
                       <button

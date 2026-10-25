@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 import { seedSources } from "./seed";
+import { seedFolders } from "@/lib/folders";
 
 export type DB = NeonHttpDatabase<typeof schema>;
 
@@ -58,6 +59,15 @@ const SCHEMA_SQL = [
   `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "content_rendered" boolean DEFAULT false NOT NULL`,
   // Refresh-time og:image backfill: items already tried, so old items aren't refetched every refresh.
   `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "thumbnail_checked" boolean DEFAULT false NOT NULL`,
+  // Sidebar folders: user-named sections with their own order; sources carry a folder and a position.
+  `CREATE TABLE IF NOT EXISTS "folders" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "title" text NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL,
+    "created_at" timestamp with time zone DEFAULT now() NOT NULL
+  )`,
+  `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "folder_id" integer REFERENCES "folders"("id") ON DELETE SET NULL`,
+  `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "position" integer DEFAULT 0 NOT NULL`,
 ];
 
 function rawDb(): DB {
@@ -101,6 +111,8 @@ export async function getDb(): Promise<DB> {
       await ensureSchema();
       // No-op once the meta "seeded" flag exists, so user removals stick.
       await seedSources(db);
+      // Once per database: file existing sources into folders by their old group.
+      await seedFolders(db);
     })().catch((e) => {
       _ready = null;
       throw e;

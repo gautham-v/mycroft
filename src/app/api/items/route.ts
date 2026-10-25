@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
     const p = req.nextUrl.searchParams;
     const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 200);
     const source = Number(p.get("source")) || null;
-    const conds = itemConditions({ view: parseView(p.get("view")), source, filter: parseFilter(p.get("filter")) });
+    const folder = Number(p.get("folder")) || null;
+    const conds = itemConditions({ view: parseView(p.get("view")), source, folder, filter: parseFilter(p.get("filter")) });
     const cc = cursorCondition(p.get("cursor"));
     if (cc) conds.push(cc);
     const db = await getDb();

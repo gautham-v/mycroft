@@ -264,3 +264,92 @@ body {
   border: 1px solid var(--hairline);
   padding: 6px 10px;
 }
+
+/* Posts from X (extract.ts tweetFromPage): author row, text, quoted post, link card, footer. */
+.prose-openfeed .x-post {
+  font-family: var(--font-sans);
+  display: grid;
+  gap: 14px;
+}
+.prose-openfeed .x-post > * + *,
+.prose-openfeed .x-quote > * + * { margin-top: 0; }
+.prose-openfeed .x-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 1.2;
+  min-width: 0;
+}
+.prose-openfeed .x-post > .x-who { gap: 10px; }
+.prose-openfeed .x-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin: 0;
+  flex: none;
+  object-fit: cover;
+}
+.prose-openfeed .x-quote .x-avatar { width: 22px; height: 22px; }
+.prose-openfeed .x-name { font-weight: 600; color: var(--ink); }
+.prose-openfeed .x-handle, .prose-openfeed .x-when { color: var(--muted); text-decoration: none; }
+.prose-openfeed .x-handle:hover { text-decoration: underline; }
+.prose-openfeed .x-body { display: grid; gap: 0.7em; }
+.prose-openfeed .x-body p { margin: 0; }
+.prose-openfeed .x-body a { text-decoration: none; }
+.prose-openfeed .x-body a:hover { text-decoration: underline; }
+.prose-openfeed .x-quote {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+  font-size: 0.92em;
+}
+.prose-openfeed .x-quote-link { font-size: 13px; color: var(--muted); text-decoration: none; }
+.prose-openfeed .x-quote-link:hover { text-decoration: underline; }
+.prose-openfeed .x-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+}
+.prose-openfeed .x-card:not(:has(.x-card-img)) { grid-template-columns: 1fr; }
+.prose-openfeed .x-card-img {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  margin: 0;
+  border-radius: 0;
+}
+.prose-openfeed .x-card-text {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.prose-openfeed .x-card-domain { color: var(--muted); font-size: 13px; }
+.prose-openfeed .x-card-title { color: var(--ink); font-weight: 500; }
+.prose-openfeed .x-card:hover .x-card-title { text-decoration: underline; }
+.prose-openfeed .x-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+.prose-openfeed .x-open {
+  color: var(--body);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+}
+.prose-openfeed .x-open:hover { background: var(--hover); }
