@@ -60,7 +60,7 @@ export const ItemRow = memo(function ItemRow({
   meta.push(relativeTime(item.published_at));
 
   return (
-    <li className="item-row" data-selected={selected ? "" : undefined}>
+    <li className="item-row" data-item-id={item.id} data-selected={selected ? "" : undefined}>
       <a
         href={`/?item=${item.id}`}
         onClick={(e) => {

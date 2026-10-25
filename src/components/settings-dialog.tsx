@@ -31,6 +31,7 @@ export function SettingsDialog({
   onChanged,
   onRemoved,
   onOpen,
+  onShowShortcuts,
 }: {
   open: boolean;
   onClose: () => void;
@@ -45,6 +46,8 @@ export function SettingsDialog({
   onRemoved: (id: number) => void;
   /** Tapping a source title opens its feed. */
   onOpen: (s: Source) => void;
+  /** Opens the keyboard shortcuts overlay (it stacks above this one). */
+  onShowShortcuts: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<SettingsTab>("sources");
@@ -129,7 +132,7 @@ export function SettingsDialog({
           {tab === "sources" && (
             <SourcesPane sources={sources} folders={folders} now={now} onAdd={onAdd} onChanged={onChanged} onRemoved={onRemoved} onOpen={onOpen} />
           )}
-          {tab === "appearance" && <AppearancePane />}
+          {tab === "appearance" && <AppearancePane onShowShortcuts={onShowShortcuts} />}
           {tab === "playback" && <PlaybackPane />}
         </div>
       </div>
@@ -368,7 +371,7 @@ function SourceIcon({ source }: { source: Source }) {
 
 // --- Appearance ------------------------------------------------------------------
 
-function AppearancePane() {
+function AppearancePane({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const [settings, update] = useSettings();
   return (
     <>
@@ -415,6 +418,19 @@ function AppearancePane() {
             />
           )}
         </SettingRow>
+        {/* Shortcuts need a hardware keyboard and the side-by-side layout, so tablet/desktop only. */}
+        <SettingRow label="Keyboard shortcuts" hint="Or press ? anywhere" className="max-md:hidden">
+          {() => (
+            <button
+              type="button"
+              aria-label="Show keyboard shortcuts"
+              onClick={onShowShortcuts}
+              className="h-8 rounded-md bg-[var(--code)] px-3 text-[13px] font-medium text-[var(--ink)] hover:bg-[var(--hover)]"
+            >
+              Show
+            </button>
+          )}
+        </SettingRow>
       </ul>
     </>
   );
@@ -453,11 +469,13 @@ function SettingRow({
   label,
   hint,
   asLabel,
+  className = "",
   children,
 }: {
   label: string;
   hint?: string;
   asLabel?: boolean;
+  className?: string;
   children: (id: string, hintId: string | undefined) => React.ReactNode;
 }) {
   const id = useId();
@@ -465,7 +483,7 @@ function SettingRow({
   const controlId = `${id}-control`;
   const hintId = hint ? `${id}-hint` : undefined;
   return (
-    <li className={`${ROW} min-h-[52px] justify-between`}>
+    <li className={`${ROW} min-h-[52px] justify-between ${className}`}>
       <div className="min-w-0">
         {asLabel ? (
           <label htmlFor={controlId} id={labelId} className="block text-[14px] text-[var(--ink)]">

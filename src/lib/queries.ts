@@ -1,4 +1,4 @@
-import { and, eq, lt, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, ilike, lt, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { folders, items, sources, type FolderRow, type ItemRow, type SourceRow } from "@/db/schema";
 import { isPostSource, POST_SOURCE_RE } from "./folders";
 import { hostOf } from "./http";
@@ -9,8 +9,32 @@ export function parseView(v: string | null | undefined): View {
   return VIEWS.includes(v as View) ? (v as View) : "all";
 }
 
-/** WHERE conditions for view/source/folder (requires join on sources). */
-export function itemConditions(opts: { view?: View; source?: number | null; folder?: number | null }): SQL[] {
+/** Longest search query the API accepts; longer input is truncated. */
+export const MAX_QUERY = 200;
+/** At most this many whitespace-separated terms are matched (each adds four ILIKEs). */
+const MAX_TERMS = 8;
+
+/** Search condition: every whitespace-separated term must appear (case-insensitively) in the
+ *  title, summary, author or cached full text. LIKE wildcards in the input match literally. */
+export function searchCondition(q: string | null | undefined): SQL | undefined {
+  const terms = (q ?? "").trim().slice(0, MAX_QUERY).split(/\s+/).filter(Boolean).slice(0, MAX_TERMS);
+  if (terms.length === 0) return undefined;
+  return and(
+    ...terms.map((t) => {
+      // Backslash is Postgres' default LIKE escape character.
+      const pat = `%${t.replace(/[\\%_]/g, "\\$&")}%`;
+      return or(ilike(items.title, pat), ilike(items.summary, pat), ilike(items.author, pat), ilike(items.contentHtml, pat));
+    }),
+  );
+}
+
+/** WHERE conditions for view/source/folder/search (requires join on sources). */
+export function itemConditions(opts: {
+  view?: View;
+  source?: number | null;
+  folder?: number | null;
+  q?: string | null;
+}): SQL[] {
   const c: SQL[] = [];
   const isPost = sql`${sources.url} ~* ${POST_SOURCE_RE}`;
   if (opts.view === "saved") c.push(eq(items.isSaved, true));
@@ -20,6 +44,8 @@ export function itemConditions(opts: { view?: View; source?: number | null; fold
   if (opts.view === "articles") c.push(notInArray(sources.kind, ["youtube", "podcast"]), sql`NOT (${isPost})`);
   if (opts.source) c.push(eq(items.sourceId, opts.source));
   if (opts.folder) c.push(eq(sources.folderId, opts.folder));
+  const search = searchCondition(opts.q);
+  if (search) c.push(search);
   return c;
 }
 

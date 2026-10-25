@@ -16,6 +16,8 @@ export interface ItemsQuery {
   view: View;
   source: number | null;
   folder: number | null;
+  /** Search text (already trimmed); "" or omitted = no search. */
+  q?: string;
 }
 
 export function itemsQueryString(q: ItemsQuery, cursor?: string | null): string {
@@ -23,6 +25,7 @@ export function itemsQueryString(q: ItemsQuery, cursor?: string | null): string 
   p.set("view", q.view);
   if (q.source != null) p.set("source", String(q.source));
   if (q.folder != null) p.set("folder", String(q.folder));
+  if (q.q) p.set("q", q.q);
   if (cursor) p.set("cursor", cursor);
   p.set("limit", "50");
   return p.toString();

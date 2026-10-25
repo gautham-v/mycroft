@@ -4,16 +4,22 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Item, View } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { patchItem, useItems, useSources, useStats } from "@/hooks/use-data";
+import { useKeyboard } from "@/hooks/use-keyboard";
+import { useSearch } from "@/hooks/use-search";
 import { applyTheme, getSettings } from "@/hooks/use-settings";
 import { AddSourceDialog } from "./add-source";
-import { BackIcon, BookmarkIcon, FolderIcon, GearIcon, InboxIcon, RefreshIcon, SidebarIcon } from "./icons";
+import { BackIcon, BookmarkIcon, FolderIcon, GearIcon, InboxIcon, RefreshIcon, SearchIcon, SidebarIcon } from "./icons";
 import { ItemRow } from "./item-row";
 import { Reader, ReaderEmpty } from "./reader";
+import { SearchField } from "./search-field";
 import { SettingsDialog } from "./settings-dialog";
+import { ShortcutsDialog } from "./shortcuts-dialog";
 import { HOME, Sidebar, type NavState } from "./sidebar";
 import { SourcesPage } from "./sources-page";
 
 const VIEWS: View[] = ["all", "saved", "articles", "posts", "video", "podcasts"];
+/** Same cap as the API (MAX_QUERY in src/lib/queries.ts, which is server-only). */
+const MAX_QUERY = 200;
 
 function parseNav(sp: URLSearchParams) {
   const v = sp.get("view") as View | null;
@@ -25,17 +31,22 @@ function parseNav(sp: URLSearchParams) {
     source: Number.isFinite(s) && s > 0 ? s : null,
     folder: Number.isFinite(fo) && fo > 0 ? fo : null,
     item: Number.isFinite(i) && i > 0 ? i : null,
+    // Search text, applied within the view/source/folder above.
+    q: (sp.get("q") ?? "").trim().slice(0, MAX_QUERY),
     // Phone/tablet Sources tab (folders and sources to browse). Desktop has the sidebar instead.
     sourcesPage: sp.get("tab") === "sources",
   };
 }
 
-function buildQs(n: NavState & { item?: number | null; sourcesPage?: boolean }) {
+type UrlState = NavState & { item?: number | null; sourcesPage?: boolean; q?: string };
+
+function buildQs(n: UrlState) {
   const p = new URLSearchParams();
   if (n.sourcesPage) p.set("tab", "sources");
   if (n.view !== "all") p.set("view", n.view);
   if (n.source != null) p.set("source", String(n.source));
   if (n.folder != null) p.set("folder", String(n.folder));
+  if (n.q) p.set("q", n.q);
   if (n.item != null) p.set("item", String(n.item));
   const s = p.toString();
   return s ? `/?${s}` : "/";
@@ -128,12 +139,13 @@ export function OpenfeedApp() {
   );
   const isMd = useIsMd();
 
-  const { items, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems(nav);
+  const { items, nextCursor, loading, loadingMore, error, reload, loadMore, patchLocal } = useItems({ ...nav, q: parsed.q });
   const { sources, folders, reload: reloadSources } = useSources();
   const { stats, reload: reloadStats } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [extraItem, setExtraItem] = useState<Item | null>(null);
   const now = useNow();
   const sidebarCollapsed = useSidebarCollapsed();
@@ -148,25 +160,8 @@ export function OpenfeedApp() {
   // it, so re-apply from storage. Later changes are applied by useSettings' setter.
   useLayoutEffect(() => applyTheme(getSettings().theme), []);
 
-  // Cmd/Ctrl+\ toggles the desktop sidebar; Shift+Cmd/Ctrl+F toggles the full-screen reader; Esc exits it.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "\\") {
-        e.preventDefault();
-        setSidebarCollapsed(!getSidebarCollapsed());
-      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        setFocus((v) => !v);
-      } else if (e.key === "Escape") {
-        setFocus(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const go = useCallback(
-    (n: NavState & { item?: number | null; sourcesPage?: boolean }, replace = false) => {
+    (n: UrlState, replace = false) => {
       const url = buildQs(n);
       if (replace) router.replace(url, { scroll: false });
       else router.push(url, { scroll: false });
@@ -276,15 +271,67 @@ export function OpenfeedApp() {
 
   const openItem = useCallback(
     (item: Item) => {
-      go({ ...nav, item: item.id }, selectedId != null && window.matchMedia("(min-width: 768px)").matches);
+      go({ ...nav, q: parsed.q, item: item.id }, selectedId != null && window.matchMedia("(min-width: 768px)").matches);
     },
-    [go, nav, selectedId],
+    [go, nav, parsed.q, selectedId],
   );
 
   const closeItem = useCallback(() => {
     if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) router.back();
-    else go({ ...nav, item: null });
-  }, [router, go, nav]);
+    else go({ ...nav, q: parsed.q, item: null });
+  }, [router, go, nav, parsed.q]);
+
+  // --- search -----------------------------------------------------------------
+  // The query lives in the URL (?q=). Committing replaces the history entry rather than pushing
+  // one per keystroke pause, and drops ?item so tablet/desktop shows the first result.
+  const search = useSearch(parsed.q, (q) => go({ ...nav, q, item: null }, true));
+
+  // --- keyboard ---------------------------------------------------------------
+  // The item the keyboard last moved to, until the URL catches up. Fast j/k presses arrive before
+  // the router re-renders, so each step counts from here rather than from the stale selection.
+  const keyTarget = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedId == null || selectedId !== keyTarget.current) return;
+    keyTarget.current = null;
+    document.querySelector(`[data-item-id="${selectedId}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+  // The item keyboard actions apply to: the pending keyboard target, else the selection.
+  const keyItem = () => (keyTarget.current != null ? items.find((x) => x.id === keyTarget.current) : null) ?? selected;
+
+  useKeyboard({
+    toggleSidebar: () => setSidebarCollapsed(!getSidebarCollapsed()),
+    toggleFocusMode: () => setFocus((v) => !v),
+    escape: () => (search.open ? search.close() : setFocus(false)),
+    move: (step) => {
+      if (items.length === 0) return;
+      const from = keyTarget.current ?? selectedId;
+      const i = items.findIndex((x) => x.id === from);
+      const next = items[i < 0 ? 0 : Math.min(Math.max(i + step, 0), items.length - 1)];
+      // Fetch the next page a few rows before the end so j never stalls on the last row.
+      if (step > 0 && nextCursor && i + step >= items.length - 5) void loadMore();
+      if (next.id === from) return;
+      keyTarget.current = next.id;
+      openItem(next);
+    },
+    openOriginal: () => {
+      const item = keyItem();
+      if (item) window.open(item.url, "_blank", "noopener,noreferrer");
+    },
+    toggleSaved: () => {
+      const item = keyItem();
+      if (item) toggleSaved(item);
+    },
+    refresh: () => {
+      if (!refreshing) void runRefresh(true);
+    },
+    focusSearch: () => {
+      // The Sources page has no search field; search the feed it came from instead.
+      if (parsed.sourcesPage) setNav(HOME);
+      search.show();
+    },
+    goView: (view) => setNav({ ...HOME, view }),
+    toggleHelp: () => setHelpOpen((v) => !v),
+  });
 
   // --- infinite scroll ---------------------------------------------------------
   const sentinel = useRef<HTMLLIElement>(null);
@@ -325,10 +372,35 @@ export function OpenfeedApp() {
       onClick={() => void runRefresh(true)}
       disabled={refreshing}
       aria-label={refreshing ? "Refreshing" : "Refresh feeds"}
+      title="Refresh (r)"
       className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink)] hover:bg-[var(--hover)] disabled:opacity-70 lg:h-[30px] lg:w-[30px] lg:text-[var(--muted)] lg:hover:text-[var(--ink)]"
     >
       <RefreshIcon size={20} className={`lg:size-[17px] ${refreshing ? "animate-spin" : ""}`} />
     </button>
+  );
+
+  const searchButton = (
+    <button
+      type="button"
+      onClick={search.show}
+      aria-label="Search"
+      title="Search (/)"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink)] hover:bg-[var(--hover)] lg:h-[30px] lg:w-[30px] lg:text-[var(--muted)] lg:hover:text-[var(--ink)]"
+    >
+      <SearchIcon size={20} className="lg:size-[17px]" />
+    </button>
+  );
+
+  const searchField = (variant: "desktop" | "phone") => (
+    <SearchField
+      variant={variant}
+      value={search.draft}
+      placeholder={listTitle === "All" ? "Search" : `Search ${listTitle}`}
+      onChange={search.setDraft}
+      onSubmit={search.flush}
+      onClear={search.clear}
+      onClose={search.close}
+    />
   );
 
   const chips = (
@@ -365,8 +437,17 @@ export function OpenfeedApp() {
       )}
       {!loading && !error && items.length === 0 && (
         <li className="px-6 py-16 text-center">
-          <p className="text-[15px] font-medium text-[var(--ink)]">{nav.view === "saved" ? "Nothing saved yet" : "Nothing here yet"}</p>
-          <p className="mt-1 text-[13px] text-[var(--muted)]">No items in this view</p>
+          {parsed.q ? (
+            <>
+              <p className="break-words text-[15px] font-medium text-[var(--ink)]">No results for “{parsed.q}”</p>
+              <p className="mt-1 text-[13px] text-[var(--muted)]">Searched titles, summaries, authors and full text in {listTitle}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-[15px] font-medium text-[var(--ink)]">{nav.view === "saved" ? "Nothing saved yet" : "Nothing here yet"}</p>
+              <p className="mt-1 text-[13px] text-[var(--muted)]">No items in this view</p>
+            </>
+          )}
         </li>
       )}
       {items.map((item) => (
@@ -438,8 +519,10 @@ export function OpenfeedApp() {
                 {parsed.sourcesPage ? `${sources.length} ${sources.length === 1 ? "source" : "sources"}` : subline}
               </p>
             </div>
+            {!parsed.sourcesPage && !search.open && searchButton}
             {!parsed.sourcesPage && refreshButton}
           </div>
+          {!parsed.sourcesPage && search.open && <div className="flex px-4 pt-3">{searchField("phone")}</div>}
           {tab === "feed" ? <div className="pt-3">{chips}</div> : <div className="h-3" />}
         </header>
 
@@ -458,10 +541,17 @@ export function OpenfeedApp() {
               <SidebarIcon size={17} />
             </button>
           )}
-          <div className="flex min-w-0 flex-1 items-baseline gap-2">
-            <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{listTitle}</h1>
-            <p className="truncate text-[13px] text-[var(--muted)]">{subline}</p>
-          </div>
+          {search.open ? (
+            searchField("desktop")
+          ) : (
+            <>
+              <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                <h1 className="truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{listTitle}</h1>
+                <p className="truncate text-[13px] text-[var(--muted)]">{subline}</p>
+              </div>
+              {searchButton}
+            </>
+          )}
           {refreshButton}
         </header>
 
@@ -536,7 +626,10 @@ export function OpenfeedApp() {
           setSettingsOpen(false);
           setNav({ ...HOME, source: s.id });
         }}
+        onShowShortcuts={() => setHelpOpen(true)}
       />
+
+      <ShortcutsDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <AddSourceDialog
         open={addOpen}
