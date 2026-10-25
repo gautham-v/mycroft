@@ -28,6 +28,8 @@ Feeds are fetched when you open the app (or bring it back to the foreground) if 
 
 Starter list is in `src/db/seed.ts`. Add more from the sidebar (desktop) or Sources tab (phone): paste a site URL, a feed URL, or a YouTube channel URL (`youtube.com/@handle`), and the app finds the feed.
 
+To move subscriptions in or out, use **Import OPML** / **Export OPML** in Settings → Sources (or `GET`/`POST /api/opml`). Import takes an OPML file from Feedly, Inoreader, NetNewsWire and the like: outline folders become sidebar folders (matched to existing ones by name), feeds you already have are skipped, and nothing is fetched until the next refresh. Exports include an `openfeed:kind` attribute so scraped pages and podcasts round-trip.
+
 Pages with no feed (e.g. `anthropic.com/news`, `claude.com/resources/articles`) are added as scraped-page sources: the app picks the article links off the listing page and reads each article's Open Graph / JSON-LD metadata. Only new links are fetched on refresh. Anthropic and Meta AI don't publish RSS feeds, so they're not seeded (Anthropic's YouTube channel is). Ars Technica and The Verge block non-browser user agents; the fetcher sends a browser-like UA.
 
 ## Local development
