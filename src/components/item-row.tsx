@@ -12,7 +12,7 @@ function Thumb({ item }: { item: Item }) {
   if (!item.thumbnail_url && !isPodcast) return null;
   const dur = item.source.kind === "youtube" || isPodcast ? formatDuration(item.duration_sec) : null;
   return (
-    <span className="relative block h-[50px] w-[76px] shrink-0 overflow-hidden rounded-[3px] bg-[var(--code)]">
+    <span className="relative block h-[42px] w-[64px] shrink-0 overflow-hidden rounded-[3px] bg-[var(--code)]">
       {item.thumbnail_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={item.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -69,27 +69,31 @@ export const ItemRow = memo(function ItemRow({
           onOpen(item);
         }}
         aria-current={selected ? "true" : undefined}
-        className={`flex gap-3 rounded-[4px] px-2.5 py-[11px] ${
+        className={`flex rounded-[4px] px-2.5 py-[11px] ${
           selected ? "bg-[var(--selection)]" : "hover:bg-[var(--hover)]"
         }`}
       >
-        <Thumb item={item} />
         {isXPost(item.url) ? (
           <PostRow item={item} meta={meta} />
         ) : (
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14.5px] font-medium leading-[1.3] tracking-[-0.005em] text-[var(--ink)]">{item.title}</span>
-          {snippet && (
-            <span className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--muted)] md:hidden">{snippet}</span>
-          )}
-          <span className="mt-[5px] flex items-center gap-1.5 text-[12.5px] text-[var(--muted)]">
-            <SourceBadge host={item.source.host} title={item.source.title} size={16} />
-            <span className="truncate">
-              <b className="font-medium text-[var(--body)]">{item.source.title}</b>
-              {meta.map((m) => ` · ${m}`).join("")}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5 text-[12.5px] text-[var(--muted)]">
+              <SourceBadge host={item.source.host} title={item.source.title} size={16} />
+              <span className="truncate">
+                <b className="font-medium text-[var(--ink)]">{item.source.title}</b>
+                {meta.map((m) => ` · ${m}`).join("")}
+              </span>
             </span>
+            <span className="mt-1 flex items-start gap-3">
+              <span className="min-w-0 flex-1 text-[14.5px] font-medium leading-[1.3] tracking-[-0.005em] text-[var(--ink)]">
+                {item.title}
+              </span>
+              <Thumb item={item} />
+            </span>
+            {snippet && (
+              <span className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--muted)] md:hidden">{snippet}</span>
+            )}
           </span>
-        </span>
         )}
       </a>
     </li>
