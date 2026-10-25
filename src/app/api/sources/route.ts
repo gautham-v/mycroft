@@ -7,6 +7,9 @@ import { refreshSource } from "@/lib/fetcher";
 import { errMsg, errorJson, json } from "@/lib/http";
 import { toSource } from "@/lib/queries";
 
+// Adding a scraped-page source fetches its listing and article pages before responding.
+export const maxDuration = 60;
+
 export async function GET() {
   await connection();
   try {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { extractArticle, extractFromHtml } from "../src/lib/extract";
 import { findAlternateFeeds, findChannelIdInHtml } from "../src/lib/feed-detect";
 import { relativeTime } from "../src/lib/time";
+import { extractArticleMeta, findArticleLinks, listingTitle } from "../src/lib/scrape";
 
 const HN = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Hacker News: Newest</title><link>https://news.ycombinator.com/newest</link>
 <item><title>Show HN: A tiny thing</title><description><![CDATA[
@@ -41,6 +42,38 @@ async function main() {
   console.log("CHAN:", findChannelIdInHtml('foo "channelId":"UCsBjURrPoezykLs9EqgamOA" bar'));
   console.log("TIME:", relativeTime(Date.now() - 23 * 60e3), relativeTime(Date.now() - 3 * 3600e3), relativeTime(Date.now() - 2 * 86400e3));
   await checkRenderedFallback();
+  checkScrape();
+}
+
+const LISTING = `<html><head><title>Newsroom \\ Acme</title></head><body>
+<nav><a href="/news">News</a><a href="/news/policy">Policy</a><a href="/about">About</a></nav>
+<a href="/news/first-post">First post<span>A summary</span></a><a href="/news/policy">Policy</a>
+<a href="https://www.acme.com/news/second-post/#top">Second post</a><a href="/news/first-post?ref=x">First post</a>
+<a href="/de/news/first-post">Erster</a><a href="/news/2">2</a><a href="?page=2">Next</a><a href="/news/page/2">Next</a>
+<a href="https://other.com/news/elsewhere">Elsewhere</a></body></html>`;
+
+const ARTICLE_META = `<html><head><title>Second post | Acme</title>
+<meta property="og:title" content="Second post | Acme"><meta property="og:type" content="article">
+<meta property="og:description" content="Desc"><meta property="og:image" content="/img/2.png">
+<script type="application/ld+json">{"@graph":[{"@type":"WebSite"},{"@type":"NewsArticle","datePublished":"2026-10-20T00:00:00Z","author":[{"@type":"Person","name":"Ada"}]}]}</script>
+</head><body><h1>Second post</h1></body></html>`;
+
+function checkScrape() {
+  assert.deepEqual(findArticleLinks(LISTING, "https://acme.com/news"), [
+    "https://acme.com/news/first-post",
+    "https://acme.com/news/second-post",
+  ]);
+  // No links one level below the listing: fall back to the most common slug prefix.
+  const home = `<a href="/blog/a-post">a</a><a href="/blog/b-post">b</a><a href="/about-us">About</a>`;
+  assert.deepEqual(findArticleLinks(home, "https://acme.com/"), ["https://acme.com/blog/a-post", "https://acme.com/blog/b-post"]);
+  assert.deepEqual(findArticleLinks("<a href='/x'>x</a>", "https://acme.com/news"), []);
+  assert.equal(listingTitle(LISTING, "https://acme.com/news"), "Acme Newsroom");
+  const m = extractArticleMeta(ARTICLE_META, "https://acme.com/news/second-post");
+  assert.equal(m.title, "Second post");
+  assert.equal(m.publishedAt?.toISOString(), "2026-10-20T00:00:00.000Z");
+  assert.equal(m.author, "Ada");
+  assert.equal(m.thumbnailUrl, "https://acme.com/img/2.png");
+  console.log("SCRAPE: ok");
 }
 
 const SHELL = `<html><head><meta property="og:image" content="https://spa.example.com/og.png"></head><body><div id="root"></div><script src="/app.js"></script></body></html>`;

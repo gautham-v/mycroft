@@ -10,7 +10,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-export const sourceKind = pgEnum("source_kind", ["rss", "youtube"]);
+export const sourceKind = pgEnum("source_kind", ["rss", "youtube", "page"]);
 
 export const sources = pgTable("sources", {
   id: serial("id").primaryKey(),
@@ -22,6 +22,8 @@ export const sources = pgTable("sources", {
   iconUrl: text("icon_url"),
   lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }),
   lastError: text("last_error"),
+  /** kind 'page': article URLs already scraped (stored, too old, or not articles), so refreshes skip them. */
+  seenUrls: text("seen_urls").array(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

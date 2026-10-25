@@ -64,6 +64,7 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
         <label htmlFor="add-source-url" className="mt-3 block text-[13px] text-[var(--muted)]">
           Feed, site, or YouTube channel URL
         </label>
+        <p className="mt-0.5 text-[12px] text-[var(--faint)]">No feed? A news or blog listing page is scraped for new posts.</p>
         <input
           id="add-source-url"
           type="url"

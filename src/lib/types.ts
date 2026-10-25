@@ -1,6 +1,7 @@
 // Shared API types (JSON wire format, snake_case). Imported by frontend via "@/lib/types".
 
-export type SourceKind = "rss" | "youtube";
+/** "page": a listing page with no feed, scraped for article links (src/lib/scrape.ts). */
+export type SourceKind = "rss" | "youtube" | "page";
 export type SourceGroup = "labs" | "blogs" | "news" | "aggregator" | "youtube" | (string & {});
 
 export type View = "all" | "saved" | "video";

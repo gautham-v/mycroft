@@ -28,7 +28,7 @@ Feeds are fetched when you open the app (or bring it back to the foreground) if 
 
 Starter list is in `src/db/seed.ts`. Add more from the sidebar (desktop) or Sources tab (phone): paste a site URL, a feed URL, or a YouTube channel URL (`youtube.com/@handle`), and the app finds the feed.
 
-Known: Anthropic and Meta AI don't publish RSS feeds for their blogs, so they're not seeded (Anthropic's YouTube channel is). Ars Technica and The Verge block non-browser user agents; the fetcher sends a browser-like UA.
+Pages with no feed (e.g. `anthropic.com/news`, `claude.com/resources/articles`) are added as scraped-page sources: the app picks the article links off the listing page and reads each article's Open Graph / JSON-LD metadata. Only new links are fetched on refresh. Anthropic and Meta AI don't publish RSS feeds, so they're not seeded (Anthropic's YouTube channel is). Ars Technica and The Verge block non-browser user agents; the fetcher sends a browser-like UA.
 
 ## Local development
 
@@ -38,7 +38,7 @@ cp .env.example .env.local   # set DATABASE_URL to any Postgres (Neon free tier 
 pnpm dev
 ```
 
-Scripts: `pnpm db:push` (apply schema), `pnpm db:seed`, `pnpm test:parse` (feed parser checks), `pnpm tsx scripts/live-check.ts` (hit every seeded feed), `pnpm tsx scripts/make-icons.ts` (regenerate PWA icons).
+Scripts: `pnpm db:push` (apply schema), `pnpm db:seed`, `pnpm test:parse` (feed parser checks), `pnpm tsx scripts/live-check.ts` (hit every seeded feed), `pnpm tsx scripts/scrape-check.ts <url>` (preview a scraped-page source), `pnpm tsx scripts/make-icons.ts` (regenerate PWA icons).
 
 ## Layout
 

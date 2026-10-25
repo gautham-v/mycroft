@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "./http";
 import { parseFeedXml } from "./parse";
+import { canonicalUrl, findArticleLinks, listingTitle } from "./scrape";
 import type { SourceKind } from "./types";
 
 const TIMEOUT = 15_000;
@@ -136,5 +137,13 @@ export async function detectFeed(input: string): Promise<DetectedFeed> {
       if (r) return { ...r, url: siteFrom(null, finalUrl) };
     } catch {}
   }
-  throw new Error("No RSS/Atom feed found at that URL");
+
+  // No feed anywhere: fall back to scraping the page for article links (kind 'page').
+  if (findArticleLinks(text, finalUrl).length > 0) {
+    const listing = new URL(finalUrl);
+    // Keep the query (it may select a category); drop the fragment and trailing slash.
+    const pageUrl = canonicalUrl(listing) + listing.search;
+    return { title: listingTitle(text, finalUrl), url: pageUrl, feedUrl: pageUrl, kind: "page", group: "blogs" };
+  }
+  throw new Error("No RSS/Atom feed or article links found at that URL");
 }

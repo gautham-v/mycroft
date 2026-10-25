@@ -16,11 +16,13 @@ function Row({
   onClick,
   icon,
   label,
+  badge,
 }: {
   active: boolean;
   onClick: () => void;
   icon?: React.ReactNode;
   label: string;
+  badge?: string;
 }) {
   return (
     <li>
@@ -32,6 +34,7 @@ function Row({
       >
         {icon && <span className="flex w-[20px] shrink-0 justify-center text-[var(--muted)]">{icon}</span>}
         <span className="min-w-0 flex-1 truncate">{label}</span>
+        {badge && <span className="shrink-0 text-[11px] text-[var(--faint)]">{badge}</span>}
       </button>
     </li>
   );
@@ -186,6 +189,7 @@ export function Sidebar({
                   active={nav.source === s.id}
                   onClick={() => setNav({ view: "all", source: s.id, filter: null })}
                   label={s.title}
+                  badge={s.kind === "page" ? "page" : undefined}
                 />
               ))}
             </Section>

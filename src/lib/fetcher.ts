@@ -3,13 +3,16 @@ import { getDb } from "@/db/client";
 import { items, meta, sources, type SourceRow } from "@/db/schema";
 import { FEED_FALLBACKS } from "@/db/seed";
 import { errMsg, fetchWithTimeout } from "./http";
-import { parseFeedXml, type ParsedFeed } from "./parse";
+import { parseFeedXml, type ParsedFeed, type ParsedItem } from "./parse";
+import { scrapePage } from "./scrape";
 import { isStale } from "./time";
 import type { RefreshResult } from "./types";
 
 const FEED_TIMEOUT_MS = 15_000;
 const LAST_REFRESH_KEY = "last_refresh_at";
 const RETENTION_DAYS = 14;
+/** Scraped-page sources remember this many handled article URLs. */
+const MAX_SEEN_URLS = 300;
 
 function retentionCutoff(): Date {
   return new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
@@ -47,14 +50,33 @@ async function fetchSourceFeed(src: SourceRow): Promise<{ feed: ParsedFeed; feed
   throw lastErr;
 }
 
+/**
+ * Page sources: scrape the listing and fetch only article pages we haven't handled before
+ * (stored items, plus `seen_urls` for ones that were too old to keep or weren't articles).
+ */
+async function scrapeSourceItems(src: SourceRow): Promise<{ items: ParsedItem[]; seenUrls: string[] }> {
+  const db = await getDb();
+  const stored = await db.select({ url: items.url }).from(items).where(eq(items.sourceId, src.id));
+  const seen = src.seenUrls ?? [];
+  const r = await scrapePage(src.feedUrl, new Set([...seen, ...stored.map((x) => x.url)]));
+  const seenUrls = [...new Set([...r.processed, ...seen])].slice(0, MAX_SEEN_URLS);
+  return { items: r.items, seenUrls };
+}
+
+async function sourceItems(src: SourceRow): Promise<{ items: ParsedItem[]; seenUrls?: string[] }> {
+  if (src.kind === "page") return scrapeSourceItems(src);
+  const { feed } = await fetchSourceFeed(src);
+  return { items: feed.items };
+}
+
 export async function refreshSource(src: SourceRow): Promise<{ added: number }> {
   const db = await getDb();
   try {
-    const { feed } = await fetchSourceFeed(src);
+    const { items: parsed, seenUrls } = await sourceItems(src);
     let added = 0;
     // Skip items already past the retention window so pruned rows don't come back.
     const cutoff = retentionCutoff();
-    const fresh = feed.items.filter((it) => it.publishedAt >= cutoff);
+    const fresh = parsed.filter((it) => it.publishedAt >= cutoff);
     // Dedupe by guid: ON CONFLICT DO UPDATE errors if one statement touches a row twice.
     const byGuid = new Map(fresh.slice(0, 100).map((it) => [it.guid, it]));
     const rows = [...byGuid.values()].map((it) => ({ ...it, sourceId: src.id }));
@@ -79,7 +101,7 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
     }
     await db
       .update(sources)
-      .set({ lastFetchedAt: new Date(), lastError: null })
+      .set({ lastFetchedAt: new Date(), lastError: null, ...(seenUrls ? { seenUrls } : {}) })
       .where(eq(sources.id, src.id));
     return { added };
   } catch (e) {

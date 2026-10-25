@@ -9,7 +9,9 @@ let _db: DB | null = null;
 let _ready: Promise<void> | null = null;
 
 const SCHEMA_SQL = [
-  `IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'source_kind') THEN CREATE TYPE "source_kind" AS ENUM ('rss', 'youtube'); END IF`,
+  `IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'source_kind') THEN CREATE TYPE "source_kind" AS ENUM ('rss', 'youtube', 'page'); END IF`,
+  // Scraped-page sources (kind 'page'), added after the first release.
+  `ALTER TYPE "source_kind" ADD VALUE IF NOT EXISTS 'page'`,
   `CREATE TABLE IF NOT EXISTS "sources" (
     "id" serial PRIMARY KEY NOT NULL,
     "title" text NOT NULL,
@@ -20,6 +22,7 @@ const SCHEMA_SQL = [
     "icon_url" text,
     "last_fetched_at" timestamp with time zone,
     "last_error" text,
+    "seen_urls" text[],
     "created_at" timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT "sources_feed_url_unique" UNIQUE("feed_url")
   )`,
@@ -48,6 +51,7 @@ const SCHEMA_SQL = [
   // Read/unread was removed; drop the column (and its index) from databases created before that.
   `DROP INDEX IF EXISTS "items_is_read_idx"`,
   `ALTER TABLE "items" DROP COLUMN IF EXISTS "is_read"`,
+  `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "seen_urls" text[]`,
 ];
 
 function rawDb(): DB {

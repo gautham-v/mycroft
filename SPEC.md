@@ -15,7 +15,7 @@ Single-user RSS/YouTube reader. Next.js 16 (App Router, `src/`), TypeScript, Tai
 ## Data model (Drizzle, Postgres)
 
 ```
-sources: id serial pk, title text, url text (site/channel url), feed_url text unique, kind enum('rss','youtube'), group text ('labs'|'blogs'|'news'|'aggregator'|'youtube'), icon_url text null, last_fetched_at timestamptz null, last_error text null, created_at
+sources: id serial pk, title text, url text (site/channel url), feed_url text unique, kind enum('rss','youtube','page'), group text ('labs'|'blogs'|'news'|'aggregator'|'youtube'), icon_url text null, last_fetched_at timestamptz null, last_error text null, seen_urls text[] null (page sources: article URLs already handled), created_at
 items: id serial pk, source_id fk, guid text, url text, title text, summary text null, content_html text null (extracted full text, cached), author text null, published_at timestamptz, thumbnail_url text null, video_id text null, duration_sec int null, hn_points int null, hn_comments int null, hn_comments_url text null, is_saved bool default false, created_at; unique(source_id, guid); index(published_at desc)
 meta: key text pk, value text  — stores 'last_refresh_at'
 ```

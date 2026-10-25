@@ -247,7 +247,8 @@ function SourcesPane({
                       </p>
                     ) : (
                       <p className="truncate text-[12px] text-[var(--muted)]">
-                        {hostOf(s)} · {fetchedLabel(s.last_fetched_at, now)}
+                        {hostOf(s)}
+                        {s.kind === "page" && " · scraped page"} · {fetchedLabel(s.last_fetched_at, now)}
                       </p>
                     )}
                   </div>

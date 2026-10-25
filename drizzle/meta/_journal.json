@@ -15,6 +15,13 @@
       "when": 1792865821469,
       "tag": "0001_drop_is_read",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792876785057,
+      "tag": "0002_page_sources",
+      "breakpoints": true
     }
   ]
 }
