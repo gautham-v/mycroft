@@ -1,1 +1,0 @@
-ALTER TABLE "items" ADD COLUMN "thumbnail_checked" boolean DEFAULT false NOT NULL;

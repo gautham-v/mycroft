@@ -1,0 +1,84 @@
+name: Openfeed
+options:
+  bundleIdPrefix: com.gauthamv
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+packages:
+  OpenfeedCore:
+    path: ../Core
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+targets:
+  Openfeed:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Openfeed
+        excludes:
+          - "**/.DS_Store"
+          - "Openfeed.entitlements"
+          - "Info.plist"
+    dependencies:
+      - package: OpenfeedCore
+    info:
+      path: Openfeed/Info.plist
+      properties:
+        CFBundleDisplayName: Openfeed
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.news
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        BGTaskSchedulerPermittedIdentifiers: [com.gauthamv.openfeed.refresh]
+        UIBackgroundModes: [fetch, audio]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.gauthamv.openfeed
+            CFBundleURLSchemes: [openfeed]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.opml.opml
+            UTTypeDescription: OPML File
+            UTTypeConformsTo: [public.xml]
+            UTTypeTagSpecification:
+              public.filename-extension: [opml]
+              public.mime-type: [text/x-opml]
+    settings:
+      base:
+        PRODUCT_NAME: Openfeed
+        PRODUCT_BUNDLE_IDENTIFIER: com.gauthamv.openfeed
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Openfeed/Openfeed.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        ENABLE_PREVIEWS: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+schemes:
+  Openfeed:
+    build:
+      targets:
+        Openfeed: all
+    run:
+      config: Debug
+    archive:
+      config: Release

@@ -1,1 +1,0 @@
-ALTER TABLE "items" ADD COLUMN "content_rendered" boolean DEFAULT false NOT NULL;
