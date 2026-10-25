@@ -8,25 +8,28 @@ import type { ContentResponse } from "@/lib/types";
 
 export const maxDuration = 20;
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   await connection();
   try {
     const id = Number((await ctx.params).id);
     if (!Number.isInteger(id)) return errorJson("Invalid id", 400);
     const db = await getDb();
     const [row] = await db
-      .select({ item: items, kind: sources.kind })
+      .select({ item: items, kind: sources.kind, feedUrl: sources.feedUrl })
       .from(items)
       .innerJoin(sources, eq(items.sourceId, sources.id))
       .where(eq(items.id, id));
     if (!row) return errorJson("Not found", 404);
     const lead = row.item.thumbnailUrl;
     if (row.kind === "youtube") return json({ contentHtml: null, leadImage: lead } satisfies ContentResponse);
-    if (row.item.contentHtml) {
+    // ?refresh=1 re-extracts instead of serving the cached copy (e.g. after an extractor fix).
+    const refresh = new URL(req.url).searchParams.get("refresh") === "1";
+    if (row.item.contentHtml && !refresh) {
       return json({ contentHtml: row.item.contentHtml, leadImage: lead } satisfies ContentResponse);
     }
     try {
-      const out = await extractArticle(row.item.url);
+      const feed = row.kind === "rss" ? { feedUrl: row.feedUrl, guid: row.item.guid } : undefined;
+      const out = await extractArticle(row.item.url, feed);
       if (out.contentHtml) {
         await db
           .update(items)

@@ -210,3 +210,18 @@ export async function parseFeedXml(xml: string, kind: SourceKind, feedUrl: strin
     .filter((x): x is ParsedItem => x !== null);
   return { title: feed.title ?? null, link, items };
 }
+
+/**
+ * The full HTML a feed carries for one item (content:encoded, Atom content), matched by guid or URL.
+ * Used when the article page itself can't be fetched.
+ */
+export async function findFeedItemHtml(xml: string, match: { guid: string; url: string }): Promise<string | null> {
+  const feed = await parser.parseString(xml);
+  const strip = (u: string) => u.replace(/[?#].*$/, "").replace(/\/+$/, "");
+  const raw = (feed.items ?? []).find(
+    (r) =>
+      (r.guid || r.id) === match.guid ||
+      (r.link && strip(r.link) === strip(match.url)),
+  );
+  return raw ? (raw["content:encoded"] ?? raw.content ?? null) : null;
+}

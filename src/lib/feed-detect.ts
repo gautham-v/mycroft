@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from "./http";
 import { parseFeedXml } from "./parse";
 import { canonicalUrl, findArticleLinks, listingTitle } from "./scrape";
+import { normalizeSourceUrl, wwwAlternate } from "./source-url";
 import type { SourceKind } from "./types";
 
 const TIMEOUT = 15_000;
@@ -89,14 +90,38 @@ async function tryFeed(feedUrl: string, kind: SourceKind, text?: string): Promis
   };
 }
 
+/**
+ * Fetch a user-supplied URL; if that fails (network error or non-2xx) retry once with `www.`
+ * added to or removed from the host. Returns the first OK response and the URL it ended up at
+ * after redirects, or the original failure (thrown error or non-OK response) if neither works.
+ */
+async function fetchUserUrl(url: string, init?: RequestInit): Promise<{ res: Response; url: string }> {
+  let first: Response | null = null;
+  let firstErr: unknown = null;
+  try {
+    first = await fetchWithTimeout(url, TIMEOUT, init);
+    if (first.ok) return { res: first, url: first.url || url };
+  } catch (e) {
+    // A timeout already spent the budget; don't spend it twice.
+    if (e instanceof Error && e.name === "AbortError") throw e;
+    firstErr = e;
+  }
+  const alt = wwwAlternate(url);
+  if (alt) {
+    try {
+      const res = await fetchWithTimeout(alt, TIMEOUT, init);
+      if (res.ok) return { res, url: res.url || alt };
+    } catch {}
+  }
+  if (first) return { res: first, url: first.url || url };
+  // undici's bare "fetch failed" (DNS, refused, TLS) says nothing useful to the user.
+  if (firstErr instanceof TypeError && firstErr.message === "fetch failed") throw new Error(`Could not reach ${new URL(url).hostname}`);
+  throw firstErr;
+}
+
 /** Detect a feed from a user-supplied URL (site, feed, or YouTube channel). */
 export async function detectFeed(input: string): Promise<DetectedFeed> {
-  let u: URL;
-  try {
-    u = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
-  } catch {
-    throw new Error("Invalid URL");
-  }
+  const u = new URL(normalizeSourceUrl(input));
 
   if (isYoutubeUrl(u)) {
     if (u.pathname.startsWith("/feeds/videos.xml")) {
@@ -108,7 +133,7 @@ export async function detectFeed(input: string): Promise<DetectedFeed> {
     }
     let id = youtubeChannelIdFromUrl(u);
     if (!id) {
-      const res = await fetchWithTimeout(u.toString(), TIMEOUT, {
+      const { res } = await fetchUserUrl(u.toString(), {
         headers: { "Accept-Language": "en-US,en;q=0.9", Cookie: "CONSENT=YES+1" },
       });
       if (!res.ok) throw new Error(`YouTube page returned HTTP ${res.status}`);
@@ -120,10 +145,9 @@ export async function detectFeed(input: string): Promise<DetectedFeed> {
     return r;
   }
 
-  const res = await fetchWithTimeout(u.toString(), TIMEOUT);
+  const { res, url: finalUrl } = await fetchUserUrl(u.toString());
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
-  const finalUrl = res.url || u.toString();
 
   if (looksLikeFeed(text)) {
     const r = await tryFeed(finalUrl, "rss", text);

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { normalizeSourceUrl } from "@/lib/source-url";
 import { CloseIcon } from "./icons";
 
 export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: () => void }) {
@@ -18,13 +19,20 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
+    let normalized: string;
+    try {
+      normalized = normalizeSourceUrl(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid URL");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/sources", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: normalized }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -67,13 +75,16 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
         <p className="mt-0.5 text-[12px] text-[var(--faint)]">No feed? A news or blog listing page is scraped for new posts.</p>
         <input
           id="add-source-url"
-          type="url"
+          type="text"
           inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           autoFocus
           required
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com or youtube.com/@handle"
+          placeholder="example.com/blog or youtube.com/@handle"
           className="mt-1.5 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--ground)] px-3 text-[15px] outline-none focus:border-[var(--accent)]"
         />
         {error && (

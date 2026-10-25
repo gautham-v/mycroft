@@ -1,7 +1,8 @@
 import { parseFeedXml } from "../src/lib/parse";
 import assert from "node:assert/strict";
 import { extractArticle, extractFromHtml } from "../src/lib/extract";
-import { findAlternateFeeds, findChannelIdInHtml } from "../src/lib/feed-detect";
+import { detectFeed, findAlternateFeeds, findChannelIdInHtml } from "../src/lib/feed-detect";
+import { normalizeSourceUrl, wwwAlternate } from "../src/lib/source-url";
 import { relativeTime } from "../src/lib/time";
 import { extractArticleMeta, findArticleLinks, listingTitle } from "../src/lib/scrape";
 
@@ -43,6 +44,166 @@ async function main() {
   console.log("TIME:", relativeTime(Date.now() - 23 * 60e3), relativeTime(Date.now() - 3 * 3600e3), relativeTime(Date.now() - 2 * 86400e3));
   await checkRenderedFallback();
   checkScrape();
+  checkFigures();
+  await checkFeedFallback();
+  checkSourceUrl();
+  await checkWwwRetry();
+}
+
+function checkSourceUrl() {
+  const n = normalizeSourceUrl;
+  assert.equal(n("claude.com/resources/articles"), "https://claude.com/resources/articles");
+  assert.equal(n("  anthropic.com/news \n"), "https://anthropic.com/news");
+  assert.equal(n("www.anthropic.com/news"), "https://www.anthropic.com/news");
+  assert.equal(n("openai.com/news"), "https://openai.com/news");
+  assert.equal(n("OpenAI.com"), "https://openai.com/");
+  assert.equal(n("youtube.com/@fireship"), "https://youtube.com/@fireship");
+  assert.equal(n("http://example.com/feed.xml"), "http://example.com/feed.xml");
+  assert.equal(n("HTTPS://Example.com/a?b=1"), "https://example.com/a?b=1");
+  assert.equal(n("//example.com/x"), "https://example.com/x");
+  assert.equal(n("localhost:3000/feed"), "https://localhost:3000/feed");
+  assert.equal(n("http://localhost:3000/feed"), "http://localhost:3000/feed");
+  for (const bad of ["", "   ", "foo", "hello world", "ftp://example.com", "javascript://alert(1)", "https://", "https://nodot/x"]) {
+    assert.throws(() => n(bad), /url is required|Invalid URL/, bad);
+  }
+  assert.equal(wwwAlternate("https://anthropic.com/news"), "https://www.anthropic.com/news");
+  assert.equal(wwwAlternate("https://www.anthropic.com/news?x=1"), "https://anthropic.com/news?x=1");
+  assert.equal(wwwAlternate("https://www.com/"), null);
+  assert.equal(wwwAlternate("http://localhost:3000/"), null);
+  assert.equal(wwwAlternate("http://127.0.0.1/"), null);
+  console.log("SOURCE URL: ok");
+}
+
+async function checkWwwRetry() {
+  const FEED = `<?xml version="1.0"?><rss version="2.0"><channel><title>News</title><link>https://www.acme.com/</link></channel></rss>`;
+  // Bare host fails DNS -> retried with www., feed found there.
+  await withFetch(
+    (u) => {
+      if (u.startsWith("https://acme.com/")) throw new TypeError("fetch failed");
+      return html(FEED, "application/rss+xml");
+    },
+    async (calls) => {
+      const f = await detectFeed("acme.com/feed.xml");
+      assert.deepEqual(calls, ["https://acme.com/feed.xml", "https://www.acme.com/feed.xml"]);
+      assert.equal(f.feedUrl, "https://www.acme.com/feed.xml");
+    },
+  );
+  // www. host 404s -> retried without www.
+  await withFetch(
+    (u) => (u.startsWith("https://www.") ? new Response("", { status: 404 }) : html(FEED, "application/rss+xml")),
+    async (calls) => {
+      const f = await detectFeed("www.acme.com/feed.xml");
+      assert.deepEqual(calls, ["https://www.acme.com/feed.xml", "https://acme.com/feed.xml"]);
+      assert.equal(f.feedUrl, "https://acme.com/feed.xml");
+    },
+  );
+  // Both fail -> the original status is reported; network errors get a readable message.
+  await withFetch(
+    () => new Response("", { status: 503 }),
+    async () => assert.rejects(detectFeed("acme.com/news"), /HTTP 503/),
+  );
+  await withFetch(
+    () => {
+      throw new TypeError("fetch failed");
+    },
+    async () => assert.rejects(detectFeed("acme.com/news"), /Could not reach acme\.com/),
+  );
+  // Success on the first try -> no retry.
+  await withFetch(
+    () => html(FEED, "application/rss+xml"),
+    async (calls) => {
+      await detectFeed("acme.com/feed.xml");
+      assert.equal(calls.length, 1);
+    },
+  );
+  console.log("WWW RETRY: ok");
+}
+
+const PROSE = "<p>This is a long paragraph of meaningful article text that Readability should keep, with enough words to score well, commas, and clauses.</p>".repeat(6);
+const page = (body: string) => `<html><head><title>T</title></head><body><nav>menu</nav><article>${PROSE}${body}${PROSE}</article></body></html>`;
+
+function checkFigures() {
+  const url = "https://site.example.com/posts/a";
+  const run = (body: string) => extractFromHtml(page(body), url).contentHtml ?? "";
+
+  // Utility-CSS image wrapper (overflow-hidden, scroll-mt-*) with a <picture> of light/dark sources.
+  let h = run(`<div class="group col-span-full"><figure class="grid scroll-mt-[calc(var(--x))]"><div class="relative overflow-hidden rounded-md">
+    <picture><source media="(prefers-color-scheme: dark)" srcset="/d-640.png 640w, /d-1280.png 1280w"><img alt="Diagram" src="/l-1280.png" srcset="/l-640.png 640w"></picture>
+    </div></figure></div>`);
+  assert.match(h, /<picture><source media="\(prefers-color-scheme: dark\)" srcset="https:\/\/site\.example\.com\/d-640\.png 640w, https:\/\/site\.example\.com\/d-1280\.png 1280w" \/>/);
+  assert.match(h, /<img alt="Diagram" src="https:\/\/site\.example\.com\/l-1280\.png"/);
+
+  // Semantic "media" class names on wrappers (Readability's negative list) keep their image.
+  h = run(`<figure class="media__container"><div class="media-image-block"><img src="/m.jpg" width="1440" height="810"></div><figcaption>Map</figcaption></figure>`);
+  assert.match(h, /src="https:\/\/site\.example\.com\/m\.jpg"/);
+
+  // Lazy images: data-src over a data: placeholder; srcset-only gets its largest candidate; commas inside URLs.
+  h = run(`<p><img data-src="/lazy.jpg" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></p>
+    <p><img data-srcset="/c/w_640,c_fill/x.jpg 640w, /c/w_1280,c_fill/x.jpg 1280w"></p>`);
+  assert.match(h, /src="https:\/\/site\.example\.com\/lazy\.jpg"/);
+  assert.match(h, /src="https:\/\/site\.example\.com\/c\/w_1280,c_fill\/x\.jpg"/);
+  assert.match(h, /srcset="https:\/\/site\.example\.com\/c\/w_640,c_fill\/x\.jpg 640w, https:\/\/site\.example\.com\/c\/w_1280,c_fill\/x\.jpg 1280w"/);
+
+  // Chart drawn client-side: caption only -> note linking to the figure on the original page.
+  h = run(`<figure><div><div id="chart-1" style="height:400px"></div></div><figcaption><p>We plot the cumulative number of findings.</p></figcaption></figure>`);
+  assert.match(h, /Interactive figure not shown here[\s\S]*href="https:\/\/site\.example\.com\/posts\/a#chart-1"/);
+  assert.match(h, /We plot the cumulative number of findings/);
+
+  // Inline SVG chart kept (shapes only, no script/handlers/external refs); icon SVGs dropped.
+  h = run(`<div class="chart"><svg viewBox="0 0 600 300" onload="alert(1)"><script>alert(2)</script><defs><linearGradient id="g"><stop offset="0" stop-color="red"/></linearGradient></defs><rect fill="url(#g)" width="1" height="1"/><rect width="10" height="20" fill="url(https://evil.example/x#p)"/><path d="M0 0L10 10" stroke="#333"/><text x="5" y="5">Tokens</text><foreignObject><div>x</div></foreignObject></svg></div>
+    <p>Copy <svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 1"/></svg></p>
+    <p>Brand <svg aria-hidden="true" viewBox="0 0 1000 1000"><polygon points="0 0 1 1"/></svg></p>`);
+  assert.match(h, /<svg viewbox="0 0 600 300">/);
+  assert.match(h, /<path d="M0 0L10 10" stroke="#333" \/>|<path d="M0 0L10 10" stroke="#333"><\/path>/);
+  assert.match(h, /<text x="5" y="5">Tokens<\/text>/);
+  assert.match(h, /<linearGradient id="g"><stop offset="0" stop-color="red"/i);
+  assert.match(h, /fill="url\(#g\)"/);
+  assert.doesNotMatch(h, /onload|<script|alert|evil\.example|foreignobject|viewbox="0 0 16 16"|polygon/i);
+
+  // Video in text-free wrappers survives Readability and gets controls; fallback poster dropped.
+  h = run(`<div class="video-wrapper"><div class="media-video-container"><video autoplay loop muted poster="/static/video_poster_fallback.jpg" preload="none"><source data-src="/v.mp4" type="video/mp4">Your browser does not support the video tag.</video></div></div>`);
+  assert.match(h, /<video autoplay loop muted preload="metadata" controls><source src="https:\/\/site\.example\.com\/v\.mp4" type="video\/mp4" \/>/);
+
+  // Light and dark copies side by side: keep the light one.
+  h = run(`<figure><div><picture class="image light-mode"><img src="/light.png"></picture><picture class="image dark-mode-alternative"><img src="/dark.png"></picture></div><figcaption>Fig</figcaption></figure>
+    <p><img class="block dark:hidden" src="/tw-light.png"><img class="hidden dark:block" src="/tw-dark.png"></p>`);
+  assert.match(h, /light\.png/);
+  assert.match(h, /tw-light\.png/);
+  assert.doesNotMatch(h, /dark\.png/);
+  console.log("FIGURES: ok");
+}
+
+async function checkFeedFallback() {
+  const FEED = `<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>B</title><link>https://blocked.example.com/</link>
+<item><title>Post</title><link>https://blocked.example.com/p/1</link><guid>g1</guid><content:encoded><![CDATA[${PROSE}<figure><img src="/fig.png"><figcaption>Cap</figcaption></figure>]]></content:encoded></item>
+<item><title>Teaser</title><link>https://blocked.example.com/p/2</link><guid>g2</guid><content:encoded><![CDATA[<p>Short teaser.</p>]]></content:encoded></item>
+</channel></rss>`;
+  const feedRef = (guid: string) => ({ feedUrl: "https://blocked.example.com/feed.xml", guid });
+  // Page 403s to both User-Agents -> full article from the feed's content:encoded, no Jina call.
+  await withFetch(
+    (u) => (u.endsWith("/feed.xml") ? html(FEED, "application/rss+xml") : new Response("", { status: 403 })),
+    async (calls) => {
+      const out = await extractArticle("https://blocked.example.com/p/1", feedRef("g1"));
+      assert.deepEqual(calls, ["https://blocked.example.com/p/1", "https://blocked.example.com/p/1", "https://blocked.example.com/feed.xml"]);
+      assert.match(out.contentHtml ?? "", /meaningful article text/);
+      assert.match(out.contentHtml ?? "", /src="https:\/\/blocked\.example\.com\/fig\.png"/);
+    },
+  );
+  // Feed only has a teaser -> Jina; Cloudflare challenge -> no browser-UA retry.
+  await withFetch(
+    (u) =>
+      u.endsWith("/feed.xml")
+        ? html(FEED, "application/rss+xml")
+        : u.startsWith("https://r.jina.ai/")
+          ? html(ARTICLE, "text/plain")
+          : new Response("", { status: 403, headers: { "cf-mitigated": "challenge" } }),
+    async (calls) => {
+      const out = await extractArticle("https://blocked.example.com/p/2", feedRef("g2"));
+      assert.equal(calls.length, 3);
+      assert.equal(out.rendered, true);
+    },
+  );
+  console.log("FEED FALLBACK: ok");
 }
 
 const LISTING = `<html><head><title>Newsroom \\ Acme</title></head><body>

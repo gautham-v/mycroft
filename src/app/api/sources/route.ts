@@ -6,6 +6,7 @@ import { detectFeed } from "@/lib/feed-detect";
 import { refreshSource } from "@/lib/fetcher";
 import { errMsg, errorJson, json } from "@/lib/http";
 import { toSource } from "@/lib/queries";
+import { normalizeSourceUrl } from "@/lib/source-url";
 
 // Adding a scraped-page source fetches its listing and article pages before responding.
 export const maxDuration = 60;
@@ -25,9 +26,15 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { url?: string; group?: string };
     if (!body.url || typeof body.url !== "string") return errorJson("url is required", 400);
+    let url: string;
+    try {
+      url = normalizeSourceUrl(body.url);
+    } catch (e) {
+      return errorJson(errMsg(e), 400);
+    }
     let found;
     try {
-      found = await detectFeed(body.url.trim());
+      found = await detectFeed(url);
     } catch (e) {
       return errorJson(errMsg(e), 422);
     }

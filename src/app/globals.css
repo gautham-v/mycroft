@@ -198,6 +198,16 @@ body {
   margin-top: 1.4em;
   margin-bottom: 1.4em;
 }
+.prose-openfeed picture {
+  display: block;
+}
+/* Inline SVG figures (diagrams, charts). Icons are stripped server-side. */
+.prose-openfeed svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.4em auto;
+}
 .prose-openfeed iframe {
   width: 100%;
   aspect-ratio: 16 / 9;
