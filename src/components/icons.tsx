@@ -123,6 +123,13 @@ export const VideoIcon = (p: P) => (
     <path d="M10 9.5v5l4.5-2.5z" />
   </Base>
 );
+export const HeadphonesIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M4 15v-3a8 8 0 0 1 16 0v3" />
+    <rect x="3.5" y="14" width="4.5" height="6.5" rx="1.5" />
+    <rect x="16" y="14" width="4.5" height="6.5" rx="1.5" />
+  </Base>
+);
 export const CommentIcon = (p: P) => (
   <Base {...p}>
     <path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />

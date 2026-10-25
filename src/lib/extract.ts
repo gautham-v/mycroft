@@ -1131,13 +1131,13 @@ export function preferFeed(pageHtml: string | null, feedHtml: string | null): bo
  * Article HTML that came from the feed itself (content:encoded). No Readability: the feed already
  * holds just the article. Returns null when it is only a teaser.
  */
-export function extractFromFeedHtml(html: string, pageUrl: string): ExtractResult {
+export function extractFromFeedHtml(html: string, pageUrl: string, minText = MIN_FEED_TEXT): ExtractResult {
   const { document } = parseHTML(`<!doctype html><html><body><div id="__root">${html}</div></body></html>`);
   const root = document.getElementById("__root");
   if (!root) return { contentHtml: null, leadImage: null };
   prepareDom(root, pageUrl, pageUrl);
   const clean = sanitizeArticle(cleanArticle(root.innerHTML, pageUrl)).trim();
-  if (plainText(clean).length < MIN_FEED_TEXT) return { contentHtml: null, leadImage: null };
+  if (plainText(clean).length < minText) return { contentHtml: null, leadImage: null };
   return { contentHtml: clean, leadImage: firstImage(clean) };
 }
 
@@ -1176,6 +1176,31 @@ async function extractFromFeed(url: string, feed: FeedRef, ms: number): Promise<
   if (!html) return null;
   const out = extractFromFeedHtml(html, url);
   return out.contentHtml ? out : null;
+}
+
+/** Podcast episodes keep their show notes in the feed; any length counts. */
+const PODCAST_FEED_TIMEOUT_MS = 15_000;
+
+/**
+ * A podcast episode's show notes from the feed (content:encoded, description, itunes:summary),
+ * never the episode web page, which is mostly a player. No lead image: show-note images are
+ * usually sponsor logos, and the episode already has its art.
+ */
+export async function extractPodcastNotes(url: string, feed: FeedRef): Promise<ExtractResult> {
+  const res = await fetchWithTimeout(feed.feedUrl, PODCAST_FEED_TIMEOUT_MS, {
+    headers: { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5" },
+  });
+  if (!res.ok) throw new Error(`Feed returned HTTP ${res.status}`);
+  const html = await findFeedItemHtml(await res.text(), { guid: feed.guid, url });
+  if (!html) return { contentHtml: null, leadImage: null };
+  // Plain-text notes (no tags) keep their line breaks as paragraphs.
+  const notes = /<[a-z][^>]*>/i.test(html)
+    ? html
+    : html
+        .split(/\n\s*\n/)
+        .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, "<br>")}</p>`)
+        .join("");
+  return { contentHtml: extractFromFeedHtml(notes, url, 1).contentHtml, leadImage: null };
 }
 
 async function extractPlain(url: string): Promise<ExtractResult> {

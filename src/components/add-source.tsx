@@ -70,9 +70,11 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
           </button>
         </div>
         <label htmlFor="add-source-url" className="mt-3 block text-[13px] text-[var(--muted)]">
-          Feed, site, or YouTube channel URL
+          Feed, site, YouTube channel, or podcast URL
         </label>
-        <p className="mt-0.5 text-[12px] text-[var(--faint)]">No feed? A news or blog listing page is scraped for new posts.</p>
+        <p className="mt-0.5 text-[12px] text-[var(--faint)]">
+          Podcasts: a feed URL or Apple Podcasts link. No feed? A news or blog listing page is scraped for new posts.
+        </p>
         <input
           id="add-source-url"
           type="text"
@@ -84,7 +86,7 @@ export function AddSourceDialog({ open, onClose, onAdded }: { open: boolean; onC
           required
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="example.com/blog or youtube.com/@handle"
+          placeholder="example.com/blog, youtube.com/@handle, or a podcast"
           className="mt-1.5 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--ground)] px-3 text-[15px] outline-none focus:border-[var(--accent)]"
         />
         {error && (

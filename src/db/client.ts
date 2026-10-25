@@ -10,9 +10,11 @@ let _db: DB | null = null;
 let _ready: Promise<void> | null = null;
 
 const SCHEMA_SQL = [
-  `IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'source_kind') THEN CREATE TYPE "source_kind" AS ENUM ('rss', 'youtube', 'page'); END IF`,
+  `IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'source_kind') THEN CREATE TYPE "source_kind" AS ENUM ('rss', 'youtube', 'page', 'podcast'); END IF`,
   // Scraped-page sources (kind 'page'), added after the first release.
   `ALTER TYPE "source_kind" ADD VALUE IF NOT EXISTS 'page'`,
+  // Podcast feeds (kind 'podcast').
+  `ALTER TYPE "source_kind" ADD VALUE IF NOT EXISTS 'podcast'`,
   `CREATE TABLE IF NOT EXISTS "sources" (
     "id" serial PRIMARY KEY NOT NULL,
     "title" text NOT NULL,
@@ -42,6 +44,7 @@ const SCHEMA_SQL = [
     "thumbnail_checked" boolean DEFAULT false NOT NULL,
     "video_id" text,
     "duration_sec" integer,
+    "audio_url" text,
     "hn_points" integer,
     "hn_comments" integer,
     "hn_comments_url" text,
@@ -68,6 +71,8 @@ const SCHEMA_SQL = [
   )`,
   `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "folder_id" integer REFERENCES "folders"("id") ON DELETE SET NULL`,
   `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "position" integer DEFAULT 0 NOT NULL`,
+  // Podcast episodes: the audio enclosure URL.
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "audio_url" text`,
 ];
 
 function rawDb(): DB {

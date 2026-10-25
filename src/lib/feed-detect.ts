@@ -12,6 +12,8 @@ export interface DetectedFeed {
   feedUrl: string;
   kind: SourceKind;
   group: string;
+  /** Podcasts: the show art, stored as the source icon. */
+  iconUrl?: string | null;
 }
 
 const YT_FEED = (id: string) => `https://www.youtube.com/feeds/videos.xml?channel_id=${id}`;
@@ -81,6 +83,16 @@ async function tryFeed(feedUrl: string, kind: SourceKind, text?: string): Promis
       group: "youtube",
     };
   }
+  if (feed.isPodcast) {
+    return {
+      title: feed.title ?? new URL(feedUrl).hostname,
+      url: siteFrom(feed.link, feedUrl),
+      feedUrl,
+      kind: "podcast",
+      group: "podcast",
+      iconUrl: feed.imageUrl,
+    };
+  }
   return {
     title: feed.title ?? new URL(feedUrl).hostname,
     url: siteFrom(feed.link, feedUrl),
@@ -88,6 +100,26 @@ async function tryFeed(feedUrl: string, kind: SourceKind, text?: string): Promis
     kind,
     group: "blogs",
   };
+}
+
+/** The numeric show id in an Apple Podcasts URL (podcasts.apple.com/us/podcast/the-daily/id1200361736). */
+export function applePodcastId(u: URL): string | null {
+  if (!/^(podcasts|itunes)\.apple\.com$/i.test(u.hostname)) return null;
+  return u.pathname.match(/\/id(\d+)(?:\/|$)/)?.[1] ?? u.searchParams.get("id")?.match(/^\d+$/)?.[0] ?? null;
+}
+
+export function isSpotifyShowUrl(u: URL): boolean {
+  return /^(open|podcasters)\.spotify\.com$/i.test(u.hostname) && /\/(show|episode)\//.test(u.pathname);
+}
+
+/** An Apple Podcasts show's RSS feed, from the iTunes lookup API. */
+async function appleFeedUrl(id: string): Promise<string> {
+  const res = await fetchWithTimeout(`https://itunes.apple.com/lookup?id=${id}&entity=podcast`, TIMEOUT);
+  if (!res.ok) throw new Error(`Apple Podcasts lookup returned HTTP ${res.status}`);
+  const body = (await res.json().catch(() => null)) as { results?: { feedUrl?: string }[] } | null;
+  const feedUrl = body?.results?.find((r) => r.feedUrl)?.feedUrl;
+  if (!feedUrl) throw new Error("Apple Podcasts has no public RSS feed for this show");
+  return feedUrl;
 }
 
 /**
@@ -119,9 +151,20 @@ async function fetchUserUrl(url: string, init?: RequestInit): Promise<{ res: Res
   throw firstErr;
 }
 
-/** Detect a feed from a user-supplied URL (site, feed, or YouTube channel). */
+/** Detect a feed from a user-supplied URL (site, feed, podcast feed, Apple Podcasts show, or YouTube channel). */
 export async function detectFeed(input: string): Promise<DetectedFeed> {
   const u = new URL(normalizeSourceUrl(input));
+
+  const appleId = applePodcastId(u);
+  if (appleId) {
+    const feedUrl = await appleFeedUrl(appleId);
+    const r = await tryFeed(feedUrl, "rss");
+    if (!r) throw new Error("The podcast's RSS feed could not be read");
+    return r;
+  }
+  if (isSpotifyShowUrl(u)) {
+    throw new Error("Spotify does not expose RSS feeds. Search for the show on Apple Podcasts or its website and add that URL instead.");
+  }
 
   if (isYoutubeUrl(u)) {
     if (u.pathname.startsWith("/feeds/videos.xml")) {

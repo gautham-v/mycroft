@@ -1,10 +1,10 @@
-import { and, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
+import { and, eq, gte, lt, notInArray, sql, type SQL } from "drizzle-orm";
 import { folders, items, sources, type FolderRow, type ItemRow, type SourceRow } from "@/db/schema";
 import { isPostSource, POST_SOURCE_RE } from "./folders";
 import { hostOf } from "./http";
 import type { Filter, Folder, Item, Source, SourceType, View } from "./types";
 
-const VIEWS: View[] = ["all", "saved", "articles", "posts", "video"];
+const VIEWS: View[] = ["all", "saved", "articles", "posts", "video", "podcasts"];
 export function parseView(v: string | null | undefined): View {
   return VIEWS.includes(v as View) ? (v as View) : "all";
 }
@@ -18,8 +18,9 @@ export function itemConditions(opts: { view?: View; source?: number | null; fold
   const isPost = sql`${sources.url} ~* ${POST_SOURCE_RE}`;
   if (opts.view === "saved") c.push(eq(items.isSaved, true));
   if (opts.view === "video") c.push(eq(sources.kind, "youtube"));
+  if (opts.view === "podcasts") c.push(eq(sources.kind, "podcast"));
   if (opts.view === "posts") c.push(isPost);
-  if (opts.view === "articles") c.push(ne(sources.kind, "youtube"), sql`NOT (${isPost})`);
+  if (opts.view === "articles") c.push(notInArray(sources.kind, ["youtube", "podcast"]), sql`NOT (${isPost})`);
   if (opts.source) c.push(eq(items.sourceId, opts.source));
   if (opts.folder) c.push(eq(sources.folderId, opts.folder));
   if (opts.filter === "hn100") c.push(eq(sources.group, "aggregator"), gte(items.hnPoints, 100));
@@ -55,6 +56,7 @@ export function toItem(i: ItemRow, s: SourceRow): Item {
     thumbnail_url: i.thumbnailUrl,
     video_id: i.videoId,
     duration_sec: i.durationSec,
+    audio_url: i.audioUrl,
     hn_points: i.hnPoints,
     hn_comments: i.hnComments,
     hn_comments_url: i.hnCommentsUrl,
@@ -73,6 +75,7 @@ export function toItem(i: ItemRow, s: SourceRow): Item {
 
 export function sourceType(s: Pick<SourceRow, "kind" | "url">): SourceType {
   if (s.kind === "youtube") return "video";
+  if (s.kind === "podcast") return "podcast";
   return isPostSource(s.url) ? "post" : "article";
 }
 

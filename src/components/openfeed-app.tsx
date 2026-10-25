@@ -12,7 +12,7 @@ import { Reader, ReaderEmpty } from "./reader";
 import { SettingsDialog } from "./settings-dialog";
 import { HOME, Sidebar, type NavState } from "./sidebar";
 
-const VIEWS: View[] = ["all", "saved", "articles", "posts", "video"];
+const VIEWS: View[] = ["all", "saved", "articles", "posts", "video", "podcasts"];
 const FILTERS: Filter[] = ["hn100", "labs", "blogs"];
 
 function parseNav(sp: URLSearchParams) {
@@ -49,12 +49,20 @@ const CHIPS: Chip[] = [
   { id: "articles", label: "Articles", nav: { ...HOME, view: "articles" } },
   { id: "posts", label: "Posts", nav: { ...HOME, view: "posts" } },
   { id: "video", label: "Video", nav: { ...HOME, view: "video" } },
+  { id: "podcasts", label: "Podcasts", nav: { ...HOME, view: "podcasts" } },
   { id: "hn100", label: "HN ≥ 100", nav: { ...HOME, filter: "hn100" } },
   { id: "labs", label: "Labs", nav: { ...HOME, filter: "labs" } },
   { id: "blogs", label: "Blogs", nav: { ...HOME, filter: "blogs" } },
 ];
 
-const VIEW_TITLES: Record<View, string> = { all: "All", saved: "Saved", articles: "Articles", posts: "Posts", video: "Video" };
+const VIEW_TITLES: Record<View, string> = {
+  all: "All",
+  saved: "Saved",
+  articles: "Articles",
+  posts: "Posts",
+  video: "Video",
+  podcasts: "Podcasts",
+};
 const FILTER_TITLES: Record<Filter, string> = { hn100: "HN ≥ 100", labs: "Labs", blogs: "Blogs" };
 
 // Desktop sidebar collapsed state, persisted in localStorage. A tiny external store so the

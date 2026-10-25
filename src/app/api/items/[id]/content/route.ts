@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { items, sources } from "@/db/schema";
 import { cachedContent, contentUpdate } from "@/lib/content-cache";
-import { extractArticle } from "@/lib/extract";
+import { extractArticle, extractPodcastNotes } from "@/lib/extract";
 import { errMsg, errorJson, json } from "@/lib/http";
 import type { ContentResponse } from "@/lib/types";
 
@@ -27,8 +27,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const refresh = new URL(req.url).searchParams.get("refresh") === "1";
     if (row.item.contentHtml && !refresh) return json(cachedContent(row.item, lead));
     try {
-      const feed = row.kind === "rss" ? { feedUrl: row.feedUrl, guid: row.item.guid } : undefined;
-      const out = await extractArticle(row.item.url, feed);
+      const feed = { feedUrl: row.feedUrl, guid: row.item.guid };
+      // Podcast episodes: the show notes in the feed, not the episode page (mostly a player).
+      const out =
+        row.kind === "podcast"
+          ? await extractPodcastNotes(row.item.url, feed)
+          : await extractArticle(row.item.url, row.kind === "rss" ? feed : undefined);
       const update = contentUpdate(out, lead);
       if (update) await db.update(items).set(update).where(eq(items.id, id));
       return json({

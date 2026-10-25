@@ -10,7 +10,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-export const sourceKind = pgEnum("source_kind", ["rss", "youtube", "page"]);
+export const sourceKind = pgEnum("source_kind", ["rss", "youtube", "page", "podcast"]);
 
 /** User-named sidebar sections. Sources with no folder show under "Unfiled". */
 export const folders = pgTable("folders", {
@@ -59,6 +59,8 @@ export const items = pgTable(
     thumbnailChecked: boolean("thumbnail_checked").notNull().default(false),
     videoId: text("video_id"),
     durationSec: integer("duration_sec"),
+    /** kind 'podcast': the episode's audio enclosure URL. */
+    audioUrl: text("audio_url"),
     hnPoints: integer("hn_points"),
     hnComments: integer("hn_comments"),
     hnCommentsUrl: text("hn_comments_url"),

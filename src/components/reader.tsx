@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { useSettings, type Settings } from "@/hooks/use-settings";
 import { SourceBadge } from "./badge";
@@ -119,6 +119,8 @@ export function Reader({
   const [settings] = useSettings();
   const [copied, setCopied] = useState(false);
   const isVideo = item.source.kind === "youtube";
+  // Podcasts read like articles (title, show notes) with an audio player between header and notes.
+  const isPodcast = item.source.kind === "podcast" && !!item.audio_url;
   // Posts on X have no headline: the extracted markup carries the author row, text and cards.
   const isPost = isXPost(item.url) && content.status !== "failed";
   const host = hostOf(item.url) || item.source.host;
@@ -143,10 +145,19 @@ export function Reader({
     }
   };
 
-  const hero = !isVideo && !isPost ? item.thumbnail_url || (content.status === "ok" ? content.leadImage : null) : null;
+  const leadArt = item.thumbnail_url || (content.status === "ok" ? content.leadImage : null);
+  // A podcast's art sits beside its player, so it is never also the hero.
+  const hero = !isVideo && !isPost && !isPodcast ? leadArt : null;
+  const podcastArt = isPodcast ? leadArt : null;
+  const contentHtml = content.status === "ok" ? content.html : null;
+  // Show notes often open with the same episode/show art; drop it so it does not appear twice.
+  const html = useMemo(
+    () => (contentHtml && podcastArt ? stripImage(contentHtml, podcastArt) : contentHtml),
+    [contentHtml, podcastArt],
+  );
   // A page's hero video comes first in the extracted HTML; it replaces the hero image.
   const contentHasHero =
-    content.status === "ok" && hero != null && (content.html.includes(hero) || /^\s*<(?:iframe|video)\b/.test(content.html));
+    html != null && hero != null && (html.includes(hero) || /^\s*<(?:iframe|video)\b/.test(html));
 
   return (
     <article className="min-h-full bg-[var(--surface)] pb-[calc(env(safe-area-inset-bottom)+32px)]">
@@ -205,6 +216,9 @@ export function Reader({
             <div className="mt-3.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[14px] text-[var(--muted)]">
               <span className="font-medium text-[var(--ink)]">{item.source.title}</span>
               {item.author && item.author !== item.source.title && <span>{item.author}</span>}
+              {isPodcast && formatDuration(item.duration_sec) && (
+                <span className="tabular-nums">{formatDuration(item.duration_sec)}</span>
+              )}
               {item.hn_comments_url && (
                 <a
                   href={item.hn_comments_url}
@@ -220,6 +234,7 @@ export function Reader({
             {content.status === "ok" && content.rendered && (
               <p className="mt-1.5 text-[12px] text-[var(--muted)]">Rendered copy</p>
             )}
+            {isPodcast && <PodcastPlayer key={item.id} item={item} art={podcastArt} />}
           </div>
           )}
 
@@ -244,7 +259,7 @@ export function Reader({
                   )}
                 </div>
               )}
-              {content.status === "ok" && <div dangerouslySetInnerHTML={{ __html: content.html }} />}
+              {html != null && <div dangerouslySetInnerHTML={{ __html: html }} />}
               {content.status === "failed" && (
                 <div>
                   {summaryText && <p>{summaryText}</p>}
@@ -266,6 +281,92 @@ export function Reader({
         </>
       )}
     </article>
+  );
+}
+
+/** Removes <img> tags whose src is `src` (raw or HTML-escaped). */
+function stripImage(html: string, src: string): string {
+  const variants = [src, src.replace(/&/g, "&amp;")];
+  return html.replace(/<img\b[^>]*>/gi, (tag) =>
+    variants.some((v) => tag.includes(`"${v}"`) || tag.includes(`'${v}'`)) ? "" : tag,
+  );
+}
+
+const POSITION_KEY = (id: number) => `openfeed:podcast-pos:${id}`;
+const SAVE_EVERY_MS = 5000;
+
+function savePosition(id: number, a: HTMLAudioElement | null) {
+  if (!a || a.ended || !(a.currentTime > 0)) return;
+  try {
+    window.localStorage.setItem(POSITION_KEY(id), String(Math.floor(a.currentTime)));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Native audio player with the episode art beside it. Never autoplays; resumes where you left off. */
+function PodcastPlayer({ item, art }: { item: Item; art: string | null }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const lastSave = useRef(0);
+  const id = item.id;
+
+  // Save when the player unmounts mid-episode (switching items, closing the reader).
+  useEffect(() => {
+    const a = ref.current;
+    return () => savePosition(id, a);
+  }, [id]);
+
+  const restore = () => {
+    const a = ref.current;
+    if (!a) return;
+    try {
+      const saved = Number(window.localStorage.getItem(POSITION_KEY(id)));
+      if (saved > 0 && (!Number.isFinite(a.duration) || saved < a.duration - 5)) a.currentTime = saved;
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  const onTimeUpdate = () => {
+    const now = Date.now();
+    if (now - lastSave.current < SAVE_EVERY_MS) return;
+    lastSave.current = now;
+    savePosition(id, ref.current);
+  };
+
+  const onEnded = () => {
+    try {
+      window.localStorage.removeItem(POSITION_KEY(id));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  return (
+    <div className="mt-6 flex items-center gap-3.5 rounded-[10px] border border-[var(--hairline)] bg-[var(--ground)] p-3">
+      {art && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={art}
+          alt=""
+          width={72}
+          height={72}
+          className="h-[64px] w-[64px] shrink-0 rounded-[6px] bg-[var(--code)] object-cover md:h-[72px] md:w-[72px]"
+        />
+      )}
+      <audio
+        ref={ref}
+        controls
+        preload="none"
+        src={item.audio_url ?? undefined}
+        onLoadedMetadata={restore}
+        onTimeUpdate={onTimeUpdate}
+        onPause={() => savePosition(id, ref.current)}
+        onEnded={onEnded}
+        aria-label={`Play ${item.title}`}
+        className="h-10 min-w-0 flex-1"
+      />
+    </div>
   );
 }
 

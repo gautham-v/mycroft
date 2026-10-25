@@ -1,10 +1,11 @@
-import { findFeedItemHtml, parseFeedXml } from "../src/lib/parse";
+import { audioEnclosure, findFeedItemHtml, parseDuration, parseFeedXml } from "../src/lib/parse";
 import assert from "node:assert/strict";
 import {
   cleanArticle,
   extractArticle,
   extractFromFeedHtml,
   extractFromHtml,
+  extractPodcastNotes,
   mergeSplitContainers,
   removePlayerChrome,
   pickedOutsideRegion,
@@ -83,6 +84,95 @@ async function main() {
   checkBoilerplate();
   checkBadgeLead();
   await checkThumbBackfill();
+  await checkPodcast();
+}
+
+const PODCAST = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+<title>The Show</title><link>https://show.example.com/</link><itunes:author>Host</itunes:author><itunes:image href="https://cdn.example.com/show.jpg"/>
+<item><title>Ep 2</title><link>https://show.example.com/ep2</link><guid isPermaLink="false">ep-2</guid><pubDate>Thu, 22 Oct 2026 10:00:00 GMT</pubDate>
+<enclosure url="https://cdn.example.com/ep2.mp3" length="1" type="audio/mpeg"/><itunes:duration>1:02:03</itunes:duration><itunes:image href="https://cdn.example.com/ep2.jpg"/>
+<content:encoded><![CDATA[<p>Show notes for two. <img src="https://ads.example.com/sponsor.png"></p>]]></content:encoded></item>
+<item><title>Ep 1</title><guid isPermaLink="false">ep-1</guid><pubDate>Wed, 21 Oct 2026 10:00:00 GMT</pubDate>
+<enclosure url="https://cdn.example.com/ep1.m4a" length="1"/><itunes:duration>1800</itunes:duration>
+<description>Plain notes.
+
+Second paragraph &amp; more.</description></item>
+</channel></rss>`;
+
+async function checkPodcast() {
+  assert.equal(parseDuration("1:02:03"), 3723);
+  assert.equal(parseDuration("45:30"), 2730);
+  assert.equal(parseDuration("1800"), 1800);
+  assert.equal(parseDuration("1800.6"), 1801);
+  assert.equal(parseDuration("abc"), null);
+  assert.equal(parseDuration(""), null);
+  assert.equal(audioEnclosure({ url: "https://x/a.mp3", type: "audio/mpeg" }), "https://x/a.mp3");
+  assert.equal(audioEnclosure({ url: "https://x/a.mp3?u=1" }), "https://x/a.mp3?u=1");
+  assert.equal(audioEnclosure({ url: "https://x/a.jpg", type: "image/jpeg" }), null);
+  assert.equal(audioEnclosure({ url: "https://x/a.mp4", type: "video/mp4" }), null);
+
+  const f = await parseFeedXml(PODCAST, "rss", "https://show.example.com/feed.xml");
+  assert.equal(f.isPodcast, true);
+  assert.equal(f.imageUrl, "https://cdn.example.com/show.jpg");
+  const [e2, e1] = f.items;
+  assert.equal(e2.audioUrl, "https://cdn.example.com/ep2.mp3");
+  assert.equal(e2.durationSec, 3723);
+  // Episode art beats the sponsor image in the notes.
+  assert.equal(e2.thumbnailUrl, "https://cdn.example.com/ep2.jpg");
+  assert.equal(e2.summary, "Show notes for two.");
+  // No type, audio extension; no link and an opaque guid -> the show page; show art fallback.
+  assert.equal(e1.audioUrl, "https://cdn.example.com/ep1.m4a");
+  assert.equal(e1.durationSec, 1800);
+  assert.equal(e1.url, "https://show.example.com/");
+  assert.equal(e1.thumbnailUrl, "https://cdn.example.com/show.jpg");
+
+  // A blog is not a podcast; its items carry no audio.
+  const blog = await parseFeedXml(BLOG, "rss", "https://blog.example.com/feed");
+  assert.equal(blog.isPodcast, false);
+  assert.ok(blog.items.every((i) => i.audioUrl === null && i.durationSec === null));
+
+  // Detector: a podcast feed comes back as kind/group "podcast" with the show art as icon.
+  await withFetch(
+    () => html(PODCAST, "application/rss+xml"),
+    async () => {
+      const d = await detectFeed("https://show.example.com/feed.xml");
+      assert.equal(d.kind, "podcast");
+      assert.equal(d.group, "podcast");
+      assert.equal(d.iconUrl, "https://cdn.example.com/show.jpg");
+      assert.equal(d.url, "https://show.example.com");
+    },
+  );
+  // Apple Podcasts URL -> iTunes lookup -> feed.
+  await withFetch(
+    (u) =>
+      u.startsWith("https://itunes.apple.com/lookup")
+        ? html(JSON.stringify({ results: [{ feedUrl: "https://show.example.com/feed.xml" }] }), "application/json")
+        : html(PODCAST, "application/rss+xml"),
+    async (calls) => {
+      const d = await detectFeed("https://podcasts.apple.com/us/podcast/the-show/id1200361736?i=1000");
+      assert.equal(calls[0], "https://itunes.apple.com/lookup?id=1200361736&entity=podcast");
+      assert.equal(d.feedUrl, "https://show.example.com/feed.xml");
+      assert.equal(d.kind, "podcast");
+    },
+  );
+  await assert.rejects(detectFeed("https://open.spotify.com/show/abc123"), /Spotify does not expose RSS/);
+
+  // Show notes come from the feed, never the episode page; plain-text notes become paragraphs.
+  await withFetch(
+    () => html(PODCAST, "application/rss+xml"),
+    async (calls) => {
+      const feed = { feedUrl: "https://show.example.com/feed.xml", guid: "ep-1" };
+      const out = await extractPodcastNotes("https://show.example.com/", feed);
+      assert.deepEqual(calls, ["https://show.example.com/feed.xml"]);
+      assert.equal(out.leadImage, null);
+      assert.match(out.contentHtml ?? "", /<p>Plain notes\.<\/p>\s*<p>Second paragraph &amp; more\.<\/p>/);
+      const two = await extractPodcastNotes("https://show.example.com/ep2", { ...feed, guid: "ep-2" });
+      assert.match(two.contentHtml ?? "", /Show notes for two/);
+    },
+  );
+  assert.match(schemaSql(), /ALTER TYPE "source_kind" ADD VALUE IF NOT EXISTS 'podcast'/);
+  assert.match(schemaSql(), /ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "audio_url" text/);
+  console.log("PODCAST: ok");
 }
 
 // claude.com/resources/articles pages carry a bare calendar date (saved 2026-10-24).

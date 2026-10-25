@@ -3,21 +3,38 @@ import { memo } from "react";
 import type { Item } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { SourceBadge } from "./badge";
-import { PlayIcon } from "./icons";
+import { HeadphonesIcon, PlayIcon } from "./icons";
 import { formatDuration, isXPost, splitHandle, stripHtml } from "./text";
 
 function Thumb({ item }: { item: Item }) {
-  if (!item.thumbnail_url) return null;
-  const dur = item.source.kind === "youtube" ? formatDuration(item.duration_sec) : null;
+  const isPodcast = item.source.kind === "podcast";
+  // Podcast rows keep a thumb even without art, so the audio indicator and duration still show.
+  if (!item.thumbnail_url && !isPodcast) return null;
+  const dur = item.source.kind === "youtube" || isPodcast ? formatDuration(item.duration_sec) : null;
   return (
     <span className="relative block h-[50px] w-[76px] shrink-0 overflow-hidden rounded-[3px] bg-[var(--code)]">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={item.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+      {item.thumbnail_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-[var(--faint)]">
+          <HeadphonesIcon size={20} />
+        </span>
+      )}
       {item.source.kind === "youtube" && (
         <span className="absolute inset-0 flex items-center justify-center">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white">
             <PlayIcon size={10} strokeWidth={0} />
           </span>
+        </span>
+      )}
+      {isPodcast && item.thumbnail_url && (
+        <span
+          role="img"
+          aria-label="Podcast episode"
+          className="absolute bottom-0.5 left-0.5 flex h-[14px] w-[14px] items-center justify-center rounded-[4px] bg-black/75 text-white"
+        >
+          <HeadphonesIcon size={10} strokeWidth={2.25} />
         </span>
       )}
       {dur && (

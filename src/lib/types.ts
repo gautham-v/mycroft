@@ -1,13 +1,13 @@
 // Shared API types (JSON wire format, snake_case). Imported by frontend via "@/lib/types".
 
 /** "page": a listing page with no feed, scraped for article links (src/lib/scrape.ts). */
-export type SourceKind = "rss" | "youtube" | "page";
-export type SourceGroup = "labs" | "blogs" | "news" | "aggregator" | "youtube" | (string & {});
+export type SourceKind = "rss" | "youtube" | "page" | "podcast";
+export type SourceGroup = "labs" | "blogs" | "news" | "aggregator" | "youtube" | "podcast" | (string & {});
 
 /** Content-type views. "articles" = everything that is not a video or a post source. */
-export type View = "all" | "saved" | "articles" | "posts" | "video";
+export type View = "all" | "saved" | "articles" | "posts" | "video" | "podcasts";
 /** Derived from kind + url: how a source's items read. */
-export type SourceType = "article" | "post" | "video";
+export type SourceType = "article" | "post" | "video" | "podcast";
 export type Filter = "hn100" | "labs" | "blogs";
 
 /** Compact source embedded in each Item. */
@@ -33,6 +33,8 @@ export interface Item {
   thumbnail_url: string | null;
   video_id: string | null;
   duration_sec: number | null;
+  /** kind 'podcast': episode audio URL. */
+  audio_url: string | null;
   hn_points: number | null;
   hn_comments: number | null;
   hn_comments_url: string | null;

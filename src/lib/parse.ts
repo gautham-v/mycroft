@@ -12,6 +12,8 @@ export interface ParsedItem {
   thumbnailUrl: string | null;
   videoId: string | null;
   durationSec: number | null;
+  /** The episode's audio enclosure (podcast feeds; set for any feed item that carries one). */
+  audioUrl: string | null;
   hnPoints: number | null;
   hnComments: number | null;
   hnCommentsUrl: string | null;
@@ -20,6 +22,10 @@ export interface ParsedItem {
 export interface ParsedFeed {
   title: string | null;
   link: string | null;
+  /** A podcast: most items carry an audio enclosure (see feedLooksLikePodcast). */
+  isPodcast: boolean;
+  /** Show/channel art (itunes:image, then the RSS channel image), absolute. */
+  imageUrl: string | null;
   items: ParsedItem[];
 }
 
@@ -40,11 +46,34 @@ type RawItem = Parser.Item & {
   mediaContent?: Attrs[];
   enclosure?: { url?: string; type?: string };
   "content:encoded"?: string;
+  itunesDuration?: XmlText;
+  itunesImage?: Attrs;
+  itunesSummary?: XmlText;
+};
+/** xml2js gives a bare string, or `{ _: text, $: attrs }` when the element has attributes. */
+type XmlText = string | { _?: string };
+type RawFeed = {
+  itunesImage?: Attrs;
+  itunesAuthor?: XmlText;
+  itunesOwner?: unknown;
+  itunesCategory?: unknown;
+  itunesExplicit?: XmlText;
+  itunesType?: XmlText;
 };
 
-const parser: Parser<Record<string, unknown>, RawItem> = new Parser({
+const parser: Parser<RawFeed, RawItem> = new Parser({
   timeout: 15000,
   customFields: {
+    // Read directly rather than via rss-parser's `itunes` object, which it only fills when the
+    // <rss> element itself declares xmlns:itunes.
+    feed: [
+      ["itunes:image", "itunesImage"],
+      ["itunes:author", "itunesAuthor"],
+      ["itunes:owner", "itunesOwner"],
+      ["itunes:category", "itunesCategory"],
+      ["itunes:explicit", "itunesExplicit"],
+      ["itunes:type", "itunesType"],
+    ] as unknown as (keyof RawFeed)[],
     item: [
       ["media:group", "mediaGroup"],
       ["yt:videoId", "videoId"],
@@ -53,6 +82,9 @@ const parser: Parser<Record<string, unknown>, RawItem> = new Parser({
       ["comments", "comments"],
       ["description", "description"],
       ["author", "author"],
+      ["itunes:duration", "itunesDuration"],
+      ["itunes:image", "itunesImage"],
+      ["itunes:summary", "itunesSummary"],
     ],
   },
 });
@@ -129,9 +161,48 @@ function pickDate(raw: RawItem): Date {
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
-export function normalizeItem(raw: RawItem, kind: SourceKind, feedUrl: string, feedLink: string | null): ParsedItem | null {
+const xmlText = (v: XmlText | undefined): string | null => {
+  const t = typeof v === "string" ? v : v?._;
+  return t?.trim() || null;
+};
+
+const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|#|$)/i;
+
+/** The enclosure URL when it is audio: an audio/* type, or (no type given) an audio file extension. */
+export function audioEnclosure(enc: { url?: string; type?: string } | undefined): string | null {
+  const url = enc?.url?.trim();
+  if (!url) return null;
+  const type = (enc?.type ?? "").trim().toLowerCase();
+  if (type) return type.startsWith("audio/") || (type === "application/octet-stream" && AUDIO_EXT.test(url)) ? url : null;
+  return AUDIO_EXT.test(url) ? url : null;
+}
+
+/** itunes:duration as seconds: plain seconds ("3725", "3725.4") or "HH:MM:SS" / "MM:SS". */
+export function parseDuration(v: string | null | undefined): number | null {
+  const s = v?.trim();
+  if (!s) return null;
+  const parts = s.split(":");
+  if (parts.length > 3 || parts.some((p) => !/^\d+(\.\d+)?$/.test(p.trim()))) return null;
+  const secs = parts.reduce((acc, p) => acc * 60 + Number(p), 0);
+  return secs > 0 ? Math.round(secs) : null;
+}
+
+export function normalizeItem(
+  raw: RawItem,
+  kind: SourceKind,
+  feedUrl: string,
+  feedLink: string | null,
+  showArt: string | null = null,
+): ParsedItem | null {
   const base = feedLink ?? feedUrl;
-  const url = absolutize(raw.link, base) ?? absolutize(raw.guid, base);
+  const audio = kind === "youtube" ? null : absolutize(audioEnclosure(raw.enclosure), feedUrl);
+  // Episodes often have no <link> and an opaque guid: fall back to the show page, then the audio.
+  const url = audio
+    ? (absolutize(raw.link, base) ??
+      (/^https?:\/\//i.test(raw.guid ?? "") ? absolutize(raw.guid, base) : null) ??
+      absolutize(feedLink, feedUrl) ??
+      audio)
+    : (absolutize(raw.link, base) ?? absolutize(raw.guid, base));
   if (!url) return null;
   const guid = (raw.guid || raw.id || url).toString();
   const title = (raw.title ?? "").trim() || "(untitled)";
@@ -151,13 +222,14 @@ export function normalizeItem(raw: RawItem, kind: SourceKind, feedUrl: string, f
       thumbnailUrl: videoId ? youtubeThumb(videoId) : null,
       videoId,
       durationSec: null,
+      audioUrl: null,
       hnPoints: null,
       hnComments: null,
       hnCommentsUrl: null,
     };
   }
 
-  const html = raw["content:encoded"] ?? raw.content ?? raw.description ?? raw.summary;
+  const html = raw["content:encoded"] ?? raw.content ?? raw.description ?? raw.summary ?? xmlText(raw.itunesSummary) ?? undefined;
 
   if (isHnFeed(feedUrl)) {
     const { points, comments } = parseHnDescription(raw.description ?? raw.content);
@@ -171,6 +243,7 @@ export function normalizeItem(raw: RawItem, kind: SourceKind, feedUrl: string, f
       thumbnailUrl: null,
       videoId: null,
       durationSec: null,
+      audioUrl: null,
       hnPoints: points,
       hnComments: comments,
       hnCommentsUrl: raw.comments ?? null,
@@ -184,7 +257,10 @@ export function normalizeItem(raw: RawItem, kind: SourceKind, feedUrl: string, f
   const mediaThumb = toArr(raw.mediaThumbnail)[0]?.$?.url;
   const groupThumb = raw.mediaGroup?.["media:thumbnail"]?.[0]?.$?.url;
   const enc = raw.enclosure?.url && (raw.enclosure.type ?? "").startsWith("image/") ? raw.enclosure.url : undefined;
-  const thumb = mediaContentImg ?? mediaThumb ?? groupThumb ?? enc ?? firstImg(html);
+  // Episodes: the episode's own art, then the show's, before any image in the show notes (often a sponsor logo).
+  const episodeArt = raw.itunesImage?.$?.href;
+  const thumb =
+    mediaContentImg ?? mediaThumb ?? groupThumb ?? enc ?? episodeArt ?? (audio ? showArt : null) ?? firstImg(html);
 
   return {
     guid,
@@ -195,20 +271,35 @@ export function normalizeItem(raw: RawItem, kind: SourceKind, feedUrl: string, f
     publishedAt: pickDate(raw),
     thumbnailUrl: absolutize(thumb, url),
     videoId: null,
-    durationSec: null,
+    durationSec: audio ? parseDuration(xmlText(raw.itunesDuration)) : null,
+    audioUrl: audio,
     hnPoints: null,
     hnComments: null,
     hnCommentsUrl: null,
   };
 }
 
+/**
+ * A podcast feed: at least one item has an audio enclosure, and either most items do or the
+ * channel carries iTunes podcast tags. A blog that links the odd MP3 stays a blog.
+ */
+export function feedLooksLikePodcast(feed: { hasItunesTags: boolean; itemCount: number; audioCount: number }): boolean {
+  if (feed.audioCount === 0) return false;
+  return feed.audioCount * 2 >= feed.itemCount || (feed.hasItunesTags && feed.audioCount * 4 >= feed.itemCount);
+}
+
 export async function parseFeedXml(xml: string, kind: SourceKind, feedUrl: string): Promise<ParsedFeed> {
   const feed = await parser.parseString(xml);
   const link = feed.link ?? null;
+  const imageUrl = absolutize(feed.itunesImage?.$?.href ?? feed.itunes?.image ?? feed.image?.url, link ?? feedUrl);
   const items = (feed.items ?? [])
-    .map((r) => normalizeItem(r, kind, feedUrl, link))
+    .map((r) => normalizeItem(r, kind, feedUrl, link, imageUrl))
     .filter((x): x is ParsedItem => x !== null);
-  return { title: feed.title ?? null, link, items };
+  const hasItunesTags = !!(feed.itunesImage || feed.itunesAuthor || feed.itunesOwner || feed.itunesCategory || feed.itunesType);
+  const isPodcast =
+    kind !== "youtube" &&
+    feedLooksLikePodcast({ hasItunesTags, itemCount: items.length, audioCount: items.filter((i) => i.audioUrl).length });
+  return { title: feed.title ?? null, link, isPodcast, imageUrl, items };
 }
 
 /**
@@ -224,5 +315,5 @@ export async function findFeedItemHtml(xml: string, match: { guid: string; url: 
   const raw =
     items.find((r) => (r.guid || r.id) === match.guid) ??
     items.find((r) => !!r.link && norm(r.link) === norm(match.url));
-  return raw ? (raw["content:encoded"] ?? raw.content ?? null) : null;
+  return raw ? (raw["content:encoded"] ?? raw.content ?? xmlText(raw.itunesSummary)) : null;
 }

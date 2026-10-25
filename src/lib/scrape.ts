@@ -377,6 +377,7 @@ export async function scrapePage(
           thumbnailUrl: m.thumbnailUrl,
           videoId: null,
           durationSec: null,
+          audioUrl: null,
           hnPoints: null,
           hnComments: null,
           hnCommentsUrl: null,

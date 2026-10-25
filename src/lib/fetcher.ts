@@ -163,6 +163,8 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
             url: sql`excluded.url`,
             summary: sql`coalesce(excluded.summary, ${items.summary})`,
             thumbnailUrl: sql`coalesce(excluded.thumbnail_url, ${items.thumbnailUrl})`,
+            audioUrl: sql`coalesce(excluded.audio_url, ${items.audioUrl})`,
+            durationSec: sql`coalesce(excluded.duration_sec, ${items.durationSec})`,
             hnPoints: sql`excluded.hn_points`,
             hnComments: sql`excluded.hn_comments`,
             hnCommentsUrl: sql`excluded.hn_comments_url`,
@@ -182,8 +184,9 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
       .update(sources)
       .set({ lastFetchedAt: new Date(), lastError: null, ...(seenUrls ? { seenUrls } : {}) })
       .where(eq(sources.id, src.id));
-    // Page sources get og:image while scraping; YouTube thumbnails come from the video id.
-    if (src.kind === "rss") {
+    // Page sources get og:image while scraping; YouTube thumbnails come from the video id. Podcast
+    // episodes take the episode or show art from the feed, so only art-less ones reach the page.
+    if (src.kind === "rss" || src.kind === "podcast") {
       try {
         await backfillThumbnails(db, src.id, thumbTargets);
       } catch (e) {

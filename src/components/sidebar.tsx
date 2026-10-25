@@ -8,6 +8,7 @@ import {
   BookmarkIcon,
   ChevronIcon,
   GearIcon,
+  HeadphonesIcon,
   InboxIcon,
   MoreIcon,
   PlusIcon,
@@ -387,7 +388,8 @@ export function Sidebar({
   const renderSource = (s: Source) => {
     const active = nav.source === s.id;
     const isOver = over?.kind === "row" && over.id === s.id;
-    const badge = s.type === "post" ? "post" : s.kind === "page" ? "page" : undefined;
+    const badge =
+      s.type === "post" ? "post" : s.type === "podcast" || s.kind === "podcast" ? "podcast" : s.kind === "page" ? "page" : undefined;
     return (
       <li
         key={s.id}
@@ -537,6 +539,12 @@ export function Sidebar({
           <ViewRow active={isView("articles")} onClick={() => view("articles")} icon={<ArticleIcon size={18} />} label="Articles" />
           <ViewRow active={isView("posts")} onClick={() => view("posts")} icon={<PostIcon size={18} />} label="Posts" />
           <ViewRow active={isView("video")} onClick={() => view("video")} icon={<VideoIcon size={18} />} label="Video" />
+          <ViewRow
+            active={isView("podcasts")}
+            onClick={() => view("podcasts")}
+            icon={<HeadphonesIcon size={18} />}
+            label="Podcasts"
+          />
         </ul>
         {orderedFolders.map(renderFolder)}
         {renderFolder(null)}
