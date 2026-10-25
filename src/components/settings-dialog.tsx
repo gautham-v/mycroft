@@ -103,7 +103,7 @@ export function SettingsDialog({
               <button
                 key={t.id}
                 {...tabProps(t.id)}
-                className={`h-8 flex-1 rounded-[4px] text-[13px] font-medium ${
+                className={`h-10 flex-1 rounded-[4px] text-[13px] font-medium ${
                   tab === t.id ? "bg-[var(--surface)] text-[var(--ink)] shadow-sm" : "text-[var(--muted)]"
                 }`}
               >
@@ -148,7 +148,7 @@ export function SettingsDialog({
         type="button"
         onClick={onClose}
         aria-label="Close settings"
-        className="absolute right-3 top-[calc(env(safe-area-inset-top)+8px)] inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] md:top-3"
+        className="absolute right-1.5 top-[calc(env(safe-area-inset-top)+2px)] inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] md:right-3 md:top-3 md:h-[30px] md:w-[30px]"
       >
         <CloseIcon size={18} />
       </button>
@@ -292,7 +292,7 @@ function SourcesPane({
                       aria-label={`Folder for ${s.title}`}
                       value={s.folder_id ?? ""}
                       onChange={(e) => move(s, e.target.value)}
-                      className="h-7 max-w-[120px] shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 text-[12px] text-[var(--muted)]"
+                      className="h-11 max-w-[120px] shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 text-[12px] text-[var(--muted)] md:h-7"
                     >
                       {orderedFolders.map((f) => (
                         <option key={f.id} value={f.id}>
@@ -307,7 +307,7 @@ function SourcesPane({
                       <button
                         type="button"
                         onClick={() => setConfirming(null)}
-                        className="h-7 rounded-md border border-[var(--border)] px-2.5 text-[13px] font-medium text-[var(--ink)] hover:bg-[var(--hover)]"
+                        className="h-11 rounded-md border border-[var(--border)] px-2.5 text-[13px] font-medium text-[var(--ink)] hover:bg-[var(--hover)] md:h-7"
                       >
                         Keep
                       </button>
@@ -316,7 +316,7 @@ function SourcesPane({
                         autoFocus
                         onClick={() => void remove(s)}
                         aria-label={`Remove ${s.title}`}
-                        className="h-7 rounded-md bg-[var(--danger)] px-2.5 text-[13px] font-medium text-white"
+                        className="h-11 rounded-md bg-[var(--danger)] px-2.5 text-[13px] font-medium text-white md:h-7"
                       >
                         Remove
                       </button>
@@ -326,7 +326,7 @@ function SourcesPane({
                       type="button"
                       onClick={() => setConfirming(s.id)}
                       aria-label={`Remove ${s.title}`}
-                      className="h-7 shrink-0 rounded-md px-2.5 text-[13px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                      className="h-11 shrink-0 rounded-md px-2.5 text-[13px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] md:h-7"
                     >
                       Remove
                     </button>
@@ -818,7 +818,7 @@ function Segmented<T extends string>({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(v)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`h-7 min-w-[40px] rounded-[4px] px-3 text-[13px] font-medium ${
+            className={`h-10 min-w-[40px] rounded-[4px] px-3 text-[13px] font-medium md:h-7 ${
               selected ? "bg-[var(--surface)] text-[var(--ink)] shadow-sm" : "text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >

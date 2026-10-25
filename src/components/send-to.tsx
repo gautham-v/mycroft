@@ -6,7 +6,7 @@ import { CheckIcon, SendIcon } from "./icons";
 
 // Same look as the reader's ActionButton (reader.tsx), plus menu-button ARIA.
 const BUTTON =
-  "inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] disabled:opacity-60 lg:h-[30px] lg:w-[30px]";
+  "inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] disabled:opacity-60 lg:h-[30px] lg:w-[30px]";
 
 const MENU_LABEL: Record<SendTarget, string> = { readwise: "Readwise Reader", webhook: "Webhook" };
 

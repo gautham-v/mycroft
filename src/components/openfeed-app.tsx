@@ -335,6 +335,14 @@ export function OpenfeedApp() {
     toggleHelp: () => setHelpOpen((v) => !v),
   });
 
+  // --- list scroll ---------------------------------------------------------------
+  // The old list stays on screen while the next one loads, so a new view, feed or search would
+  // otherwise open at the previous list's scroll offset.
+  const listScroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    listScroll.current?.scrollTo({ top: 0 });
+  }, [nav.view, nav.source, nav.folder, parsed.q]);
+
   // --- infinite scroll ---------------------------------------------------------
   const sentinel = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -352,17 +360,8 @@ export function OpenfeedApp() {
   // Phone/tablet tabs: a source or folder feed belongs to the Sources tab; views belong to Feed.
   const inSourceFeed = nav.source != null || nav.folder != null;
   const tab = settingsOpen ? "settings" : parsed.sourcesPage || inSourceFeed ? "sources" : nav.view === "saved" ? "saved" : "feed";
-  const phoneTitle = parsed.sourcesPage
-    ? "Sources"
-    : activeSource
-      ? activeSource.title
-      : activeFolder
-        ? activeFolder.title
-        : inSourceFeed
-          ? ""
-          : nav.view === "saved"
-            ? "Saved"
-            : "All";
+  // Blank while a source/folder feed waits for the sources list, rather than flashing the view name.
+  const phoneTitle = parsed.sourcesPage ? "Sources" : inSourceFeed && !activeSource && !activeFolder ? "" : listTitle;
   const subline = `updated ${
     stats?.lastRefreshAt ? (relativeTime(stats.lastRefreshAt, now) === "now" ? "just now" : `${relativeTime(stats.lastRefreshAt, now)} ago`) : "never"
   }`;
@@ -406,20 +405,19 @@ export function OpenfeedApp() {
   );
 
   const chips = (
-    <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3" role="toolbar" aria-label="Views">
+    <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1.5" role="toolbar" aria-label="Views">
       {CHIPS.map((c) => {
         const active = activeChip === c.id;
+        // The button is a 44px touch target; the pill inside is what shows.
         return (
-          <button
-            key={c.id}
-            type="button"
-            aria-pressed={active}
-            onClick={() => setNav(c.nav)}
-            className={`h-8 shrink-0 rounded-full px-3.5 text-[13px] font-medium ${
-              active ? "bg-[var(--ink)] text-[var(--surface)]" : "bg-[var(--code)] text-[var(--ink)]"
-            }`}
-          >
-            {c.label}
+          <button key={c.id} type="button" aria-pressed={active} onClick={() => setNav(c.nav)} className="flex h-11 shrink-0 items-center">
+            <span
+              className={`flex h-8 items-center rounded-full px-3.5 text-[13px] font-medium ${
+                active ? "bg-[var(--ink)] text-[var(--surface)]" : "bg-[var(--code)] text-[var(--ink)]"
+              }`}
+            >
+              {c.label}
+            </span>
           </button>
         );
       })}
@@ -529,7 +527,7 @@ export function OpenfeedApp() {
             {!parsed.sourcesPage && refreshButton}
           </div>
           {!parsed.sourcesPage && search.open && <div className="flex px-4 pt-3">{searchField("phone")}</div>}
-          {tab === "feed" ? <div className="pt-3">{chips}</div> : <div className="h-3" />}
+          {tab === "feed" ? <div className="pt-1.5">{chips}</div> : <div className="h-3" />}
         </header>
 
         {/* Desktop header */}
@@ -564,6 +562,7 @@ export function OpenfeedApp() {
         {/* Keyed so switching between the Sources page and a feed starts at the top. */}
         <div
           key={parsed.sourcesPage ? "sources" : "list"}
+          ref={listScroll}
           className="panel-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0"
         >
           {parsed.sourcesPage ? (

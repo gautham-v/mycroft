@@ -87,7 +87,7 @@ function ActionButton({
 }) {
   const cls = `${
     desktopOnly ? "hidden lg:inline-flex" : "inline-flex"
-  } h-9 w-9 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] lg:h-[30px] lg:w-[30px]`;
+  } h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] lg:h-[30px] lg:w-[30px]`;
   if (href)
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" className={cls} aria-label={label} title={label}>
@@ -181,7 +181,8 @@ export function Reader({
             <SourceBadge host={item.source.host} title={item.source.title} size={20} />
             <span className="truncate text-[13px] text-[var(--muted)]">{meta.filter(Boolean).join(" · ")}</span>
           </div>
-          <div className="flex items-center gap-0.5">
+          {/* 44px touch targets below lg; the negative margin lines the last icon up with the gutter. */}
+          <div className="-mr-2.5 flex items-center lg:mr-0 lg:gap-0.5">
             <ActionButton label={item.is_saved ? "Remove from saved" : "Save"} onClick={() => onToggleSaved(item)}>
               <BookmarkIcon size={17} filled={item.is_saved} className={item.is_saved ? "text-[var(--accent)]" : ""} />
             </ActionButton>
@@ -209,8 +210,10 @@ export function Reader({
         <VideoBody item={item} summaryText={summaryText} autoplay={settings.autoplay} theater={settings.theater} />
       ) : (
         <>
+          {/* box-content here and below: 640px of text, with the side padding outside it, so narrow
+              panes (tablet) keep a gutter. */}
           {!isPost && (
-          <div className="mx-auto max-w-[640px] px-5 pt-8 md:px-0 lg:pt-10">
+          <div className="mx-auto box-content max-w-[640px] px-5 pt-8 md:px-8 lg:pt-10">
             <h1
               className={`text-balance ${settings.readerFont === "sans" ? "font-sans" : "font-serif"} ${HEADLINE_SIZE[settings.textSize]} font-semibold leading-[1.12] tracking-[-0.01em] text-[var(--ink)]`}
             >
@@ -244,7 +247,7 @@ export function Reader({
           )}
 
           <div
-            className={`prose-openfeed mx-auto px-5 md:px-0 ${isPost ? "mt-6 lg:mt-8" : "mt-7"}`}
+            className={`prose-openfeed mx-auto box-content px-5 md:px-8 ${isPost ? "mt-6 lg:mt-8" : "mt-7"}`}
             data-font={settings.readerFont}
             data-size={settings.textSize}
           >
@@ -408,7 +411,7 @@ function VideoBody({
           <div className="relative mx-auto aspect-video w-full max-w-[960px]">{player}</div>
         </div>
       )}
-      <div className={`mx-auto max-w-[640px] px-5 md:px-0 ${theater ? "pt-6" : "pt-8 lg:pt-10"}`}>
+      <div className={`mx-auto box-content max-w-[640px] px-5 md:px-8 ${theater ? "pt-6" : "pt-8 lg:pt-10"}`}>
         <h1 className="text-balance text-[20px] font-semibold leading-[1.3] tracking-[-0.01em] text-[var(--ink)] md:text-[22px]">
           {item.title}
         </h1>

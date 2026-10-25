@@ -71,9 +71,9 @@ function isTyping(t: EventTarget | null) {
 }
 
 /**
- * Global keyboard shortcuts. ⌘\, ⇧⌘F and Esc work everywhere (inputs and dialogs that handle Esc
- * stop it first); the single-key ones only on tablet/desktop, with focus outside text fields and
- * no dialog open.
+ * Global keyboard shortcuts. ⌘\ and ⇧⌘F work everywhere, Esc everywhere but in an open dialog
+ * (inputs and menus that handle Esc stop it first); the single-key ones only on tablet/desktop,
+ * with focus outside text fields and no dialog open.
  */
 export function useKeyboard(actions: KeyboardActions) {
   const ref = useRef(actions);
@@ -104,7 +104,9 @@ export function useKeyboard(actions: KeyboardActions) {
         return;
       }
       if (e.key === "Escape") {
-        a.escape();
+        // An open modal closes itself on Esc. Its own handler usually stops the event, but not
+        // when focus fell back to <body> (e.g. the focused button became disabled while busy).
+        if (!document.querySelector("dialog[open]")) a.escape();
         return;
       }
 
