@@ -89,6 +89,16 @@ export interface ReorderFoldersBody {
   order: number[];
 }
 
+/** POST /api/opml result. */
+export interface OpmlImportResult {
+  added: number;
+  /** Feeds already subscribed (or repeated in the file). */
+  skipped: number;
+  folders_created: number;
+  /** One line per outline that couldn't be imported (e.g. an invalid feed URL). */
+  errors: string[];
+}
+
 export interface Stats {
   /** ISO or null if never refreshed */
   lastRefreshAt: string | null;

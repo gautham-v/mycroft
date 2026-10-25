@@ -72,10 +72,21 @@ async function scrapeSourceItems(src: SourceRow, stored: StoredItem[]): Promise<
 
 type StoredItem = { guid: string; url: string; title: string };
 
-async function sourceItems(src: SourceRow, stored: StoredItem[]): Promise<{ items: ParsedItem[]; seenUrls?: string[] }> {
-  if (src.kind === "page") return scrapeSourceItems(src, stored);
+type SourceUpdate = Partial<Pick<SourceRow, "kind" | "group" | "iconUrl" | "seenUrls">>;
+
+async function sourceItems(src: SourceRow, stored: StoredItem[]): Promise<{ items: ParsedItem[]; update: SourceUpdate }> {
+  if (src.kind === "page") {
+    const { items, seenUrls } = await scrapeSourceItems(src, stored);
+    return { items, update: { seenUrls } };
+  }
   const { feed } = await fetchSourceFeed(src);
-  return { items: feed.items };
+  // OPML imports aren't fetched when added, so they start as rss without art. On the first fetch a
+  // feed that turns out to be a podcast becomes one, with its show art, as if added by URL.
+  const firstFetch = src.lastFetchedAt == null && feed.isPodcast;
+  if (firstFetch && (src.kind === "rss" || (src.kind === "podcast" && !src.iconUrl))) {
+    return { items: feed.items, update: { kind: "podcast", group: "podcast", iconUrl: src.iconUrl ?? feed.imageUrl } };
+  }
+  return { items: feed.items, update: {} };
 }
 
 type ThumbTarget = { id: number; url: string };
@@ -139,7 +150,7 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
       .select({ guid: items.guid, url: items.url, title: items.title })
       .from(items)
       .where(eq(items.sourceId, src.id));
-    const { items: parsed, seenUrls } = await sourceItems(src, stored);
+    const { items: parsed, update } = await sourceItems(src, stored);
     let added = 0;
     let thumbTargets: ThumbTarget[] = [];
     // Skip items already past the retention window so pruned rows don't come back.
@@ -182,7 +193,7 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
     }
     await db
       .update(sources)
-      .set({ lastFetchedAt: new Date(), lastError: null, ...(seenUrls ? { seenUrls } : {}) })
+      .set({ lastFetchedAt: new Date(), lastError: null, ...update })
       .where(eq(sources.id, src.id));
     // Page sources get og:image while scraping; YouTube thumbnails come from the video id. Podcast
     // episodes take the episode or show art from the feed, so only art-less ones reach the page.

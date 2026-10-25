@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import type { Folder, Source } from "@/lib/types";
+import type { Folder, OpmlImportResult, Source } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { moveSource } from "@/hooks/use-data";
 import { useSettings, type Settings } from "@/hooks/use-settings";
@@ -330,14 +330,75 @@ function SourcesPane({
           </section>
         ) : null,
       )}
-      <button
-        type="button"
-        onClick={onAdd}
-        className="mt-1 inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--code)] px-3 text-[13px] font-medium text-[var(--accent)] hover:bg-[var(--hover)]"
-      >
-        <PlusIcon size={15} />
-        Add source
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onAdd} className={`${PANE_BUTTON} gap-1.5 text-[var(--accent)]`}>
+          <PlusIcon size={15} />
+          Add source
+        </button>
+        <OpmlButtons onChanged={onChanged} />
+      </div>
+    </>
+  );
+}
+
+const PANE_BUTTON =
+  "inline-flex h-8 items-center rounded-md bg-[var(--code)] px-3 text-[13px] font-medium hover:bg-[var(--hover)] max-md:h-11";
+
+/** Import (file picker → POST /api/opml) and export (download GET /api/opml) of the subscription list. */
+function OpmlButtons({ onChanged }: { onChanged: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
+
+  const importFile = async (file: File) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/opml", { method: "POST", body: form });
+      const body = (await res.json().catch(() => null)) as (OpmlImportResult & { error?: string }) | null;
+      if (!res.ok || !body) throw new Error(body?.error || `Request failed (${res.status})`);
+      const parts = [`Added ${body.added}`, `skipped ${body.skipped}`];
+      if (body.folders_created) parts.push(`${body.folders_created} new folder${body.folders_created === 1 ? "" : "s"}`);
+      if (body.errors.length) parts.push(`${body.errors.length} failed`);
+      setStatus({
+        text: `${parts.join(", ")}.${body.added ? " New sources load on the next refresh." : ""}`,
+        error: body.added === 0 && body.errors.length > 0,
+      });
+      if (body.added || body.folders_created) onChanged();
+    } catch (err) {
+      setStatus({ text: `Import failed: ${err instanceof Error ? err.message : "unknown error"}`, error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".opml,.xml,text/x-opml,text/xml,application/xml"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          // Reset so picking the same file again still fires onChange.
+          e.target.value = "";
+          if (file) void importFile(file);
+        }}
+      />
+      <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className={`${PANE_BUTTON} text-[var(--ink)] disabled:opacity-60`}>
+        {busy ? "Importing…" : "Import OPML"}
       </button>
+      <a href="/api/opml" download className={`${PANE_BUTTON} text-[var(--ink)]`}>
+        Export OPML
+      </a>
+      {status && (
+        <p role="status" className={`basis-full text-[12px] ${status.error ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>
+          {status.text}
+        </p>
+      )}
     </>
   );
 }
