@@ -271,15 +271,22 @@ export function OpenfeedApp() {
     [updateItem],
   );
 
+  // True while the open item was pushed on top of the list by openItem, so closing it pops that
+  // entry. Pushing the list again instead would leave the item behind the Sources back chevron.
+  const itemPushed = useRef(false);
   const openItem = useCallback(
     (item: Item) => {
-      go({ ...nav, q: parsed.q, item: item.id }, selectedId != null && window.matchMedia("(min-width: 768px)").matches);
+      const replace = selectedId != null && window.matchMedia("(min-width: 768px)").matches;
+      itemPushed.current = !replace;
+      go({ ...nav, q: parsed.q, item: item.id }, replace);
     },
     [go, nav, parsed.q, selectedId],
   );
 
   const closeItem = useCallback(() => {
-    if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) router.back();
+    const pushed = itemPushed.current;
+    itemPushed.current = false;
+    if (pushed || (window.history.length > 1 && document.referrer.startsWith(window.location.origin))) router.back();
     else go({ ...nav, q: parsed.q, item: null });
   }, [router, go, nav, parsed.q]);
 

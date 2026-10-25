@@ -45,6 +45,9 @@ export function useItems(q: ItemsQuery, enabled = true) {
   const [error, setError] = useState<string | null>(null);
   const key = itemsQueryString(q);
   const reqId = useRef(0);
+  // The query `nextCursor` belongs to. After the query changes, the old cursor stays in state until
+  // the reload lands; paging the new query from it would append the wrong rows.
+  const cursorKey = useRef<string | null>(null);
 
   const reload = useCallback(async () => {
     const id = ++reqId.current;
@@ -54,6 +57,7 @@ export function useItems(q: ItemsQuery, enabled = true) {
       if (id !== reqId.current) return;
       setItems(data.items);
       setNextCursor(data.nextCursor);
+      cursorKey.current = key;
       setError(null);
     } catch (e) {
       if (id === reqId.current) setError(e instanceof Error ? e.message : "Failed to load");
@@ -63,7 +67,7 @@ export function useItems(q: ItemsQuery, enabled = true) {
   }, [key]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMore || cursorKey.current !== key) return;
     const id = reqId.current;
     setLoadingMore(true);
     try {
