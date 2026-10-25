@@ -43,7 +43,7 @@ export function SettingsDialog({
   onAdd: () => void;
   /** Called after a source is deleted on the server. */
   onRemoved: (id: number) => void;
-  /** Tapping a source title filters the feed to it (the only way to do so on phones). */
+  /** Tapping a source title opens its feed. */
   onOpen: (s: Source) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);

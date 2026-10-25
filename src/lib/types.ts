@@ -8,7 +8,6 @@ export type SourceGroup = "labs" | "blogs" | "news" | "aggregator" | "youtube" |
 export type View = "all" | "saved" | "articles" | "posts" | "video" | "podcasts";
 /** Derived from kind + url: how a source's items read. */
 export type SourceType = "article" | "post" | "video" | "podcast";
-export type Filter = "hn100" | "labs" | "blogs";
 
 /** Compact source embedded in each Item. */
 export interface ItemSource {

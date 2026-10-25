@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Filter,
   Folder,
   Item,
   ItemsResponse,
@@ -17,7 +16,6 @@ export interface ItemsQuery {
   view: View;
   source: number | null;
   folder: number | null;
-  filter: Filter | null;
 }
 
 export function itemsQueryString(q: ItemsQuery, cursor?: string | null): string {
@@ -25,7 +23,6 @@ export function itemsQueryString(q: ItemsQuery, cursor?: string | null): string 
   p.set("view", q.view);
   if (q.source != null) p.set("source", String(q.source));
   if (q.folder != null) p.set("folder", String(q.folder));
-  if (q.filter) p.set("filter", q.filter);
   if (cursor) p.set("cursor", cursor);
   p.set("limit", "50");
   return p.toString();

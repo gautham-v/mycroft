@@ -1,19 +1,16 @@
-import { and, eq, gte, lt, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, lt, notInArray, sql, type SQL } from "drizzle-orm";
 import { folders, items, sources, type FolderRow, type ItemRow, type SourceRow } from "@/db/schema";
 import { isPostSource, POST_SOURCE_RE } from "./folders";
 import { hostOf } from "./http";
-import type { Filter, Folder, Item, Source, SourceType, View } from "./types";
+import type { Folder, Item, Source, SourceType, View } from "./types";
 
 const VIEWS: View[] = ["all", "saved", "articles", "posts", "video", "podcasts"];
 export function parseView(v: string | null | undefined): View {
   return VIEWS.includes(v as View) ? (v as View) : "all";
 }
-export function parseFilter(v: string | null | undefined): Filter | null {
-  return v === "hn100" || v === "labs" || v === "blogs" ? v : null;
-}
 
-/** WHERE conditions for view/source/filter (requires join on sources). */
-export function itemConditions(opts: { view?: View; source?: number | null; folder?: number | null; filter?: Filter | null }): SQL[] {
+/** WHERE conditions for view/source/folder (requires join on sources). */
+export function itemConditions(opts: { view?: View; source?: number | null; folder?: number | null }): SQL[] {
   const c: SQL[] = [];
   const isPost = sql`${sources.url} ~* ${POST_SOURCE_RE}`;
   if (opts.view === "saved") c.push(eq(items.isSaved, true));
@@ -23,9 +20,6 @@ export function itemConditions(opts: { view?: View; source?: number | null; fold
   if (opts.view === "articles") c.push(notInArray(sources.kind, ["youtube", "podcast"]), sql`NOT (${isPost})`);
   if (opts.source) c.push(eq(items.sourceId, opts.source));
   if (opts.folder) c.push(eq(sources.folderId, opts.folder));
-  if (opts.filter === "hn100") c.push(eq(sources.group, "aggregator"), gte(items.hnPoints, 100));
-  if (opts.filter === "labs") c.push(eq(sources.group, "labs"));
-  if (opts.filter === "blogs") c.push(eq(sources.group, "blogs"));
   return c;
 }
 

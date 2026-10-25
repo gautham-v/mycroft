@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { items, sources } from "@/db/schema";
 import { errMsg, errorJson, json } from "@/lib/http";
-import { cursorCondition, itemConditions, makeCursor, parseFilter, parseView, toItem } from "@/lib/queries";
+import { cursorCondition, itemConditions, makeCursor, parseView, toItem } from "@/lib/queries";
 import type { ItemsResponse } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 200);
     const source = Number(p.get("source")) || null;
     const folder = Number(p.get("folder")) || null;
-    const conds = itemConditions({ view: parseView(p.get("view")), source, folder, filter: parseFilter(p.get("filter")) });
+    const conds = itemConditions({ view: parseView(p.get("view")), source, folder });
     const cc = cursorCondition(p.get("cursor"));
     if (cc) conds.push(cc);
     const db = await getDb();

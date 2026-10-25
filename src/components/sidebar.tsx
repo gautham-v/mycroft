@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { Filter, Folder, Source, View } from "@/lib/types";
+import type { Folder, Source, View } from "@/lib/types";
+import { orderFolders, sourcesIn } from "@/lib/source-tree";
 import { createFolder, deleteFolder, moveSource, renameFolder, reorderFolders, reorderSources } from "@/hooks/use-data";
 import {
   ArcIcon,
@@ -22,10 +23,9 @@ export interface NavState {
   source: number | null;
   /** Feed filtered to one sidebar folder. */
   folder: number | null;
-  filter: Filter | null;
 }
 
-export const HOME: NavState = { view: "all", source: null, folder: null, filter: null };
+export const HOME: NavState = { view: "all", source: null, folder: null };
 
 const ROW = "flex h-[32px] w-full items-center gap-[10px] rounded-[4px] px-2 text-left text-[14px]";
 const ICON_BTN = "inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] text-[var(--faint)] hover:bg-[var(--nav-selection)] hover:text-[var(--ink)]";
@@ -213,7 +213,6 @@ const sameOver = (a: Over | null, b: Over | null) =>
   a === b || (!!a && !!b && a.kind === b.kind && (a.kind === "end" ? a.folder === (b as typeof a).folder : a.id === (b as typeof a).id));
 
 const UNFILED_KEY = "unfiled";
-const byPosition = (a: Source, b: Source) => a.position - b.position || a.title.localeCompare(b.title);
 
 // --- sidebar -------------------------------------------------------------------------------
 
@@ -253,11 +252,11 @@ export function Sidebar({
   const [dragging, setDragging] = useState<Drag | null>(null);
   const [over, setOver] = useState<Over | null>(null);
 
-  const isView = (v: View) => nav.view === v && nav.source == null && nav.folder == null && nav.filter == null;
+  const isView = (v: View) => nav.view === v && nav.source == null && nav.folder == null;
   const view = (v: View) => setNav({ ...HOME, view: v });
 
-  const orderedFolders = [...local.folders].sort((a, b) => a.position - b.position || a.id - b.id);
-  const inFolder = (id: number | null) => local.sources.filter((s) => s.folder_id === id).sort(byPosition);
+  const orderedFolders = orderFolders(local.folders);
+  const inFolder = (id: number | null) => sourcesIn(local.sources, id);
 
   // --- mutations (optimistic local update, then server, then refetch) ---------------------
   const commit = (p: Promise<unknown>) => {
