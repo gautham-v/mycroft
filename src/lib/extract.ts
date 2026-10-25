@@ -2,7 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import sanitizeHtml from "sanitize-html";
 import { BROWSER_HEADERS, fetchWithTimeout } from "./http";
-import { findFeedItemHtml } from "./parse";
+import { findFeedItemHtml, isHnFeed } from "./parse";
 
 const EXTRACT_TIMEOUT_MS = 10_000;
 
@@ -62,8 +62,13 @@ const SANITIZE: sanitizeHtml.IOptions = {
   },
   selfClosing: [...sanitizeHtml.defaults.selfClosing, "source"],
   allowedSchemes: ["http", "https", "mailto"],
-  allowedIframeHostnames: ["www.youtube-nocookie.com"],
+  // YouTube embeds (/embed/ on any youtube.com host) are rewritten to youtube-nocookie by the iframe
+  // transform below; other youtube.com pages (/watch, /redirect) refuse to be framed and are dropped.
+  allowedIframeHostnames: ["www.youtube-nocookie.com", "player.vimeo.com"],
+  // An iframe whose src was refused (or never had one) would be an empty 16:9 box.
+  exclusiveFilter: (frame) => frame.tag === "iframe" && !frame.attribs.src,
   transformTags: {
+    iframe: (tagName, attribs) => ({ tagName, attribs: { ...attribs, src: embedSrc(attribs.src) } }),
     a: (tagName, attribs) => ({
       tagName,
       attribs: { ...attribs, target: "_blank", rel: "noopener noreferrer" },
@@ -85,6 +90,22 @@ SANITIZE.allowedAttributes = {
   a: ["href", "title", "target", "rel"],
   img: ["src", "srcset", "sizes", "alt", "title", "width", "height", "loading"],
 };
+
+/** YouTube embeds play from youtube-nocookie (no tracking cookies until play), whatever host the page used. */
+function embedSrc(src: string | undefined): string {
+  if (!src) return "";
+  try {
+    const u = new URL(src, "https://invalid.invalid/");
+    if (/^(?:www\.|m\.)?youtube\.com$/i.test(u.hostname) && u.pathname.startsWith("/embed/")) {
+      u.protocol = "https:";
+      u.hostname = "www.youtube-nocookie.com";
+      return u.toString();
+    }
+  } catch {
+    /* leave it to the hostname check */
+  }
+  return src;
+}
 
 function abs(u: string | null, base: string): string | null {
   if (!u) return null;
@@ -147,21 +168,36 @@ function largestCandidate(srcset: string): string | null {
   return best?.url ?? null;
 }
 
-const LAZY_SRC = ["data-src", "data-lazy-src", "data-original", "data-lazy", "data-url"];
+// `data-asset` is a custom player's attribute (dreamlabs.ai); other sites use it for asset ids, so
+// it is promoted only when it names a media file.
+const LAZY_SRC = ["data-src", "data-lazy-src", "data-original", "data-lazy", "data-url", "data-asset"];
 const LAZY_SRCSET = ["data-srcset", "data-lazy-srcset"];
+const LAZY_POSTER = ["data-poster", "data-lazy-poster"];
+const MEDIA_FILE = /\.(?:jpe?g|png|gif|webp|avif|svg|mp4|webm|mov|m4v|ogg|ogv|mp3|m4a)(?:[?#]|$)/i;
 
 const firstAttr = (el: Element, names: string[]) =>
-  names.map((n) => el.getAttribute(n)).find((v): v is string => !!v && !v.startsWith("data:")) ?? null;
+  names
+    .map((n) => [n, el.getAttribute(n)] as const)
+    .find(([n, v]) => !!v && !v.startsWith("data:") && (n !== "data-asset" || MEDIA_FILE.test(v)))?.[1] ?? null;
 const isPlaceholderSrc = (v: string | null) => !v || v.startsWith("data:") || /^about:blank$/i.test(v);
 
 /**
- * Absolutize links and media URLs, and promote lazy-load attributes (data-src, data-srcset) to the
- * real ones so images whose src is a placeholder (or missing, srcset-only) still load.
+ * Absolutize links and media URLs, and promote lazy-load attributes (data-src, data-srcset,
+ * data-poster, ...) to the real ones so media whose src is a placeholder (or missing, srcset-only)
+ * still loads. Runs before Readability and again on its output, which can carry URLs it rewrote.
  */
 function absolutizeDom(root: Doc | Element, base: string) {
   root.querySelectorAll("a[href]").forEach((el) => {
     const v = abs(el.getAttribute("href"), base);
     if (v) el.setAttribute("href", v);
+  });
+  root.querySelectorAll("video, iframe").forEach((el) => {
+    const lazy = firstAttr(el, LAZY_SRC);
+    // A <video> with <source> children plays those; don't add a competing src.
+    const hasSources = el.tagName === "VIDEO" && !!el.querySelector("source");
+    if (lazy && !hasSources && isPlaceholderSrc(el.getAttribute("src"))) el.setAttribute("src", lazy);
+    const poster = el.tagName === "VIDEO" ? firstAttr(el, LAZY_POSTER) : null;
+    if (poster && isPlaceholderSrc(el.getAttribute("poster"))) el.setAttribute("poster", poster);
   });
   root.querySelectorAll("img, source").forEach((el) => {
     const lazySet = firstAttr(el, LAZY_SRCSET);
@@ -188,15 +224,25 @@ function absolutizeDom(root: Doc | Element, base: string) {
   });
 }
 
-// Readability scores class names: a match for /hidden|scroll|media|.../ counts against an element and
-// deletes a non-prose div outright, before its figure exception applies. Image wrappers trip this
-// constantly: `overflow-hidden` / `scroll-mt-[...]` on utility-CSS sites, `media__container` on
-// others. So before parsing, drop (1) utility tokens that match those words anywhere, and
-// (2) layout words (hidden, scroll, media, meta) inside figures and text-free media wrappers.
-// Semantic junk names elsewhere (`sidebar`, `related-posts`, `ad-banner`) are kept.
-const READABILITY_NEGATIVE = /hidden|scroll|media|meta|share|banner|comment|footer|related|sidebar|widget|promo|tags/i;
+// Readability matches class names and ids against two word lists (Readability.REGEXPS
+// .unlikelyCandidates and .negative, copied here): an unlikely match deletes the element outright,
+// a negative one counts against it and deletes a heading or a non-prose div. Utility-CSS sites trip
+// these all the time with styling tokens: `overflow-hidden`, `scroll-mt-[...]` on every OpenAI
+// heading, `[--x:var(--header-h)]` on section wrappers. Semantic names (`sidebar`, `comments`,
+// `related-posts`, `ad-banner`) are what the lists are for and are kept.
+const READABILITY_UNLIKELY =
+  /-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i;
+const READABILITY_NEGATIVE =
+  /-ad-|hidden|^hid$|banner|combx|comment|com-|contact|footer|gdpr|masthead|media|meta|outbrain|promo|related|scroll|share|shoutbox|sidebar|skyscraper|sponsor|shopping|tags|widget/i;
+const readabilityJunk = (s: string) => READABILITY_UNLIKELY.test(s) || READABILITY_NEGATIVE.test(s);
+/** A Tailwind-style utility token: variants (`md:`), arbitrary values (`[...]`, `(...)`), or a styling prefix. */
 const UTILITY_CLASS = /[:[\]()@!/]|^-?(?:overflow|overscroll|scroll|snap|object|line-clamp|text|bg|aspect)-/;
-const LAYOUT_NEGATIVE = /hidden|scroll|media|meta/i;
+// Layout words that say nothing about junk. On content elements (headings, paragraphs, list items,
+// figures, inline text) they appear in compound names (`section-header`, `media-caption`,
+// `heading-scroll-target`) that never mark the element as boilerplate.
+const LAYOUT_NEGATIVE = /hidden|scroll|media|meta|header|extra|masthead|legends|remark|cover-wrap/i;
+const CONTENT_TAGS =
+  "h1, h2, h3, h4, h5, h6, p, li, dt, dd, figure, figcaption, picture, img, a, span, strong, b, em, i, code, pre, blockquote";
 const MEDIA = "img, picture, video, svg";
 
 function dropClassTokens(el: Element, drop: (token: string) => boolean) {
@@ -205,16 +251,155 @@ function dropClassTokens(el: Element, drop: (token: string) => boolean) {
   if (kept.length !== tokens.length) el.setAttribute("class", kept.join(" "));
 }
 
-function neutralizeMediaClasses(root: Doc | Element) {
-  root.querySelectorAll("[class]").forEach((el) =>
-    dropClassTokens(el, (t) => READABILITY_NEGATIVE.test(t) && UTILITY_CLASS.test(t)),
-  );
+/**
+ * Before Readability: drop (1) utility tokens that match its word lists, anywhere; (2) compound
+ * layout-word tokens on content elements, plus an id that would delete a heading (`related-work`);
+ * (3) layout words inside figures, text-free media wrappers (`media__container`) and code-block
+ * wrappers (`style-scrollbars` around a <pre>).
+ */
+export function neutralizeReadabilityClasses(root: Doc | Element) {
+  root.querySelectorAll("[class]").forEach((el) => dropClassTokens(el, (t) => readabilityJunk(t) && UTILITY_CLASS.test(t)));
+  root.querySelectorAll(CONTENT_TAGS).forEach((el) => {
+    dropClassTokens(el, (t) => /[-_]/.test(t) && LAYOUT_NEGATIVE.test(t));
+    if (/^H[1-6]$/.test(el.tagName) && readabilityJunk(el.getAttribute("id") ?? "")) el.removeAttribute("id");
+  });
   const inFigure = (el: Element) => el.tagName === "FIGURE" || !!el.closest("figure");
   const mediaWrapper = (el: Element) => !!el.querySelector(MEDIA) && !(el.textContent ?? "").trim();
+  // Text outside the code is at most a toolbar ("JSON", "Copy").
+  const codeWrapper = (el: Element) => {
+    const pres = [...el.querySelectorAll("pre")];
+    const inCode = pres.reduce((n, p) => n + textLen(p.textContent), 0);
+    return pres.length > 0 && textLen(el.textContent) - inCode <= 40;
+  };
   root.querySelectorAll("[class]").forEach((el) => {
     // A bare `hidden` really is hidden (e.g. the desktop copy of a responsive pair); keep it.
-    if (inFigure(el) || mediaWrapper(el)) dropClassTokens(el, (t) => t !== "hidden" && LAYOUT_NEGATIVE.test(t));
+    if (inFigure(el) || mediaWrapper(el) || codeWrapper(el)) dropClassTokens(el, (t) => t !== "hidden" && LAYOUT_NEGATIVE.test(t));
   });
+}
+
+// Screen-reader-only text ("(opens in new tab)", "Skip to content") is hidden by a class or an
+// inline clip; sanitizing strips both, which would make it visible.
+const SR_ONLY_CLASS =
+  /^(?:[\w-]*__)?(?:sr-?only|sr-text|visually-?hidden|screen-?reader(?:-?text|-?only)?|a11y-?hidden|assistive-?text|show-for-sr|element-invisible|hidden-visually|u-hidden-visually)(?:__[\w-]+)?$/i;
+const SR_ONLY_STYLE = /clip\s*:\s*rect\(\s*0|clip-path\s*:\s*inset\(\s*50%/i;
+const ONE_PX = /(?:^|;)\s*(?:width|height)\s*:\s*1px/i;
+// Tailwind's responsive undo (`sr-only sm:not-sr-only`): visible from that breakpoint up, so it is
+// real text. `focus:not-sr-only` (skip links) stays hidden until focused and still goes.
+const RESPONSIVE_NOT_SR_ONLY = /^(?:sm|md|lg|xl|[2-9]xl|min-\[[^\]]*\]|@[\w-]*(?:\/[\w-]+)?):not-sr-only$/;
+
+function isScreenReaderOnly(el: Element): boolean {
+  const tokens = (el.getAttribute("class") ?? "").split(/\s+/);
+  if (tokens.some((t) => SR_ONLY_CLASS.test(t))) return !tokens.some((t) => RESPONSIVE_NOT_SR_ONLY.test(t));
+  const style = el.getAttribute("style") ?? "";
+  return SR_ONLY_STYLE.test(style) || (/position\s*:\s*absolute/i.test(style) && ONE_PX.test(style));
+}
+
+/**
+ * Remove text meant only for screen readers, and aria-hidden icon glyphs (arrows, "↗") that carry
+ * no words. Must run while class names are still intact.
+ */
+export function removeScreenReaderText(root: Doc | Element) {
+  for (const el of [...root.querySelectorAll("[class], [style]")]) {
+    if (el.isConnected && !el.matches("body, html") && isScreenReaderOnly(el)) el.remove();
+  }
+  for (const el of [...root.querySelectorAll('span[aria-hidden="true"], i[aria-hidden="true"]')]) {
+    if (el.isConnected && !el.querySelector("img, picture, video") && !/[\p{L}\p{N}]/u.test(el.textContent ?? "")) el.remove();
+  }
+}
+
+// Custom video players leave their controls behind as text: "00:00 / 01:59", "1–13 of 13".
+const TIME_CODE = /^\d{1,2}:\d{2}(?::\d{2})?(?:\s*\/\s*\d{1,2}:\d{2}(?::\d{2})?)?$/;
+const N_OF_M = /^\d+(?:\s*[–—-]\s*\d+)?\s+of\s+\d+$/i;
+
+const PLAYER_PART = 'video, audio, button, [role="slider"], [role="button"], [aria-live]';
+
+// A time code inside a line of text (a chapter list item, a show-notes paragraph, a table cell) is
+// content, even beside a video: player chrome sits in bare divs and spans.
+const TEXT_BLOCK = "p, li, dt, dd, td, th, figcaption, blockquote, h1, h2, h3, h4, h5, h6, pre, code";
+
+/** Inside a player or carousel: a live region itself, or near a control or a video (never past `root`). */
+function inPlayer(el: Element, root: Doc | Element): boolean {
+  if (el.hasAttribute("aria-live")) return true;
+  let a: Element | null = el.parentElement;
+  for (let i = 0; a && a !== root && i < 4 && !a.matches("body, article, main"); i++, a = a.parentElement) {
+    if (a.querySelector(PLAYER_PART)) return true;
+  }
+  return false;
+}
+
+/**
+ * Drop media-player chrome: sliders, toolbars, and elements whose whole text is a time code or a
+ * counter, when they sit beside player controls (a timestamp in prose or a list stays).
+ */
+export function removePlayerChrome(root: Doc | Element) {
+  for (const el of [...root.querySelectorAll('[role="slider"], [role="toolbar"], [role="progressbar"]')]) {
+    if (el.isConnected && !el.matches("body, html")) el.remove();
+  }
+  for (const el of [...root.querySelectorAll("span, div, output, small, label")]) {
+    if (!el.isConnected || el.querySelector(MEDIA)) continue;
+    const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!t || t.length > 24 || !(TIME_CODE.test(t) || N_OF_M.test(t)) || el.closest(TEXT_BLOCK)) continue;
+    if (inPlayer(el, root)) el.remove();
+  }
+}
+
+/**
+ * Code blocks that render each line as its own element with a line-number cell (OpenAI's
+ * `<code><pre><div><span>1</span><div>…</div></div>…`), or that sit in a line-number table, come
+ * out of Readability as a jumble of paragraphs, numbers glued to the code. Rebuild each as a plain
+ * <pre><code> holding the code text, one line per row, numbers dropped.
+ */
+export function normalizeCodeBlocks(root: Doc | Element) {
+  const doc = root.ownerDocument ?? (root as Doc);
+  for (const pre of [...root.querySelectorAll("pre")]) {
+    if (!pre.isConnected || pre.parentElement?.closest("pre")) continue;
+    // Inside <pre> a <br> is a newline; make it one so textContent keeps it.
+    pre.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+    const rows = [...pre.children].filter((c) => !/^(BR|SCRIPT|STYLE)$/.test(c.tagName));
+    // Row elements, each led by its line number: drop the numbers, one line per row.
+    let text: string | null = null;
+    const lineNo = (row: Element, i: number) => {
+      const first = row.firstElementChild;
+      return first && first !== row.lastElementChild && (first.textContent ?? "").trim() === String(i + 1) ? first : null;
+    };
+    if (rows.length >= 2 && rows.every((r) => /^(DIV|P|SPAN|LI)$/.test(r.tagName))) {
+      const numbered = rows.map(lineNo);
+      if (numbered.filter(Boolean).length >= rows.length * 0.8) {
+        numbered.forEach((n) => n?.remove());
+        text = rows.map((r) => (r.textContent ?? "").replace(/\n$/, "")).join("\n");
+      } else if (rows.every((r) => r.tagName === "DIV" || r.tagName === "P")) {
+        text = rows.map((r) => (r.textContent ?? "").replace(/\n$/, "")).join("\n");
+      }
+    }
+    // A gutter <pre> of bare sequential numbers next to the code (line-number tables): drop it.
+    const t = (pre.textContent ?? "").trim();
+    if (/^1(?:\s+\d+)*$/.test(t) && t.split(/\s+/).every((n, i) => Number(n) === i + 1)) {
+      const table = pre.closest("table");
+      if (table && [...table.querySelectorAll("pre")].some((p) => p !== pre)) {
+        (pre.closest("td") ?? pre).remove();
+        continue;
+      }
+    }
+    // <code><pre>…</pre></code> is inverted; the outer <code> goes too.
+    const outer = pre.parentElement?.tagName === "CODE" && pre.parentElement.children.length === 1 ? pre.parentElement : pre;
+    const lang = [outer, pre, pre.querySelector("code")]
+      .map((e) => e?.getAttribute("class") ?? "")
+      .join(" ")
+      .match(/\b(?:language|lang)-[\w+#-]+/)?.[0];
+    if (text === null && outer === pre) continue;
+    const fresh = doc.createElement("pre");
+    const code = doc.createElement("code");
+    if (lang) code.setAttribute("class", lang);
+    code.textContent = text ?? pre.textContent ?? "";
+    fresh.append(code);
+    outer.replaceWith(fresh);
+  }
+  // Line-number tables: once the gutter is gone, a one-cell table is just a wrapper.
+  for (const table of [...root.querySelectorAll("table")]) {
+    const cells = table.querySelectorAll("td, th");
+    const pre = table.querySelector("pre");
+    if (cells.length === 1 && pre && (cells[0].textContent ?? "").trim() === (pre.textContent ?? "").trim()) table.replaceWith(pre);
+  }
 }
 
 const DARK_TOKEN = /^(?!no[-_]|has[-_])(?:[\w-]*[-_])?dark(?:[-_]?mode)?(?:[-_](?:alt|alternative|only|variant|version|image|img))?$/i;
@@ -326,15 +511,146 @@ function usableLead(u: string | null): string | null {
   return u && !GENERIC_LEAD.test(u) ? u : null;
 }
 
+const squash = (s: string | null | undefined) => (s ?? "").replace(/[\s ]+/g, " ").trim();
+const CONTENT_MEDIA = "img, picture, video, audio, svg, iframe, pre, table, canvas, math";
+const hasMediaOrText = (el: Element) => !!squash(el.textContent) || el.matches(CONTENT_MEDIA) || !!el.querySelector(CONTENT_MEDIA);
+
+// Boilerplate lines, matched against a block's whole text.
+const BOILERPLATE_LINE = [
+  /^(?:view|see|read) (?:full |author )?bio$/i,
+  /^share(?: this)?(?: (?:article|story|post|page))?:?$/i,
+  /^\[email ?protected\]$/i,
+];
+// A "Related articles" label is boilerplate when its rail is gone (the cards were stripped) and
+// what follows has no links; over its own list of links it is part of the article.
+const RELATED_LINE = /^(?:related|recommended) (?:articles?|stories|posts|reading|content):?$/i;
+// Affiliate disclosures ("When you purchase through links in our articles, we may earn a small commission").
+// Only first-person disclosures: an article about affiliate programs ("creators may earn a
+// commission") is not one.
+// "We earn a commission" alone is also what a company says in a quote, so that form counts only
+// beside the links or purchases it is about, and a block holding a quotation is never a disclosure.
+const AFFILIATE =
+  /\bwhen you (?:buy|purchase|shop|click)\b.{0,80}\b(?:we|us|our)\b.{0,40}\b(?:commission|earn|compensat)|\b(?:links?|purchases?|buy|shop)\b.{0,80}\bwe (?:may |might |could )?(?:earn|receive|get) (?:a |an )?(?:small |affiliate )?(?:commission|share of (?:the )?(?:sales?|revenue))\b|\bwe (?:may |might |could )?(?:earn|receive|get) (?:a |an )?(?:small |affiliate )?(?:commission|share of (?:the )?(?:sales?|revenue))\b.{0,80}\b(?:links?|purchases?|buy|shop)|\b(?:this|our) (?:post|article|page|site|story|newsletter) (?:may )?(?:contains?|includes?|uses?) affiliate links\b/i;
+const QUOTATION = /["“”«»]/;
+const CF_EMAIL = /\[email ?protected\]/i;
+// A trailing author bio: "Ivan covers consumer tech at TechCrunch. He is based out of India."
+// A named subject, then a writer's job, or (for "based in", "previously worked") a personal
+// pronoun: "Mistral is a French startup based in Paris" is the story's last line, not a bio.
+const BIO_LEAD =
+  /^(?:[A-Z][\p{L}’'.-]+ ){0,3}[A-Z][\p{L}’'.-]+ (?:is|was|covers|writes|reports|has (?:been|covered|written|reported))\b/u;
+const BIO_ROLE = /\b(?:reporter|writer|editor|journalist|correspondent|contributor|columnist|covers|covering)\b/;
+const BIO_PLACE = /\b(?:based (?:in|out of)|previously (?:worked|wrote|covered|was))\b/;
+const PRONOUN = /\b(?:he|she|they|his|her|their)\b/i;
+const isBio = (t: string) => {
+  if (!BIO_LEAD.test(t)) return false;
+  const head = t.slice(0, 300);
+  return BIO_ROLE.test(head) || (BIO_PLACE.test(head) && PRONOUN.test(t));
+};
+// What sits beside a bio and nowhere else: a profile link, a way to reach the writer. "Follow"
+// needs a person or a social network ("Follow the project on GitHub" is an ordinary line).
+const BIO_SIGNAL =
+  /\bview bio\b|\[email ?protected\]|\b(?:contact|reach|email|verify outreach from)\b.{0,40}\b(?:him|her|them|at)\b|\bfollow (?:him|her|them)\b|\bfollow\b.{0,40}\bon (?:twitter|x|bluesky|mastodon|threads|linkedin|instagram)\b/i;
+
+/** The outermost ancestor (below root) holding exactly the same text: the block a line sits in. */
+function lineBlock(el: Element, root: Element): Element {
+  const t = squash(el.textContent);
+  let b = el;
+  while (b.parentElement && b.parentElement !== root && squash(b.parentElement.textContent) === t) b = b.parentElement;
+  return b;
+}
+
+/**
+ * Generic boilerplate Readability leaves in: affiliate disclosures, "View Bio" / "Share this" /
+ * "Related articles" lines, Cloudflare's "[email protected]" placeholder, and an author bio at the
+ * very end. Only short blocks are touched.
+ */
+function removeBoilerplate(root: Element) {
+  const ps = () => [...root.querySelectorAll("p")].filter((p) => p.isConnected && squash(p.textContent));
+  // Trailing bio first, while its signals ("View Bio", the email placeholder) are still there: one
+  // of the last three paragraphs reads like a bio and something in that tail is a bio signal.
+  // Everything from there to the end goes.
+  const tail = ps().slice(-3);
+  const start = tail.findIndex((p, i) => {
+    const rest = tail.slice(i);
+    return (
+      isBio(squash(p.textContent)) &&
+      rest.every((q) => squash(q.textContent).length <= 400) &&
+      rest.some((q) => BIO_SIGNAL.test(squash(q.textContent)) || !!q.querySelector('a[href*="/cdn-cgi/l/email-protection"]'))
+    );
+  });
+  if (start >= 0 && ps().length > tail.length) tail.slice(start).forEach((p) => lineBlock(p, root).remove());
+  // Cloudflare-obfuscated addresses: drop a short line holding one, else just the link.
+  for (const el of [...root.querySelectorAll('a[href*="/cdn-cgi/l/email-protection"], .__cf_email__')]) {
+    if (!el.isConnected) continue;
+    const block = el.closest("p, li");
+    if (block && squash(block.textContent).length <= 400) block.remove();
+    else lineBlock(el, root).remove();
+  }
+  for (const p of ps()) if (CF_EMAIL.test(squash(p.textContent)) && squash(p.textContent).length <= 400) p.remove();
+  for (const el of [...root.querySelectorAll("p, li, div, section, aside, a, span, em, small, h2, h3, h4, h5, h6")]) {
+    if (!el.isConnected) continue;
+    const t = squash(el.textContent);
+    if (t && BOILERPLATE_LINE.some((re) => re.test(t))) lineBlock(el, root).remove();
+  }
+  for (const el of [...root.querySelectorAll("p, li, div, section, aside, span, strong, b, h2, h3, h4, h5, h6")]) {
+    if (!el.isConnected || !RELATED_LINE.test(squash(el.textContent))) continue;
+    const block = lineBlock(el, root);
+    const next = nextContent(block, root);
+    const links = next?.nodeType === 1 && ((next as Element).matches("a[href]") || !!(next as Element).querySelector("a[href]"));
+    if (!links) block.remove();
+  }
+  for (const el of [...root.querySelectorAll("p, li, div, section, aside, small")]) {
+    if (!el.isConnected) continue;
+    const t = squash(el.textContent);
+    if (t.length <= 300 && AFFILIATE.test(t) && !QUOTATION.test(t) && !el.querySelector(CONTENT_MEDIA)) el.remove();
+  }
+}
+
+/**
+ * Media left without anything to play (a custom player's <video> whose source we couldn't find)
+ * would show as an empty box; a poster still beside its own video shows the frame twice.
+ */
+function removeDeadMedia(root: Element) {
+  for (const v of [...root.querySelectorAll("video")]) {
+    const playable = v.getAttribute("src") || [...v.querySelectorAll("source")].some((s) => s.getAttribute("src"));
+    if (!playable) v.remove();
+  }
+  for (const img of [...root.querySelectorAll("img[src]")]) {
+    const src = img.getAttribute("src");
+    const siblings = [...(img.parentElement?.querySelectorAll("video[poster]") ?? [])];
+    if (siblings.some((v) => v.getAttribute("poster") === src)) img.remove();
+  }
+}
+
+/** The next node after `node` in document order that holds text or media, staying inside `root`. */
+function nextContent(node: Node, root: Element): Node | null {
+  const step = (n: Node): Node | null => {
+    let cur: Node | null = n;
+    while (cur && cur !== root && !cur.nextSibling) cur = cur.parentNode;
+    return cur && cur !== root ? cur.nextSibling : null;
+  };
+  for (let cur = step(node); cur; ) {
+    if (cur.nodeType === 3 && squash(cur.textContent)) return cur;
+    if (cur.nodeType === 1 && !/^(HR|BR|SCRIPT|STYLE)$/.test((cur as Element).tagName) && hasMediaOrText(cur as Element)) return cur;
+    cur = step(cur);
+  }
+  return null;
+}
+
 /**
  * Readability keeps inline author cards (avatar + name + one-line bio) that sit inside the
  * article container, and link-only navigation tables on table-layout sites. Drop both,
- * plus any remaining avatar-sized images.
+ * plus any remaining avatar-sized images, boilerplate lines, and player leftovers. With `base`,
+ * URLs are absolutized again first (Readability's output can carry relative ones).
  */
-export function cleanArticle(html: string): string {
+export function cleanArticle(html: string, base?: string): string {
   const { document } = parseHTML(`<div id="__root">${html}</div>`);
   const root = document.getElementById("__root");
   if (!root) return html;
+  if (base) absolutizeDom(root, base);
+  removeScreenReaderText(root);
+  removePlayerChrome(root);
+  removeDeadMedia(root);
   const blocks = [...root.querySelectorAll("div, section, aside, p, figure")];
   for (const el of blocks) {
     if (!el.isConnected) continue;
@@ -346,6 +662,8 @@ export function cleanArticle(html: string): string {
     );
     if (hasAvatar || hasAuthorLink) el.remove();
   }
+  // After author cards: their profile links are what identifies them.
+  removeBoilerplate(root);
   root.querySelectorAll("img").forEach((img) => isTinyImg(img) && img.remove());
   root.querySelectorAll("svg").forEach((svg) => isIconSvg(svg) && svg.remove());
   // Navigation tables (old-school sites): mostly links, little prose.
@@ -357,22 +675,33 @@ export function cleanArticle(html: string): string {
     if (links.length >= 4 && text.length > 0 && linkText / text.length > 0.6) table.remove();
   }
   // Section labels left with nothing under them (their section was a stripped table or card):
-  // real headings, or short bold "Label:" lines on table-layout sites.
-  const isLabel = (el: Element) =>
-    /^H[1-6]$/.test(el.tagName) ||
-    (/^(B|STRONG|P)$/.test(el.tagName) && /^[^.]{1,40}:$/.test((el.textContent ?? "").trim()));
+  // real headings, or short bold "Label:" lines on table-layout sites. A bold run is a label only
+  // when it is the whole line: `<li><strong>Context:</strong> You need…</li>` is a lead-in.
+  // Whatever follows is looked for in document order, past the wrappers a heading sits in. A label
+  // followed by a lower-ranked one (an h2 by its first h3) has content under it.
+  const isLabel = (el: Element) => {
+    if (/^H[1-6]$/.test(el.tagName)) return true;
+    if (!/^(B|STRONG|P)$/.test(el.tagName) || !/^[^.]{1,40}:$/.test(squash(el.textContent))) return false;
+    return el.tagName === "P" || squash(el.parentElement?.textContent) === squash(el.textContent);
+  };
+  const rank = (el: Element) => (/^H[1-6]$/.test(el.tagName) ? Number(el.tagName[1]) : 7);
+  const leadingLabel = (n: Node | null): Element | null => {
+    for (let el = n?.nodeType === 1 ? (n as Element) : null; el; ) {
+      if (isLabel(el)) return el;
+      if (el.matches(CONTENT_MEDIA)) return null;
+      const first: ChildNode | undefined = [...el.childNodes].find((c) =>
+        c.nodeType === 3 ? !!squash(c.textContent) : c.nodeType === 1 && hasMediaOrText(c as Element),
+      );
+      el = first?.nodeType === 1 ? (first as Element) : null;
+    }
+    return null;
+  };
   for (const h of [...root.querySelectorAll("h1, h2, h3, h4, h5, h6, b, strong, p")]) {
     if (!h.isConnected || !isLabel(h)) continue;
-    const trailing: Element[] = [];
-    let next = h.nextElementSibling;
-    while (next && (/^(HR|BR)$/.test(next.tagName) || !(next.textContent ?? "").trim())) {
-      trailing.push(next);
-      next = next.nextElementSibling;
-    }
-    if (!next || isLabel(next)) {
-      trailing.forEach((t) => t.remove());
-      h.remove();
-    }
+    const block = lineBlock(h, root);
+    const next = nextContent(block, root);
+    const label = leadingLabel(next);
+    if (!next || (label && rank(label) <= rank(h))) block.remove();
   }
   return root.innerHTML;
 }
@@ -388,7 +717,191 @@ export interface ExtractResult {
   rendered?: boolean;
 }
 
-/** Extract main article from raw HTML. Pure; no network. */
+// Content-ish class tokens (post-content, entry-content, article-body, story-text). Tokens naming
+// side content (comment-content, related-posts, card-body) never group article parts.
+const CONTENT_TOKEN = /(?:^|[-_])(?:content|body|text|article|entry|story|post|prose|copy)(?:[-_]|$)/i;
+const SIDE_TOKEN = /comment|repl|related|sidebar|footer|header|nav|menu|teaser|card|excerpt|summary|preview|promo|widget|share|caption|meta|author|bio|tag/i;
+const MAX_SPLIT_DEPTH = 4;
+// A comment thread: its comment bodies often share the article's content class (Tailwind `prose`).
+const COMMENT_TOKEN = /^(?:[\w-]*[-_])?(?:comments?|comment-?list|repl(?:y|ies)|disqus|discussions?|responses)(?:[-_][\w-]*)?$/i;
+const MAX_TEXT_BETWEEN = 200;
+
+const textLen = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim().length;
+const proseLen = (el: Element) => [...el.querySelectorAll("p")].reduce((n, p) => n + textLen(p.textContent), 0);
+
+/** The next node after `node`'s subtree in document order. */
+function nextOutside(node: Node): Node | null {
+  let n: Node | null = node;
+  while (n && !n.nextSibling) n = n.parentNode;
+  return n?.nextSibling ?? null;
+}
+
+/**
+ * What sits between two elements in document order, outside both: its text length and whether it
+ * holds a heading (a heading between two blocks means they are separate stories, as on a listing).
+ */
+function between(a: Element, b: Element): { text: number; heading: boolean } {
+  let text = 0;
+  let heading = false;
+  let cur = nextOutside(a);
+  while (cur && cur !== b) {
+    if (cur.contains(b)) {
+      cur = cur.firstChild;
+      continue;
+    }
+    if (cur.nodeType === 1) {
+      const el = cur as Element;
+      if (!/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(el.tagName)) {
+        text += textLen(el.textContent);
+        if (el.matches("h1, h2, h3") || el.querySelector("h1, h2, h3")) heading = true;
+      }
+    } else if (cur.nodeType === 3) {
+      text += textLen(cur.textContent);
+    }
+    cur = nextOutside(cur);
+  }
+  return { text, heading };
+}
+
+function depthBelow(el: Element, ancestor: Element): number {
+  let d = 0;
+  for (let n: Element | null = el; n && n !== ancestor; n = n.parentElement) d++;
+  return d;
+}
+
+/** True when `el` or an ancestor below `stop` is a comment thread (by tag, class token or id). */
+function inComments(el: Element, stop: Element | null): boolean {
+  for (let n: Element | null = el; n && n !== stop; n = n.parentElement) {
+    const names = [...(n.getAttribute("class") ?? "").split(/\s+/), n.getAttribute("id") ?? ""];
+    if (names.some((t) => t && COMMENT_TOKEN.test(t))) return true;
+  }
+  return false;
+}
+
+function commonAncestor(els: Element[]): Element | null {
+  let anc: Element | null = els[0].parentElement;
+  while (anc && !els.every((e) => anc!.contains(e))) anc = anc.parentElement;
+  return anc;
+}
+
+/**
+ * Some sites split one article across several containers with the same content class (Ars Technica
+ * cuts the body into `.post-content` blocks with ads between them). Readability keeps the single
+ * best-scoring container, so the article comes out cut short. Join such blocks into the first one
+ * when they are near-siblings in the same <article> (or none), each holds prose, and nothing but
+ * a little text (ads, labels) and no heading separates them. Blocks inside a comment thread never
+ * join.
+ */
+export function mergeSplitContainers(root: Doc | Element) {
+  const groups = new Map<string, Element[]>();
+  for (const el of root.querySelectorAll("div[class], section[class], article[class]")) {
+    for (const t of (el.getAttribute("class") ?? "").split(/\s+/)) {
+      if (!t || !CONTENT_TOKEN.test(t) || SIDE_TOKEN.test(t) || UTILITY_CLASS.test(t)) continue;
+      const key = t.toLowerCase();
+      groups.set(key, [...(groups.get(key) ?? []), el]);
+    }
+  }
+  for (const members of groups.values()) {
+    const live = members.filter((m) => m.isConnected);
+    // Outermost only: a .post-content nested in another .post-content is part of it already.
+    const outer = live.filter((m) => !live.some((o) => o !== m && o.contains(m)));
+    if (outer.length < 2) continue;
+    // Comment bodies are never part of the article, wherever they sit.
+    const top = commonAncestor(outer);
+    const blocks = outer.filter((b) => !inComments(b, top));
+    if (blocks.length < 2 || blocks.some((b) => proseLen(b) < 80)) continue;
+    const art = blocks[0].closest("article");
+    if (blocks.some((b) => b.closest("article") !== art)) continue;
+    const anc = commonAncestor(blocks);
+    if (!anc || blocks.some((b) => depthBelow(b, anc) > MAX_SPLIT_DEPTH)) continue;
+    const gaps = blocks.slice(1).map((b, i) => between(blocks[i], b));
+    if (gaps.some((g) => g.heading || g.text > MAX_TEXT_BETWEEN)) continue;
+    const [first, ...rest] = blocks;
+    for (const b of rest) {
+      first.append(...b.childNodes);
+      b.remove();
+    }
+  }
+}
+
+const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+const REGION_MIN_PROSE = 400;
+
+/**
+ * The page region the headline belongs to: the nearest ancestor of the title <h1> that holds real
+ * prose. Null when the headline can't be identified or the region is the whole page.
+ */
+function headlineRegion(document: Doc): Element | null {
+  const title = norm(
+    document.querySelector('meta[property="og:title"]')?.getAttribute("content") ?? document.querySelector("title")?.textContent,
+  );
+  const h1s = [...document.querySelectorAll("h1")].filter((h) => norm(h.textContent));
+  const h1 =
+    h1s.find((h) => title && (title.includes(norm(h.textContent)) || norm(h.textContent).includes(title))) ??
+    (h1s.length === 1 ? h1s[0] : null);
+  for (let el = h1?.parentElement ?? null; el && !/^(BODY|HTML)$/.test(el.tagName); el = el.parentElement) {
+    if (proseLen(el) >= REGION_MIN_PROSE) return el;
+  }
+  return null;
+}
+
+/** Paragraph texts (long enough to be distinctive) in an HTML fragment or element. */
+function paragraphTexts(root: Doc | Element): string[] {
+  return [...root.querySelectorAll("p")].map((p) => norm(p.textContent)).filter((t) => t.length >= 40);
+}
+
+/**
+ * True when Readability's pick lies outside the headline's region and doesn't contain it either:
+ * it chose a different block of the page (a legal disclaimer, a related-posts rail) over the story.
+ */
+export function pickedOutsideRegion(contentHtml: string, regionHtml: string): boolean {
+  const picked = parseHTML(`<!doctype html><html><body>${contentHtml}</body></html>`).document;
+  const region = parseHTML(`<!doctype html><html><body>${regionHtml}</body></html>`).document;
+  const regionText = norm(region.body.textContent);
+  const pickedText = norm(picked.body.textContent);
+  const pickedParas = paragraphTexts(picked);
+  const regionParas = paragraphTexts(region);
+  if (!pickedParas.length || !regionParas.length) return false;
+  const inside = pickedParas.filter((p) => regionText.includes(p)).length / pickedParas.length;
+  const covered = regionParas.filter((p) => pickedText.includes(p)).length / regionParas.length;
+  return inside < 0.3 && covered < 0.5;
+}
+
+const plainText = (html: string | null | undefined) => (html ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+function runReadability(document: Doc, media: string[], base: string): string | null {
+  // Readability's types expect a DOM Document; linkedom is compatible at runtime.
+  const article = new Readability(document as unknown as Document, { charThreshold: 200 }).parse();
+  if (!article?.content) return null;
+  return sanitizeArticle(cleanArticle(restoreMedia(article.content, media), base)).trim() || null;
+}
+
+/** Page-wide cleanup that must happen while the page's class names and structure are intact. */
+function prepareDom(root: Doc | Element, base: string, pageUrl: string) {
+  absolutizeDom(root, base);
+  removeScreenReaderText(root);
+  removePlayerChrome(root);
+  normalizeCodeBlocks(root);
+  dropDarkVariants(root);
+  markClientRenderedFigures(root, pageUrl);
+}
+
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** A headline-region extraction shorter than this is a dek or a teaser, not the story. */
+const REGION_MIN_TEXT = 500;
+
+/**
+ * Extract main article from raw HTML. Pure; no network.
+ *
+ * Which candidate wins (the feed's own copy is weighed later, in preferFeed):
+ * 1. Readability over the whole page, after article bodies split across same-class containers are
+ *    joined (mergeSplitContainers). This is the default.
+ * 2. Readability scoped to the headline's region (headlineRegion) replaces (1) when (1) lies outside
+ *    that region and doesn't contain it (pickedOutsideRegion), and the scoped run keeps at least
+ *    REGION_MIN_TEXT characters and half as much text as (1). Readability then scored some other
+ *    block of prose (a legal disclaimer, a related-posts rail) above the story under the headline.
+ */
 export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
   const { document } = parseHTML(html);
   const base = abs(document.querySelector("base[href]")?.getAttribute("href") ?? null, pageUrl) ?? pageUrl;
@@ -396,16 +909,41 @@ export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
     document.querySelector('meta[property="og:image"]')?.getAttribute("content") ??
     document.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ??
     null;
-  absolutizeDom(document, base);
-  dropDarkVariants(document);
-  markClientRenderedFigures(document, pageUrl);
+  const lead = usableLead(abs(og, base));
+  prepareDom(document, base, pageUrl);
   const media = protectMedia(document);
-  neutralizeMediaClasses(document);
-  // Readability's types expect a DOM Document; linkedom is compatible at runtime.
-  const article = new Readability(document as unknown as Document, { charThreshold: 200 }).parse();
-  if (!article?.content) return { contentHtml: null, leadImage: usableLead(abs(og, base)) };
-  const clean = sanitizeArticle(cleanArticle(restoreMedia(article.content, media))).trim();
-  return { contentHtml: clean || null, leadImage: usableLead(abs(og, base)) ?? firstImage(clean) };
+  neutralizeReadabilityClasses(document);
+  mergeSplitContainers(document);
+  // Serialize before Readability runs: it rewrites the document in place.
+  const regionHtml = headlineRegion(document)?.outerHTML ?? null;
+  const title = document.querySelector("title")?.textContent ?? "";
+  let clean = runReadability(document, media, base);
+  if (regionHtml && (!clean || pickedOutsideRegion(clean, regionHtml))) {
+    const scoped = parseHTML(
+      `<!doctype html><html><head><title>${escapeHtml(title)}</title></head><body>${regionHtml}</body></html>`,
+    ).document;
+    const alt = runReadability(scoped, media, base);
+    const n = plainText(alt).length;
+    if (alt && n >= REGION_MIN_TEXT && n >= 0.5 * plainText(clean).length) clean = alt;
+  }
+  if (!clean) return { contentHtml: null, leadImage: lead };
+  return { contentHtml: clean, leadImage: lead ?? firstImage(clean) };
+}
+
+/** Feed HTML replaces the page's extraction when it is clearly the fuller copy of the article. */
+const FEED_WIN_RATIO = 1.5;
+const FEED_WIN_MIN_EXTRA = 500;
+
+/**
+ * The rule for page vs. feed: the feed's content:encoded wins only when its text is at least
+ * FEED_WIN_RATIO times the page extraction's and FEED_WIN_MIN_EXTRA characters longer (and is
+ * itself a full article, not a teaser). A page whose extraction came out empty loses to any
+ * full-length feed copy.
+ */
+export function preferFeed(pageHtml: string | null, feedHtml: string | null): boolean {
+  const f = plainText(feedHtml).length;
+  const p = plainText(pageHtml).length;
+  return f >= MIN_FEED_TEXT && f >= p * FEED_WIN_RATIO && f - p >= FEED_WIN_MIN_EXTRA;
 }
 
 /**
@@ -416,11 +954,9 @@ export function extractFromFeedHtml(html: string, pageUrl: string): ExtractResul
   const { document } = parseHTML(`<!doctype html><html><body><div id="__root">${html}</div></body></html>`);
   const root = document.getElementById("__root");
   if (!root) return { contentHtml: null, leadImage: null };
-  absolutizeDom(root, pageUrl);
-  markClientRenderedFigures(root, pageUrl);
-  const clean = sanitizeArticle(cleanArticle(root.innerHTML)).trim();
-  const text = clean.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  if (text.length < MIN_FEED_TEXT) return { contentHtml: null, leadImage: null };
+  prepareDom(root, pageUrl, pageUrl);
+  const clean = sanitizeArticle(cleanArticle(root.innerHTML, pageUrl)).trim();
+  if (plainText(clean).length < MIN_FEED_TEXT) return { contentHtml: null, leadImage: null };
   return { contentHtml: clean, leadImage: firstImage(clean) };
 }
 
@@ -432,6 +968,17 @@ const TOTAL_BUDGET_MS = 18_000;
 const RENDER_TIMEOUT_MS = 12_000;
 const MIN_RENDER_MS = 2_000;
 const FEED_TIMEOUT_MS = 4_000;
+/** Once the page has an article, how much longer the feed copy may take to be weighed against it. */
+const FEED_GRACE_MS = 750;
+
+/** `p`'s value, or null if it hasn't settled within `ms`. */
+function within<T>(p: Promise<T | null>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
 
 /** Where the item came from, so a page that can't be fetched can fall back to the feed's own HTML. */
 export interface FeedRef {
@@ -466,13 +1013,31 @@ async function extractPlain(url: string): Promise<ExtractResult> {
   return extractFromHtml(html, res.url || url);
 }
 
+// README badges (build status, chat, version): never a hero.
+const BADGE_HOST = /(?:^|\.)(?:shields\.io|badgen\.net|badge\.fury\.io|travis-ci\.(?:org|com)|circleci\.com|codecov\.io|coveralls\.io|readthedocs\.org|deepwiki\.com|snyk\.io|bestpractices\.dev)$/i;
+const BADGE_PATH = /\/badges?(?:\/|\.svg)|[/_-]badge\.svg(?:[?#]|$)|\/workflows\/[^/]+\/badge/i;
+
+function isBadge(img: Element): boolean {
+  const src = img.getAttribute("src") ?? "";
+  try {
+    const u = new URL(src);
+    if (BADGE_HOST.test(u.hostname) || BADGE_PATH.test(u.pathname)) return true;
+  } catch {
+    /* relative or broken: judge by size only */
+  }
+  // A strip: far wider than tall and short (badges, dividers, wordmarks).
+  const w = Number(img.getAttribute("width"));
+  const h = Number(img.getAttribute("height"));
+  return w > 0 && h > 0 && h <= 40 && w / h >= 3;
+}
+
 /** First content image that is big enough to be a hero (declared width ≥ 400, or undeclared). */
-function firstImage(html: string): string | null {
+export function firstImage(html: string): string | null {
   const imgs = [...parseHTML(`<!doctype html><html><body>${html}</body></html>`).document.querySelectorAll("img[src]")];
   for (const img of imgs) {
     const w = Number(img.getAttribute("width"));
     const src = img.getAttribute("src") ?? "";
-    if (isTinyImg(img) || (w > 0 && w < 400) || GENERIC_LEAD.test(src)) continue;
+    if (isTinyImg(img) || isBadge(img) || (w > 0 && w < 400) || GENERIC_LEAD.test(src)) continue;
     return src;
   }
   return null;
@@ -530,27 +1095,27 @@ export async function extractArticle(url: string, feed?: FeedRef): Promise<Extra
     }
   }
   const started = Date.now();
+  // The feed's copy is fetched alongside the page: it is both the fallback when the page fails and
+  // the yardstick for a page extraction that came out cut short (preferFeed). hnrss items carry only
+  // points and comment counts, never the article, so their feed is not fetched.
+  const fromFeed: Promise<ExtractResult | null> =
+    feed && !isHnFeed(feed.feedUrl) ? extractFromFeed(url, feed, FEED_TIMEOUT_MS).catch(() => null) : Promise.resolve(null);
   let plain: ExtractResult | null = null;
   let plainError: unknown = null;
   try {
     plain = await extractPlain(url);
-    if (plain.contentHtml) return plain;
   } catch (e) {
     plainError = e;
   }
-
-  // The page failed or had no article: the feed's full-content HTML beats a rendered copy.
-  if (feed) {
-    const ms = Math.min(FEED_TIMEOUT_MS, TOTAL_BUDGET_MS - MIN_RENDER_MS - (Date.now() - started));
-    if (ms >= 1_000) {
-      try {
-        const f = await extractFromFeed(url, feed, ms);
-        if (f) return { ...f, leadImage: plain?.leadImage ?? f.leadImage };
-      } catch {
-        /* fall through to the rendered copy */
-      }
-    }
+  if (plain?.contentHtml) {
+    // The page worked: the feed only gets a short grace period, so a slow feed never holds up the
+    // article. It is usually done by now, since both fetches started together.
+    const f = await within(fromFeed, FEED_GRACE_MS);
+    return f && preferFeed(plain.contentHtml, f.contentHtml) ? { ...f, leadImage: plain.leadImage ?? f.leadImage } : plain;
   }
+  const f = await fromFeed;
+  // The page failed or had no article: the feed's full-content HTML beats a rendered copy.
+  if (f) return { ...f, leadImage: plain?.leadImage ?? f.leadImage };
 
   const ms = Math.min(RENDER_TIMEOUT_MS, TOTAL_BUDGET_MS - (Date.now() - started));
   if (/^https?:\/\//i.test(url) && ms >= MIN_RENDER_MS) {

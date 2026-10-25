@@ -39,6 +39,8 @@ export const items = pgTable(
     title: text("title").notNull(),
     summary: text("summary"),
     contentHtml: text("content_html"),
+    /** content_html came from the rendered-page (Jina Reader) fallback, not the page itself. */
+    contentRendered: boolean("content_rendered").notNull().default(false),
     author: text("author"),
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
     thumbnailUrl: text("thumbnail_url"),

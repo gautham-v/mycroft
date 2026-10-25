@@ -34,6 +34,7 @@ const SCHEMA_SQL = [
     "title" text NOT NULL,
     "summary" text,
     "content_html" text,
+    "content_rendered" boolean DEFAULT false NOT NULL,
     "author" text,
     "published_at" timestamp with time zone NOT NULL,
     "thumbnail_url" text,
@@ -52,6 +53,8 @@ const SCHEMA_SQL = [
   `DROP INDEX IF EXISTS "items_is_read_idx"`,
   `ALTER TABLE "items" DROP COLUMN IF EXISTS "is_read"`,
   `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "seen_urls" text[]`,
+  // Remembers that a cached copy came from the rendered fallback, so the label survives reloads.
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "content_rendered" boolean DEFAULT false NOT NULL`,
 ];
 
 function rawDb(): DB {

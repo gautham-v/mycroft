@@ -223,12 +223,41 @@ function ldAuthor(v: unknown): string | null {
   return names.length ? names.join(", ") : null;
 }
 
-function toDate(v: string | null | undefined): Date | null {
+/** ISO calendar date with no time: "2026-10-21" (also "2026-10", "2026"). */
+const ISO_DATE_ONLY = /^\d{4}(?:-\d{2}(?:-\d{2})?)?$/;
+/** Any clock time ("10:30", "T10") marks a full timestamp. */
+const HAS_TIME = /\d:\d|T\d/i;
+/** A trailing zone on a date with no time ("Wed, 21 Oct 2026 GMT"): it names no instant, only the day. */
+const TRAILING_ZONE = /(?:\s+(?:GMT|UTC|UT|[ECMP][SD]T)(?:\s*[+-]\d{2}:?\d{2})?|\s+[+-]\d{2}:?\d{2}|(?<=\d)Z)\s*$/i;
+
+/**
+ * Parse a published date. A date with no time ("2026-10-21", "October 21, 2026") is pinned
+ * to noon UTC on that calendar day: midnight UTC would show as the previous day in the US. Noon
+ * of a day that has only just begun is still hours away, so the result is never later than now:
+ * an article dated today must not sort above everything published earlier today.
+ * Full timestamps are kept as given.
+ */
+export function toDate(v: string | null | undefined): Date | null {
+  v = v?.trim();
   if (!v) return null;
-  const d = new Date(v);
+  let d = new Date(v);
   if (Number.isNaN(d.getTime())) return null;
+  const dateOnly = !HAS_TIME.test(v);
+  if (dateOnly) {
+    // A zone on a date with no time names no instant, only the day ("Wed, 21 Oct 2026 GMT" is
+    // still the 21st), so it is left off before reading the calendar day.
+    const bare = v.replace(TRAILING_ZONE, "");
+    const b = new Date(bare);
+    const day = Number.isNaN(b.getTime()) ? d : b;
+    d = ISO_DATE_ONLY.test(bare)
+      ? // ISO date-only strings parse as UTC midnight.
+        new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 12))
+      : // Other date-only forms parse as local midnight.
+        new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate(), 12));
+  }
   // Ignore nonsense: far future or before the web.
   if (d.getTime() > Date.now() + 2 * 86400e3 || d.getFullYear() < 1995) return null;
+  if (dateOnly && d.getTime() > Date.now()) d = new Date();
   return d;
 }
 

@@ -2,6 +2,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { items, meta, sources, type SourceRow } from "@/db/schema";
 import { FEED_FALLBACKS } from "@/db/seed";
+import { dedupeItems } from "./dedupe";
 import { errMsg, fetchWithTimeout } from "./http";
 import { parseFeedXml, type ParsedFeed, type ParsedItem } from "./parse";
 import { scrapePage } from "./scrape";
@@ -54,17 +55,17 @@ async function fetchSourceFeed(src: SourceRow): Promise<{ feed: ParsedFeed; feed
  * Page sources: scrape the listing and fetch only article pages we haven't handled before
  * (stored items, plus `seen_urls` for ones that were too old to keep or weren't articles).
  */
-async function scrapeSourceItems(src: SourceRow): Promise<{ items: ParsedItem[]; seenUrls: string[] }> {
-  const db = await getDb();
-  const stored = await db.select({ url: items.url }).from(items).where(eq(items.sourceId, src.id));
+async function scrapeSourceItems(src: SourceRow, stored: StoredItem[]): Promise<{ items: ParsedItem[]; seenUrls: string[] }> {
   const seen = src.seenUrls ?? [];
   const r = await scrapePage(src.feedUrl, new Set([...seen, ...stored.map((x) => x.url)]));
   const seenUrls = [...new Set([...r.processed, ...seen])].slice(0, MAX_SEEN_URLS);
   return { items: r.items, seenUrls };
 }
 
-async function sourceItems(src: SourceRow): Promise<{ items: ParsedItem[]; seenUrls?: string[] }> {
-  if (src.kind === "page") return scrapeSourceItems(src);
+type StoredItem = { guid: string; url: string; title: string };
+
+async function sourceItems(src: SourceRow, stored: StoredItem[]): Promise<{ items: ParsedItem[]; seenUrls?: string[] }> {
+  if (src.kind === "page") return scrapeSourceItems(src, stored);
   const { feed } = await fetchSourceFeed(src);
   return { items: feed.items };
 }
@@ -72,14 +73,22 @@ async function sourceItems(src: SourceRow): Promise<{ items: ParsedItem[]; seenU
 export async function refreshSource(src: SourceRow): Promise<{ added: number }> {
   const db = await getDb();
   try {
-    const { items: parsed, seenUrls } = await sourceItems(src);
+    const stored = await db
+      .select({ guid: items.guid, url: items.url, title: items.title })
+      .from(items)
+      .where(eq(items.sourceId, src.id));
+    const { items: parsed, seenUrls } = await sourceItems(src, stored);
     let added = 0;
     // Skip items already past the retention window so pruned rows don't come back.
     const cutoff = retentionCutoff();
     const fresh = parsed.filter((it) => it.publishedAt >= cutoff);
-    // Dedupe by guid: ON CONFLICT DO UPDATE errors if one statement touches a row twice.
-    const byGuid = new Map(fresh.slice(0, 100).map((it) => [it.guid, it]));
-    const rows = [...byGuid.values()].map((it) => ({ ...it, sourceId: src.id }));
+    // By guid, then by link: a second HN submission of a stored story is skipped.
+    const unique = dedupeItems(fresh.slice(0, 100), {
+      stored,
+      linkOnly: src.group === "aggregator" || fresh.some((it) => it.hnCommentsUrl),
+      siteUrl: src.url,
+    });
+    const rows = unique.map((it) => ({ ...it, sourceId: src.id }));
     if (rows.length) {
       const out = await db
         .insert(items)

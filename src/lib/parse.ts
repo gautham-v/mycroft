@@ -109,7 +109,7 @@ export function parseHnDescription(desc: string | undefined | null): {
   return { points: p ? Number(p[1]) : null, comments: c ? Number(c[1]) : null };
 }
 
-function isHnFeed(feedUrl: string): boolean {
+export function isHnFeed(feedUrl: string): boolean {
   return /(^|\.)hnrss\.org$/i.test(safeHost(feedUrl));
 }
 function safeHost(u: string): string {
@@ -212,16 +212,17 @@ export async function parseFeedXml(xml: string, kind: SourceKind, feedUrl: strin
 }
 
 /**
- * The full HTML a feed carries for one item (content:encoded, Atom content), matched by guid or URL.
- * Used when the article page itself can't be fetched.
+ * The full HTML a feed carries for one item (content:encoded, Atom content), matched by guid first
+ * across every item, then by link. Links keep their query: on feeds with query-string permalinks
+ * (`?p=101`, `article.php?id=7`) the query is what tells posts apart. Only the fragment and a
+ * trailing slash are ignored.
  */
 export async function findFeedItemHtml(xml: string, match: { guid: string; url: string }): Promise<string | null> {
   const feed = await parser.parseString(xml);
-  const strip = (u: string) => u.replace(/[?#].*$/, "").replace(/\/+$/, "");
-  const raw = (feed.items ?? []).find(
-    (r) =>
-      (r.guid || r.id) === match.guid ||
-      (r.link && strip(r.link) === strip(match.url)),
-  );
+  const items = feed.items ?? [];
+  const norm = (u: string) => u.trim().replace(/#.*$/, "").replace(/\/+(?=\?|$)/, "");
+  const raw =
+    items.find((r) => (r.guid || r.id) === match.guid) ??
+    items.find((r) => !!r.link && norm(r.link) === norm(match.url));
   return raw ? (raw["content:encoded"] ?? raw.content ?? null) : null;
 }
