@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import sanitizeHtml from "sanitize-html";
+import { renderPageCharts } from "./charts";
 import { BROWSER_HEADERS, fetchWithTimeout } from "./http";
 import { findFeedItemHtml, isHnFeed } from "./parse";
 
@@ -68,7 +69,13 @@ const SANITIZE: sanitizeHtml.IOptions = {
   // An iframe whose src was refused (or never had one) would be an empty 16:9 box.
   exclusiveFilter: (frame) => frame.tag === "iframe" && !frame.attribs.src,
   transformTags: {
-    iframe: (tagName, attribs) => ({ tagName, attribs: { ...attribs, src: embedSrc(attribs.src) } }),
+    // Percentage sizes (width/height="100%" of a player wrapper) would fight the reader's 16:9 box.
+    iframe: (tagName, attribs) => ({
+      tagName,
+      attribs: Object.fromEntries(
+        Object.entries({ ...attribs, src: embedSrc(attribs.src) }).filter(([k, v]) => !(/^(?:width|height)$/.test(k) && v.includes("%"))),
+      ),
+    }),
     a: (tagName, attribs) => ({
       tagName,
       attribs: { ...attribs, target: "_blank", rel: "noopener noreferrer" },
@@ -91,16 +98,30 @@ SANITIZE.allowedAttributes = {
   img: ["src", "srcset", "sizes", "alt", "title", "width", "height", "loading"],
 };
 
-/** YouTube embeds play from youtube-nocookie (no tracking cookies until play), whatever host the page used. */
+// Player settings for a muted, looping, chrome-less background clip; the reader wants a video to watch.
+const BACKGROUND_PLAYER_PARAMS = ["background", "controls", "autoplay", "muted", "mute", "loop", "playlist"];
+
+/**
+ * YouTube embeds play from youtube-nocookie (no tracking cookies until play), whatever host the
+ * page used. Vimeo and YouTube embeds set up as background clips get their controls back.
+ */
 function embedSrc(src: string | undefined): string {
   if (!src) return "";
   try {
     const u = new URL(src, "https://invalid.invalid/");
-    if (/^(?:www\.|m\.)?youtube\.com$/i.test(u.hostname) && u.pathname.startsWith("/embed/")) {
+    const youtube = /^(?:www\.|m\.)?youtube(?:-nocookie)?\.com$/i.test(u.hostname) && u.pathname.startsWith("/embed/");
+    const vimeo = /^player\.vimeo\.com$/i.test(u.hostname);
+    if (!youtube && !vimeo) return src;
+    const background = u.searchParams.get("background") === "1" || u.searchParams.get("controls") === "0";
+    if (background) {
+      BACKGROUND_PLAYER_PARAMS.forEach((k) => u.searchParams.delete(k));
+      if (vimeo) u.searchParams.set("controls", "1");
+    }
+    if (youtube) {
       u.protocol = "https:";
       u.hostname = "www.youtube-nocookie.com";
-      return u.toString();
     }
+    return background || youtube ? u.toString() : src;
   } catch {
     /* leave it to the hostname check */
   }
@@ -307,8 +328,9 @@ export function removeScreenReaderText(root: Doc | Element) {
   }
 }
 
-// Custom video players leave their controls behind as text: "00:00 / 01:59", "1–13 of 13".
-const TIME_CODE = /^\d{1,2}:\d{2}(?::\d{2})?(?:\s*\/\s*\d{1,2}:\d{2}(?::\d{2})?)?$/;
+// Custom video players leave their controls behind as text: "00:00 / 01:59", "1–13 of 13". The
+// separator may be drawn by CSS (`before:content-['|']`), leaving "00:0100:14".
+const TIME_CODE = /^\d{1,2}:\d{2}(?::\d{2})?(?:\s*[/|]?\s*\d{1,2}:\d{2}(?::\d{2})?)?$/;
 const N_OF_M = /^\d+(?:\s*[–—-]\s*\d+)?\s+of\s+\d+$/i;
 
 const PLAYER_PART = 'video, audio, button, [role="slider"], [role="button"], [aria-live]';
@@ -335,10 +357,11 @@ export function removePlayerChrome(root: Doc | Element) {
   for (const el of [...root.querySelectorAll('[role="slider"], [role="toolbar"], [role="progressbar"]')]) {
     if (el.isConnected && !el.matches("body, html")) el.remove();
   }
-  for (const el of [...root.querySelectorAll("span, div, output, small, label")]) {
+  for (const el of [...root.querySelectorAll("span, div, output, small, label, p")]) {
     if (!el.isConnected || el.querySelector(MEDIA)) continue;
     const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-    if (!t || t.length > 24 || !(TIME_CODE.test(t) || N_OF_M.test(t)) || el.closest(TEXT_BLOCK)) continue;
+    // A paragraph that is only a time code counts too; one inside a line of text never does.
+    if (!t || t.length > 24 || !(TIME_CODE.test(t) || N_OF_M.test(t)) || el.parentElement?.closest(TEXT_BLOCK)) continue;
     if (inPlayer(el, root)) el.remove();
   }
 }
@@ -454,16 +477,26 @@ const FIGURE_MEDIA = "img, picture, svg, video, audio, iframe, canvas, object, e
 
 /**
  * Figures whose graphic is drawn client-side (charts rendered by JavaScript into an empty div)
- * arrive as a caption with nothing above it. Say so and link to the figure on the original page,
- * rather than showing a caption for a missing image.
+ * arrive as a caption with nothing above it. When the chart was rendered server-side from the
+ * page's own spec (`charts`, keyed by the id of the element it draws into), put that SVG in the
+ * empty element. Otherwise say so and link to the figure on the original page, rather than
+ * showing a caption for a missing image.
  */
-function markClientRenderedFigures(root: Doc | Element, pageUrl: string) {
+function markClientRenderedFigures(root: Doc | Element, pageUrl: string, charts?: Map<string, string>) {
   root.querySelectorAll("figure").forEach((fig) => {
     const caption = fig.querySelector("figcaption");
     if (!caption || fig.querySelector(FIGURE_MEDIA)) return;
     const body = (fig.textContent ?? "").replace((caption.textContent ?? ""), "").trim();
     if (body) return;
-    const id = fig.getAttribute("id") || fig.querySelector("[id]")?.getAttribute("id");
+    const targets = [fig, ...fig.querySelectorAll("[id]")].filter((el) => el.getAttribute("id"));
+    const drawn = targets.find((el) => charts?.has(el.getAttribute("id")!));
+    if (drawn) {
+      const svg = charts!.get(drawn.getAttribute("id")!)!;
+      if (drawn === fig || drawn.contains(caption)) caption.insertAdjacentHTML("beforebegin", svg);
+      else drawn.innerHTML = svg;
+      return;
+    }
+    const id = targets[0]?.getAttribute("id");
     const href = id ? `${pageUrl.split("#")[0]}#${encodeURIComponent(id)}` : pageUrl;
     const doc = fig.ownerDocument;
     const note = doc.createElement("p");
@@ -606,11 +639,26 @@ function removeBoilerplate(root: Element) {
   }
 }
 
+const EMBED_PLAYER = 'video, iframe[src*="player.vimeo.com/"], iframe[src*="youtube.com/embed/"], iframe[src*="youtube-nocookie.com/embed/"]';
+
 /**
  * Media left without anything to play (a custom player's <video> whose source we couldn't find)
- * would show as an empty box; a poster still beside its own video shows the frame twice.
+ * would show as an empty box; a poster still beside its own video shows the frame twice. A player
+ * embed's poster is an <img> in the same figure (or close wrapper) that calls itself a poster.
  */
 function removeDeadMedia(root: Element) {
+  for (const player of [...root.querySelectorAll(EMBED_PLAYER)]) {
+    const box = player.closest("figure") ?? player.parentElement?.parentElement ?? null;
+    for (const img of [...(box?.querySelectorAll("img") ?? [])]) {
+      if (!/\bposter\b/i.test(`${img.getAttribute("alt") ?? ""} ${img.getAttribute("src") ?? ""}`)) continue;
+      let gone: Element = img;
+      // Its wrappers go too when it was all they held.
+      while (gone.parentElement && gone.parentElement !== box && gone.parentElement.children.length === 1 && !squash(gone.parentElement.textContent)) {
+        gone = gone.parentElement;
+      }
+      gone.remove();
+    }
+  }
   for (const v of [...root.querySelectorAll("video")]) {
     const playable = v.getAttribute("src") || [...v.querySelectorAll("source")].some((s) => s.getAttribute("src"));
     if (!playable) v.remove();
@@ -827,18 +875,92 @@ export function mergeSplitContainers(root: Doc | Element) {
 const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 const REGION_MIN_PROSE = 400;
 
+/** The article's title <h1>: the one matching og:title / <title>, or the page's only <h1>. */
+function headline(document: Doc): Element | null {
+  const title = norm(
+    document.querySelector('meta[property="og:title"]')?.getAttribute("content") ?? document.querySelector("title")?.textContent,
+  );
+  const h1s = [...document.querySelectorAll("h1")].filter((h) => norm(h.textContent));
+  return (
+    h1s.find((h) => title && (title.includes(norm(h.textContent)) || norm(h.textContent).includes(title))) ??
+    (h1s.length === 1 ? h1s[0] : null)
+  );
+}
+
+const VIDEO_EMBED = 'iframe[src*="player.vimeo.com/video/"], iframe[src*="youtube.com/embed/"], iframe[src*="youtube-nocookie.com/embed/"], video';
+const HERO_MAX_EMBEDS = 3;
+/** Text allowed between a hero video placed above the headline and the headline itself (a kicker, a date). */
+const HERO_MAX_TEXT_BEFORE = 200;
+
+interface HeroVideo {
+  html: string;
+  /** What identifies the video in extracted HTML (a Vimeo/YouTube id, or the file URL). */
+  key: string;
+  /** Paragraph texts before and after it: the whole article body must come after a hero. */
+  before: Set<string>;
+  after: Set<string>;
+}
+
+function videoKey(el: Element): string | null {
+  if (el.tagName === "VIDEO") {
+    const src = el.getAttribute("src") || el.querySelector("source[src]")?.getAttribute("src");
+    return src && !src.startsWith("data:") ? src : null;
+  }
+  const m = /(?:player\.vimeo\.com\/video|\/embed)\/([\w-]+)/.exec(el.getAttribute("src") ?? "");
+  return m?.[1] ?? null;
+}
+
+/**
+ * A video at the top of the page, in the header around the headline (OpenAI's hero Vimeo clip):
+ * Readability drops it with the rest of the header. Candidates are the first few video embeds after
+ * the <h1>, or just above it; extractFromHtml keeps one only if the article body starts right after
+ * it (heroVideoFirst). Call after absolutizeDom, before Readability.
+ */
+function findHeroVideos(document: Doc): HeroVideo[] {
+  const h1 = headline(document);
+  if (!h1) return [];
+  // Document order by index (linkedom's compareDocumentPosition is unreliable across subtrees).
+  const order = new Map([...document.querySelectorAll("*")].map((el, i) => [el, i]));
+  const at = (el: Element) => order.get(el) ?? -1;
+  const paras = [...document.querySelectorAll("p")];
+  const out: HeroVideo[] = [];
+  for (const el of document.querySelectorAll(VIDEO_EMBED)) {
+    if (out.length >= HERO_MAX_EMBEDS || el.closest("nav, footer, aside")) continue;
+    const key = videoKey(el);
+    if (!key || h1.contains(el)) continue;
+    if (at(el) < at(h1) && between(el, h1).text > HERO_MAX_TEXT_BEFORE) continue;
+    const box = el.closest("figure") ?? el;
+    const end = at(box) + box.querySelectorAll("*").length;
+    const before = new Set<string>();
+    const after = new Set<string>();
+    for (const p of paras) {
+      const t = norm(p.textContent);
+      if (t.length >= 40) (at(p) < at(box) ? before : at(p) > end ? after : null)?.add(t);
+    }
+    if (!after.size) continue;
+    out.push({ html: el.outerHTML, key, before, after });
+  }
+  return out;
+}
+
+/**
+ * Put the hero video first when the whole extraction comes after it on the page (its first
+ * paragraph follows the video; extraction keeps page order) and doesn't have it already.
+ */
+function heroVideoFirst(clean: string, heroes: HeroVideo[]): string {
+  if (!heroes.length) return clean;
+  const first = paragraphTexts(parseHTML(`<!doctype html><html><body>${clean}</body></html>`).document)[0];
+  const hero = first ? heroes.find((h) => h.after.has(first) && !h.before.has(first) && !clean.includes(h.key)) : undefined;
+  const html = hero ? sanitizeArticle(hero.html).trim() : "";
+  return html ? html + clean : clean;
+}
+
 /**
  * The page region the headline belongs to: the nearest ancestor of the title <h1> that holds real
  * prose. Null when the headline can't be identified or the region is the whole page.
  */
 function headlineRegion(document: Doc): Element | null {
-  const title = norm(
-    document.querySelector('meta[property="og:title"]')?.getAttribute("content") ?? document.querySelector("title")?.textContent,
-  );
-  const h1s = [...document.querySelectorAll("h1")].filter((h) => norm(h.textContent));
-  const h1 =
-    h1s.find((h) => title && (title.includes(norm(h.textContent)) || norm(h.textContent).includes(title))) ??
-    (h1s.length === 1 ? h1s[0] : null);
+  const h1 = headline(document);
   for (let el = h1?.parentElement ?? null; el && !/^(BODY|HTML)$/.test(el.tagName); el = el.parentElement) {
     if (proseLen(el) >= REGION_MIN_PROSE) return el;
   }
@@ -877,13 +999,13 @@ function runReadability(document: Doc, media: string[], base: string): string | 
 }
 
 /** Page-wide cleanup that must happen while the page's class names and structure are intact. */
-function prepareDom(root: Doc | Element, base: string, pageUrl: string) {
+function prepareDom(root: Doc | Element, base: string, pageUrl: string, charts?: Map<string, string>) {
   absolutizeDom(root, base);
   removeScreenReaderText(root);
   removePlayerChrome(root);
   normalizeCodeBlocks(root);
   dropDarkVariants(root);
-  markClientRenderedFigures(root, pageUrl);
+  markClientRenderedFigures(root, pageUrl, charts);
 }
 
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -901,8 +1023,11 @@ const REGION_MIN_TEXT = 500;
  *    that region and doesn't contain it (pickedOutsideRegion), and the scoped run keeps at least
  *    REGION_MIN_TEXT characters and half as much text as (1). Readability then scored some other
  *    block of prose (a legal disclaimer, a related-posts rail) above the story under the headline.
+ *
+ * `charts` holds SVGs for client-drawn charts (renderPageCharts), keyed by the element id each one
+ * draws into; it is computed beforehand because rendering is async.
  */
-export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
+export function extractFromHtml(html: string, pageUrl: string, charts?: Map<string, string>): ExtractResult {
   const { document } = parseHTML(html);
   const base = abs(document.querySelector("base[href]")?.getAttribute("href") ?? null, pageUrl) ?? pageUrl;
   const og =
@@ -910,7 +1035,8 @@ export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
     document.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ??
     null;
   const lead = usableLead(abs(og, base));
-  prepareDom(document, base, pageUrl);
+  prepareDom(document, base, pageUrl, charts);
+  const heroes = findHeroVideos(document);
   const media = protectMedia(document);
   neutralizeReadabilityClasses(document);
   mergeSplitContainers(document);
@@ -927,6 +1053,7 @@ export function extractFromHtml(html: string, pageUrl: string): ExtractResult {
     if (alt && n >= REGION_MIN_TEXT && n >= 0.5 * plainText(clean).length) clean = alt;
   }
   if (!clean) return { contentHtml: null, leadImage: lead };
+  clean = heroVideoFirst(clean, heroes);
   return { contentHtml: clean, leadImage: lead ?? firstImage(clean) };
 }
 
@@ -1010,7 +1137,7 @@ async function extractPlain(url: string): Promise<ExtractResult> {
   const ct = res.headers.get("content-type") ?? "";
   if (ct && !/html|xml/i.test(ct)) throw new Error(`Unsupported content type: ${ct}`);
   const html = await res.text();
-  return extractFromHtml(html, res.url || url);
+  return extractFromHtml(html, res.url || url, await renderPageCharts(html));
 }
 
 // README badges (build status, chat, version): never a hero.
@@ -1050,7 +1177,8 @@ async function extractRendered(url: string, ms: number): Promise<ExtractResult |
   if (key) headers.Authorization = `Bearer ${key}`;
   const res = await fetchWithTimeout(`https://r.jina.ai/${url}`, ms, { headers });
   if (!res.ok) return null;
-  const out = extractFromHtml(await res.text(), url);
+  const html = await res.text();
+  const out = extractFromHtml(html, url, await renderPageCharts(html));
   if (!out.contentHtml || isLoginWall(out.contentHtml)) return null;
   return { ...out, rendered: true };
 }

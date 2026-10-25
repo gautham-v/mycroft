@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { fetchWithTimeout } from "./http";
+import { ldArticle, metaReader, pageImage, str, type Doc } from "./page-meta";
 import type { ParsedItem } from "./parse";
 
 // Scraped-page sources (kind 'page'): a listing page with no RSS/Atom feed, e.g.
@@ -13,8 +14,6 @@ const CONCURRENCY = 4;
 /** Stop starting new article fetches after this; the rest are picked up next refresh. */
 const DEFAULT_BUDGET_MS = 25_000;
 const HTML_ACCEPT = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5";
-
-type Doc = ReturnType<typeof parseHTML>["document"];
 
 /** Path segments that are listing furniture, not articles. */
 const STOP_SEGMENTS = new Set([
@@ -32,6 +31,10 @@ const FILE_EXT = /\.(xml|json|rss|atom|pdf|zip|png|jpe?g|gif|webp|svg|ico|css|js
 const SLUG = /^(?=.*[a-z])[a-z0-9]+(?:[-_][a-z0-9]+)+$/i;
 
 const words = (s: string): string[] => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+
+/** X / Twitter profile pages: the server-rendered HTML lists posts as /<user>/status/<id>. */
+const isXHost = (host: string) => /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/i.test(host);
+const TWEET_PATH = /^\/[^/]+\/status\/\d+$/;
 
 /** Canonical form used as item url/guid and for "already seen" checks: no hash, no query, no trailing slash. */
 export function canonicalUrl(u: URL): string {
@@ -119,12 +122,21 @@ export function findArticleLinks(html: string, pageUrl: string): string[] {
 }
 
 function articleLinksFromDoc(document: Doc, pageUrl: string): string[] {
-  const listingSegs = new URL(pageUrl).pathname.split("/").filter(Boolean);
+  const page = new URL(pageUrl);
+  const byOrder = (a: Link, b: Link) => a.order - b.order;
+  if (isXHost(page.hostname)) {
+    // Only posts: profile tabs (/user/media, /user/with_replies) and compose links are furniture.
+    return [...collectLinks(document, pageUrl).values()]
+      .filter((l) => TWEET_PATH.test(new URL(l.url).pathname))
+      .sort(byOrder)
+      .slice(0, MAX_LINKS)
+      .map((l) => l.url);
+  }
+  const listingSegs = page.pathname.split("/").filter(Boolean);
   const listingKey = listingSegs.join("/");
   const links = [...collectLinks(document, pageUrl).values()].filter(
     (l) => l.segs.length > 0 && !isExcluded(l, listingSegs),
   );
-  const byOrder = (a: Link, b: Link) => a.order - b.order;
 
   // At the site root every nav link is one segment below the listing, so only the fallback applies there.
   const strict = listingSegs.length
@@ -158,6 +170,8 @@ export function listingTitle(html: string, pageUrl: string): string {
   const meta = metaReader(document);
   const og = meta("og:title");
   const site = meta("og:site_name");
+  // "Kun Chen (@kunchenguid) on X" already names the site.
+  if (og && isXHost(new URL(pageUrl).hostname)) return og;
   if (og && site && !og.toLowerCase().includes(site.toLowerCase())) return `${site} ${og}`;
   const raw = (document.querySelector("title")?.textContent ?? "").replace(/\s+/g, " ").trim();
   const parts = raw.split(TITLE_SEP).filter(Boolean);
@@ -165,55 +179,7 @@ export function listingTitle(html: string, pageUrl: string): string {
   return og ?? (raw || bareHost(new URL(pageUrl).hostname));
 }
 
-function metaReader(document: Doc) {
-  const map = new Map<string, string>();
-  for (const m of document.querySelectorAll("meta[content]")) {
-    const key = (m.getAttribute("property") ?? m.getAttribute("name") ?? m.getAttribute("itemprop") ?? "").toLowerCase();
-    const v = (m.getAttribute("content") ?? "").trim();
-    if (key && v && !map.has(key)) map.set(key, v);
-  }
-  return (...keys: string[]) => {
-    for (const k of keys) {
-      const v = map.get(k.toLowerCase());
-      if (v) return v;
-    }
-    return null;
-  };
-}
-
 type Ld = Record<string, unknown>;
-const ARTICLE_TYPES = /^(Article|NewsArticle|BlogPosting|TechArticle|Report|ScholarlyArticle|AnalysisNewsArticle|PressRelease)$/;
-
-function ldArticle(document: Doc): Ld | null {
-  const nodes: Ld[] = [];
-  const walk = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach(walk);
-    else if (v && typeof v === "object") {
-      const o = v as Ld;
-      nodes.push(o);
-      if (o["@graph"]) walk(o["@graph"]);
-    }
-  };
-  for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
-    try {
-      walk(JSON.parse(s.textContent ?? ""));
-    } catch {}
-  }
-  return (
-    nodes.find((n) => {
-      const t = n["@type"];
-      return (Array.isArray(t) ? t : [t]).some((x) => typeof x === "string" && ARTICLE_TYPES.test(x));
-    }) ?? null
-  );
-}
-
-const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
-
-function ldImage(v: unknown): string | null {
-  if (Array.isArray(v)) return ldImage(v[0]);
-  if (v && typeof v === "object") return str((v as Ld).url);
-  return str(v);
-}
 
 function ldAuthor(v: unknown): string | null {
   const names = (Array.isArray(v) ? v : [v])
@@ -261,15 +227,6 @@ export function toDate(v: string | null | undefined): Date | null {
   return d;
 }
 
-function absUrl(u: string | null, base: string): string | null {
-  if (!u) return null;
-  try {
-    return new URL(u, base).toString();
-  } catch {
-    return null;
-  }
-}
-
 function clip(s: string | null, max: number): string | null {
   if (!s) return null;
   const t = s.replace(/\s+/g, " ").trim();
@@ -292,6 +249,8 @@ export function extractArticleMeta(html: string, pageUrl: string): ArticleMeta {
   const { document } = parseHTML(html);
   const meta = metaReader(document);
   const ld = ldArticle(document);
+  const page = new URL(pageUrl);
+  if (isXHost(page.hostname) && TWEET_PATH.test(page.pathname)) return tweetMeta(meta, ld, pageUrl);
   const docTitle = (document.querySelector("title")?.textContent ?? "").replace(/\s+/g, " ").trim();
   const h1 = (document.querySelector("h1")?.textContent ?? "").replace(/\s+/g, " ").trim();
   const docParts = docTitle.split(TITLE_SEP);
@@ -314,8 +273,25 @@ export function extractArticleMeta(html: string, pageUrl: string): ArticleMeta {
     summary: clip(meta("og:description", "description", "twitter:description") ?? str(ld?.description), 400),
     author: author && !/^https?:\/\//.test(author) ? clip(author, 120) : null,
     publishedAt: published,
-    thumbnailUrl: absUrl(meta("og:image", "og:image:url", "twitter:image") ?? ldImage(ld?.image), pageUrl),
+    thumbnailUrl: pageImage(meta, ld, pageUrl),
     ogType: meta("og:type")?.toLowerCase() ?? null,
+  };
+}
+
+/**
+ * A post on X: og:title is the author ("Kun Chen (@kunchenguid) on X") and the post text is
+ * the description, so the text becomes the title. The avatar is not a thumbnail.
+ */
+function tweetMeta(meta: ReturnType<typeof metaReader>, ld: ReturnType<typeof ldArticle>, pageUrl: string): ArticleMeta {
+  const text = meta("og:description", "description", "twitter:description");
+  const image = pageImage(meta, ld, pageUrl);
+  return {
+    title: clip(text, 200) ?? clip(meta("og:title"), 300),
+    summary: null,
+    author: clip(meta("og:title")?.replace(/\s+on X$/i, "") ?? null, 120),
+    publishedAt: toDate(meta("article:published_time")),
+    thumbnailUrl: image && !/\/profile_images\//.test(image) ? image : null,
+    ogType: "article",
   };
 }
 

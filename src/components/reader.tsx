@@ -142,7 +142,9 @@ export function Reader({
   };
 
   const hero = !isVideo ? item.thumbnail_url || (content.status === "ok" ? content.leadImage : null) : null;
-  const contentHasHero = content.status === "ok" && hero != null && content.html.includes(hero);
+  // A page's hero video comes first in the extracted HTML; it replaces the hero image.
+  const contentHasHero =
+    content.status === "ok" && hero != null && (content.html.includes(hero) || /^\s*<(?:iframe|video)\b/.test(content.html));
 
   return (
     <article className="min-h-full bg-[var(--surface)] pb-[calc(env(safe-area-inset-bottom)+32px)]">

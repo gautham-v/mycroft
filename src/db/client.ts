@@ -38,6 +38,7 @@ const SCHEMA_SQL = [
     "author" text,
     "published_at" timestamp with time zone NOT NULL,
     "thumbnail_url" text,
+    "thumbnail_checked" boolean DEFAULT false NOT NULL,
     "video_id" text,
     "duration_sec" integer,
     "hn_points" integer,
@@ -55,6 +56,8 @@ const SCHEMA_SQL = [
   `ALTER TABLE "sources" ADD COLUMN IF NOT EXISTS "seen_urls" text[]`,
   // Remembers that a cached copy came from the rendered fallback, so the label survives reloads.
   `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "content_rendered" boolean DEFAULT false NOT NULL`,
+  // Refresh-time og:image backfill: items already tried, so old items aren't refetched every refresh.
+  `ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "thumbnail_checked" boolean DEFAULT false NOT NULL`,
 ];
 
 function rawDb(): DB {

@@ -44,6 +44,8 @@ export const items = pgTable(
     author: text("author"),
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
     thumbnailUrl: text("thumbnail_url"),
+    /** The article page was already tried for a share image (og:image) at refresh time. */
+    thumbnailChecked: boolean("thumbnail_checked").notNull().default(false),
     videoId: text("video_id"),
     durationSec: integer("duration_sec"),
     hnPoints: integer("hn_points"),

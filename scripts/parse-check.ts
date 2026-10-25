@@ -12,6 +12,7 @@ import {
   sanitizeArticle,
 } from "../src/lib/extract";
 import { parseHTML } from "linkedom";
+import { findChartSpecs, renderPageCharts } from "../src/lib/charts";
 import { detectFeed, findAlternateFeeds, findChannelIdInHtml } from "../src/lib/feed-detect";
 import { normalizeSourceUrl, wwwAlternate } from "../src/lib/source-url";
 import { relativeTime } from "../src/lib/time";
@@ -19,6 +20,8 @@ import { extractArticleMeta, findArticleLinks, listingTitle, toDate } from "../s
 import { dedupeItems, linkKey } from "../src/lib/dedupe";
 import { cachedContent, contentUpdate } from "../src/lib/content-cache";
 import { schemaSql } from "../src/db/client";
+import { fetchPageImage, fetchPageImages, imageFromHtml } from "../src/lib/page-meta";
+import { NEW_THUMB_CAP, newThumbTargets } from "../src/lib/fetcher";
 
 const HN = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Hacker News: Newest</title><link>https://news.ycombinator.com/newest</link>
 <item><title>Show HN: A tiny thing</title><description><![CDATA[
@@ -59,6 +62,8 @@ async function main() {
   await checkRenderedFallback();
   checkScrape();
   checkFigures();
+  await checkCharts();
+  checkHeroVideo();
   await checkFeedFallback();
   checkSplitArticle();
   checkHeadlineRegion();
@@ -76,6 +81,7 @@ async function main() {
   checkEmbedsAndCode();
   checkBoilerplate();
   checkBadgeLead();
+  await checkThumbBackfill();
 }
 
 // claude.com/resources/articles pages carry a bare calendar date (saved 2026-10-24).
@@ -338,6 +344,94 @@ function checkFigures() {
   assert.match(h, /tw-light\.png/);
   assert.doesNotMatch(h, /dark\.png/);
   console.log("FIGURES: ok");
+}
+
+// openai.com's DotcomChart (trimmed, saved 2026-10-24): the chart is an empty div in the HTML; its
+// Vega-Lite spec rides in the RSC payload, a JSON string split across self.__next_f.push() calls.
+const CHART_ROW =
+  `17e:["$","div","7",{"className":"group","children":["$","figure",null,{"id":"$undefined","children":["$","$L193",null,{"id":"61IRWmGHG3ANkItOjM18p4",` +
+  `"data":{"dotcomConfig":{"linkId":"urgent-high-candidate-findings-vs-tokens-spent","aspectRatio":1.5,"minHeight":300},` +
+  `"vegaLiteSpec":{"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"values":[` +
+  `{"cumulative_tokens":0,"cumulative_findings":20},{"cumulative_tokens":105045622026,"cumulative_findings":243},` +
+  `{"cumulative_tokens":210000000000,"cumulative_findings":265},{"cumulative_tokens":380000000000,"cumulative_findings":277}]},` +
+  `"transform":[{"calculate":"datum.cumulative_tokens / 1000000000","as":"tokens_billions"}],` +
+  `"encoding":{"x":{"field":"tokens_billions","type":"quantitative","scale":{"domain":[0,400],"nice":false},` +
+  `"axis":{"title":"Tokens spent (billions)","values":[0,100,200,300,400]}},` +
+  `"y":{"field":"cumulative_findings","type":"quantitative","scale":{"domain":[0,300],"nice":false},` +
+  `"axis":{"title":"Deduplicated candidate findings","values":[0,50,100,150,200,250,300]}}},` +
+  `"title":"Red-teaming findings versus tokens spent",` +
+  `"layer":[{"mark":{"type":"line","interpolate":"step-after","point":false},"encoding":{"tooltip":null}}]}},` +
+  `"subcomponents":"$undefined","reactComponent":"DotcomChart","display":"auto","__typename":"componentCustom"}]}]}]\n`;
+const chartPage = (payload: string) => {
+  const cut = payload.indexOf('"layer"');
+  const push = (s: string) => `<script>self.__next_f.push([1,${JSON.stringify(s).replace(/</g, "\\u003c")}])</script>`;
+  return `<html><head><title>T</title></head><body><article>${PROSE}
+    <figure class="grid"><div data-figure-content="true"><div id="urgent-high-candidate-findings-vs-tokens-spent" style="height:400px"></div></div>
+    <figcaption><p><i><span>We plot the cumulative number of high-priority candidate findings.</span></i></p></figcaption></figure>${PROSE}</article>
+    <script>self.__next_f.push([0])</script>${push('e8:"DotcomChartThemeProvider"\n16f:{"text":"a { brace in a string"}\n')}${push(payload.slice(0, cut))}${push(payload.slice(cut))}</body></html>`;
+};
+
+async function checkCharts() {
+  const url = "https://openai.com/index/x/";
+  const page = chartPage(CHART_ROW);
+  const specs = findChartSpecs(page);
+  assert.equal(specs.length, 1);
+  assert.deepEqual(specs[0].ids, ["urgent-high-candidate-findings-vs-tokens-spent", "61IRWmGHG3ANkItOjM18p4"]);
+  assert.equal(specs[0].aspectRatio, 1.5);
+  const h = extractFromHtml(page, url, await renderPageCharts(page)).contentHtml ?? "";
+  const fig = h.slice(h.indexOf("<figure"), h.indexOf("</figure>"));
+  assert.match(fig, /<svg viewbox="0 0 [\d.]+ [\d.]+" width="100%" role="img" aria-label="Red-teaming findings versus tokens spent">/i);
+  assert.match(fig, /<text[^>]*>Tokens spent \(billions\)<\/text>/);
+  assert.match(fig, /<text[^>]*>Deduplicated candidate findings<\/text>/);
+  assert.match(fig, /<path d="M[\d.,]+L[^"]+" stroke="currentColor" stroke-width="2"/);
+  assert.match(fig, /We plot the cumulative number/);
+  assert.doesNotMatch(fig, /Interactive figure not shown|#000|white|class=|style=/);
+  // Through the fetch path too.
+  await withFetch(
+    () => new Response(page, { headers: { "content-type": "text/html" } }),
+    async () => assert.match((await extractArticle(url)).contentHtml ?? "", /<svg[\s\S]*Tokens spent \(billions\)/),
+  );
+  // A spec that can't render (external data is never fetched) keeps the link to the original.
+  const external = CHART_ROW.replace(/"data":\{"values":\[.*?\]\},/, '"data":{"url":"https://evil.example/d.json"},');
+  const ext = chartPage(external);
+  assert.equal((await renderPageCharts(ext)).size, 0);
+  assert.match(extractFromHtml(ext, url, await renderPageCharts(ext)).contentHtml ?? "", /Interactive figure not shown here[\s\S]*#urgent-high-candidate-findings-vs-tokens-spent/);
+  console.log("CHARTS: ok");
+}
+
+function checkHeroVideo() {
+  const url = "https://openai.com/index/x/";
+  const doc = (head: string, body: string) =>
+    `<html><head><title>What FDE means</title></head><body><main><div class="hero"><h1>What FDE means</h1><p>What we do, how we work, and how we solve the toughest problems.</p>${head}</div>
+    <div data-toc-content>${body}</div></main><footer><iframe src="https://player.vimeo.com/video/999?background=1"></iframe></footer></body></html>`;
+  const vimeo = `<div class="size-full pointer-events-none"><iframe loading="eager" width="100%" height="100%" title="clip" allow="autoplay; fullscreen; picture-in-picture" src="https://player.vimeo.com/video/1235619942?h=4b51ea2b10&amp;badge=0&amp;autoplay=1&amp;muted=1&amp;playsinline=1&amp;controls=0&amp;background=1&amp;loop=1"></iframe></div>`;
+  const watchable = /<iframe allow="autoplay; fullscreen; picture-in-picture" src="https:\/\/player\.vimeo\.com\/video\/1235619942\?h=4b51ea2b10&amp;badge=0&amp;playsinline=1&amp;controls=1"><\/iframe>/;
+
+  // Hero video in the header above the body: Readability drops the header, so it is put first,
+  // made watchable (controls on; no background/autoplay/mute/loop), without percentage sizes.
+  let h = extractFromHtml(doc(vimeo, PROSE), url).contentHtml ?? "";
+  assert.match(h, new RegExp(`^${watchable.source}`));
+  assert.equal(h.match(/player\.vimeo\.com/g)?.length, 1);
+  assert.doesNotMatch(h, /video\/999|width="100%"/);
+  // Above the headline too, past a dek that isn't part of the body.
+  const above = doc("", PROSE).replace("<h1>", `${vimeo}<h1>`);
+  assert.match(extractFromHtml(above, url).contentHtml ?? "", new RegExp(`^${watchable.source}`));
+  // A <video> hero works the same way.
+  h = extractFromHtml(doc(`<video autoplay muted loop playsinline><source src="/hero.mp4" type="video/mp4"></video>`, PROSE), url).contentHtml ?? "";
+  assert.match(h, /^<video[^>]*><source src="https:\/\/openai\.com\/hero\.mp4"/);
+
+  // The same embed inside the body (after its first paragraphs) stays where it is, still made
+  // watchable; its poster image and the player's leftover time code ("00:01|00:14") go.
+  const p1 = "<p>When Codex came out, someone on the team asked me what we do when it one-shots the use cases.</p>";
+  const fig = `<figure><div>${vimeo}<img alt="Deployment gap video poster" src="/poster.jpg"><button aria-label="Pause video"></button>
+    <div><button aria-label="Pause video"></button><div><p class="tabular-nums">00:01<span>00:14</span></p></div><button aria-label="Unmute video"></button></div></div></figure>`;
+  h = extractFromHtml(doc("", p1 + PROSE + fig + PROSE), url).contentHtml ?? "";
+  assert.ok(h.indexOf("When Codex came out") < h.indexOf("<iframe"), "body video stays in place");
+  assert.match(h, watchable);
+  assert.doesNotMatch(h, /poster\.jpg|00:01|00:14/);
+  // A time code in a sentence is content.
+  assert.match(extractFromHtml(doc("", `${PROSE}<p>Skip to 00:14 for the demo.</p>${fig}`), url).contentHtml ?? "", /Skip to 00:14 for the demo/);
+  console.log("HERO VIDEO: ok");
 }
 
 async function checkFeedFallback() {
@@ -836,4 +930,151 @@ function checkBadgeLead() {
   assert.equal(extractFromHtml(page(`<p><img src="https://img.shields.io/badge/a-b-blue"></p>`), url).leadImage, null);
   console.log("BADGE LEAD: ok");
 }
+// Refresh-time thumbnail backfill. openai.com/news/rss.xml items (2026-10-24) carry only title,
+// description, link, guid, category and pubDate; the image is the article's og:image, and
+// openai.com answers server fetches with a Cloudflare 403 (cf-mitigated: challenge).
+async function withFetchInit(
+  routes: (url: string, init: RequestInit) => Response | Promise<Response>,
+  fn: (calls: string[]) => Promise<void>,
+) {
+  const real = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    calls.push(String(input));
+    return routes(String(input), init);
+  }) as typeof fetch;
+  try {
+    await fn(calls);
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+/** A fetch that only settles when its signal aborts (a server that never answers). */
+const hang = (init: RequestInit) =>
+  new Promise<Response>((_, reject) =>
+    init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))),
+  );
+
+async function checkThumbBackfill() {
+  const HEAD = `<!doctype html><html><head><title>Post</title><meta property="og:image" content="/social/post.png"></head>`;
+  // From the page head, relative to the final URL; JSON-LD image when there's no og/twitter tag.
+  assert.equal(imageFromHtml(HEAD, "https://blog.example.com/p/1"), "https://blog.example.com/social/post.png");
+  assert.equal(
+    imageFromHtml(`<head><script type="application/ld+json">{"@type":"BlogPosting","image":{"url":"https://cdn.example.com/a.jpg"}}</script></head>`, "https://x.example/p"),
+    "https://cdn.example.com/a.jpg",
+  );
+  assert.equal(imageFromHtml(`<head><meta property="og:image" content="data:image/png;base64,xx"></head>`, "https://x.example/p"), null);
+
+  // A feed item with no media gets the page's og:image; the body is read only up to </head>
+  // (this stream never ends, so reading past the head would hang until the timeout).
+  const enc = new TextEncoder();
+  await withFetchInit(
+    () =>
+      new Response(
+        new ReadableStream({ start: (c) => c.enqueue(enc.encode(HEAD + "<body>" + "x".repeat(5000))) }),
+        { headers: { "content-type": "text/html; charset=utf-8" } },
+      ),
+    async () => {
+      const t0 = Date.now();
+      const r = await fetchPageImage("https://blog.example.com/p/1", 2000);
+      assert.deepEqual(r, { image: "https://blog.example.com/social/post.png", final: true, via: "page" });
+      assert.ok(Date.now() - t0 < 1000, "stopped at </head>");
+    },
+  );
+
+  // 403 (Cloudflare) -> Jina Reader JSON metadata, asked for the <head> only.
+  const OPENAI = "https://openai.com/index/scaling-storage-one-billion-users-part-two";
+  const OG = "https://images.ctfassets.net/kftzwdyauwt9/1p8W/6ae7/scaling-storage-social.png?w=1600&h=900&fit=fill";
+  await withFetchInit(
+    (u, init) => {
+      if (u.startsWith("https://r.jina.ai/")) {
+        const h = init.headers as Record<string, string>;
+        assert.equal(h.Accept, "application/json");
+        assert.equal(h["X-Target-Selector"], "head");
+        return Response.json({ code: 200, data: { url: OPENAI, metadata: { "og:title": "Scaling", "og:image": OG } } });
+      }
+      return new Response("challenge", { status: 403, headers: { "cf-mitigated": "challenge" } });
+    },
+    async (calls) => {
+      assert.deepEqual(await fetchPageImage(OPENAI), { image: OG, final: true, via: "jina" });
+      assert.deepEqual(calls, [OPENAI, `https://r.jina.ai/${OPENAI}`]);
+    },
+  );
+  // 403 everywhere, a hung server, a network error: null, no throw, marked tried. 429: retried later.
+  await withFetchInit(
+    () => new Response("", { status: 403 }),
+    async () => assert.deepEqual(await fetchPageImage(OPENAI), { image: null, final: true, via: "none" }),
+  );
+  await withFetchInit(
+    (_u, init) => hang(init),
+    async () => assert.deepEqual(await fetchPageImage("https://slow.example.com/a", 50), { image: null, final: true, via: "none" }),
+  );
+  await withFetchInit(
+    () => {
+      throw new TypeError("fetch failed");
+    },
+    async () => assert.deepEqual(await fetchPageImage("https://down.example.com/a"), { image: null, final: true, via: "none" }),
+  );
+  await withFetchInit(
+    (u) => (u.startsWith("https://r.jina.ai/") ? new Response("", { status: 429 }) : new Response("", { status: 403 })),
+    async () => assert.deepEqual(await fetchPageImage(OPENAI), { image: null, final: false, via: "none" }),
+  );
+  // Headers arrive but the body stalls: the deadline cancels the read and keeps what came.
+  await withFetchInit(
+    () => new Response(new ReadableStream({ start: (c) => c.enqueue(enc.encode("<html><head><title>x")) }), { headers: { "content-type": "text/html" } }),
+    async () => assert.deepEqual(await fetchPageImage("https://stall.example.com/a", 50), { image: null, final: true, via: "none" }),
+  );
+
+  // Per-refresh cap: only items this refresh inserted, without a feed thumbnail, newest first, 12 max.
+  const rows = Array.from({ length: 30 }, (_, i) => ({
+    id: i + 1,
+    url: `https://blog.example.com/p/${i + 1}`,
+    thumbnailUrl: i % 10 === 0 ? "https://blog.example.com/feed-thumb.png" : null,
+    publishedAt: new Date(Date.UTC(2026, 9, 1 + i)),
+    inserted: i < 25,
+  }));
+  const targets = newThumbTargets(rows);
+  assert.equal(NEW_THUMB_CAP, 12);
+  assert.equal(targets.length, 12);
+  assert.ok(targets.every((t) => t.id <= 25 && (t.id - 1) % 10 !== 0), "only inserted rows without a thumbnail");
+  assert.deepEqual(targets.slice(0, 3).map((t) => t.id), [25, 24, 23]);
+  // Concurrency 4; every target gets an answer; a failing one doesn't stop the rest.
+  let inFlight = 0;
+  let peak = 0;
+  await withFetchInit(
+    async (u) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      if (u.endsWith("/p/24")) throw new TypeError("fetch failed");
+      return html(`<head><meta property="og:image" content="${u}.png"></head>`);
+    },
+    async (calls) => {
+      const out = await fetchPageImages(targets, { concurrency: 4, timeoutMs: 1000 });
+      assert.equal(calls.length, 12);
+      assert.equal(peak, 4);
+      assert.equal(out.length, 12);
+      assert.equal(out.filter((r) => r.image).length, 11);
+      assert.equal(out.find((r) => r.id === 25)?.image, "https://blog.example.com/p/25.png");
+    },
+  );
+  // The time budget stops new fetches; unstarted targets are left out (untried, picked up later).
+  await withFetchInit(
+    async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return html(HEAD);
+    },
+    async (calls) => {
+      const out = await fetchPageImages(targets, { concurrency: 4, budgetMs: 10 });
+      assert.equal(calls.length, 4);
+      assert.equal(out.length, 4);
+    },
+  );
+  // Existing databases gain the column on the next cold start.
+  assert.match(schemaSql(), /ALTER TABLE "items" ADD COLUMN IF NOT EXISTS "thumbnail_checked" boolean DEFAULT false NOT NULL/);
+  console.log("THUMB BACKFILL: ok");
+}
+
 main();

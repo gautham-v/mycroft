@@ -1,9 +1,10 @@
-import { and, eq, lt, sql } from "drizzle-orm";
-import { getDb } from "@/db/client";
+import { and, desc, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
+import { getDb, type DB } from "@/db/client";
 import { items, meta, sources, type SourceRow } from "@/db/schema";
 import { FEED_FALLBACKS } from "@/db/seed";
 import { dedupeItems } from "./dedupe";
 import { errMsg, fetchWithTimeout } from "./http";
+import { fetchPageImages, THUMB_TIMEOUT_MS } from "./page-meta";
 import { parseFeedXml, type ParsedFeed, type ParsedItem } from "./parse";
 import { scrapePage } from "./scrape";
 import { isStale } from "./time";
@@ -14,6 +15,13 @@ const LAST_REFRESH_KEY = "last_refresh_at";
 const RETENTION_DAYS = 14;
 /** Scraped-page sources remember this many handled article URLs. */
 const MAX_SEEN_URLS = 300;
+/** New items without a feed thumbnail whose page is read for og:image in the refresh that adds them. */
+export const NEW_THUMB_CAP = 12;
+/** Older items without a thumbnail, never tried before, read per source per refresh. */
+export const OLD_THUMB_CAP = 10;
+const THUMB_CONCURRENCY = 4;
+/** Stop starting thumbnail fetches for a source after this; the rest are picked up next refresh. */
+const THUMB_BUDGET_MS = 20_000;
 
 function retentionCutoff(): Date {
   return new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
@@ -70,6 +78,60 @@ async function sourceItems(src: SourceRow, stored: StoredItem[]): Promise<{ item
   return { items: feed.items };
 }
 
+type ThumbTarget = { id: number; url: string };
+
+/** Items this refresh inserted that still lack a thumbnail: newest first, at most `cap`. */
+export function newThumbTargets(
+  rows: { id: number; url: string; thumbnailUrl: string | null; publishedAt: Date; inserted: boolean }[],
+  cap = NEW_THUMB_CAP,
+): ThumbTarget[] {
+  return rows
+    .filter((r) => r.inserted && !r.thumbnailUrl)
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    .slice(0, cap)
+    .map(({ id, url }) => ({ id, url }));
+}
+
+/**
+ * Fill missing thumbnails from each article's og:image (feeds like openai.com/news carry no images).
+ * Tries this refresh's new items, then up to OLD_THUMB_CAP older ones not tried before, and marks
+ * each tried item `thumbnail_checked` so it isn't refetched. Temporary misses (429, 5xx) and items
+ * the time budget didn't reach stay unmarked for a later refresh. Returns thumbnails found.
+ */
+export async function backfillThumbnails(db: DB, sourceId: number, fresh: ThumbTarget[]): Promise<number> {
+  const old = await db
+    .select({ id: items.id, url: items.url })
+    .from(items)
+    .where(
+      and(
+        eq(items.sourceId, sourceId),
+        isNull(items.thumbnailUrl),
+        eq(items.thumbnailChecked, false),
+        fresh.length ? notInArray(items.id, fresh.map((t) => t.id)) : undefined,
+      ),
+    )
+    .orderBy(desc(items.publishedAt))
+    .limit(OLD_THUMB_CAP);
+  const results = await fetchPageImages([...fresh, ...old], {
+    concurrency: THUMB_CONCURRENCY,
+    timeoutMs: THUMB_TIMEOUT_MS,
+    budgetMs: THUMB_BUDGET_MS,
+  });
+  const found = results.filter((r) => r.image);
+  const misses = results.filter((r) => !r.image && r.final).map((r) => r.id);
+  await Promise.all([
+    ...found.map((r) =>
+      db
+        .update(items)
+        .set({ thumbnailUrl: r.image, thumbnailChecked: true })
+        // The reader may have set one from the extracted lead image in the meantime.
+        .where(and(eq(items.id, r.id), isNull(items.thumbnailUrl))),
+    ),
+    ...(misses.length ? [db.update(items).set({ thumbnailChecked: true }).where(inArray(items.id, misses))] : []),
+  ]);
+  return found.length;
+}
+
 export async function refreshSource(src: SourceRow): Promise<{ added: number }> {
   const db = await getDb();
   try {
@@ -79,6 +141,7 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
       .where(eq(items.sourceId, src.id));
     const { items: parsed, seenUrls } = await sourceItems(src, stored);
     let added = 0;
+    let thumbTargets: ThumbTarget[] = [];
     // Skip items already past the retention window so pruned rows don't come back.
     const cutoff = retentionCutoff();
     const fresh = parsed.filter((it) => it.publishedAt >= cutoff);
@@ -105,13 +168,28 @@ export async function refreshSource(src: SourceRow): Promise<{ added: number }> 
             hnCommentsUrl: sql`excluded.hn_comments_url`,
           },
         })
-        .returning({ inserted: sql<boolean>`(xmax = 0)` });
+        .returning({
+          id: items.id,
+          url: items.url,
+          thumbnailUrl: items.thumbnailUrl,
+          publishedAt: items.publishedAt,
+          inserted: sql<boolean>`(xmax = 0)`,
+        });
       added = out.filter((r) => r.inserted).length;
+      thumbTargets = newThumbTargets(out);
     }
     await db
       .update(sources)
       .set({ lastFetchedAt: new Date(), lastError: null, ...(seenUrls ? { seenUrls } : {}) })
       .where(eq(sources.id, src.id));
+    // Page sources get og:image while scraping; YouTube thumbnails come from the video id.
+    if (src.kind === "rss") {
+      try {
+        await backfillThumbnails(db, src.id, thumbTargets);
+      } catch (e) {
+        console.warn(`thumbnail backfill failed for ${src.title}:`, errMsg(e));
+      }
+    }
     return { added };
   } catch (e) {
     await db

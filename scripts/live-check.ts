@@ -21,6 +21,7 @@ async function main() {
   const a = await extractArticle("https://simonwillison.net/2024/Dec/31/llms-in-2024/").catch((e) => ({ err: String(e) }));
   console.log("extract:", "contentHtml" in a ? a.contentHtml?.length : a);
   await checkFigures();
+  await checkVimeoFigure();
   await checkFullArticles();
   await checkRecentItems(["Ars Technica AI", "Simon Willison", "Google DeepMind Blog"]);
   await checkAuditPages();
@@ -51,10 +52,25 @@ async function checkFigures() {
   assert.match(html, /diagram-desktop-light\.png/);
   assert.match(html, /media="\(min-width: 768px\) and \(prefers-color-scheme: dark\)"/);
   assert.match(html, /We plot the cumulative number of high-priority candidate findings/);
-  assert.match(html, /Interactive figure not shown here[\s\S]*#urgent-high-candidate-findings-vs-tokens-spent/);
+  // The client-drawn chart, rendered from the Vega-Lite spec in the page's RSC payload.
+  assert.match(html, /<svg viewbox="0 0 [\d.]+ [\d.]+" width="100%" role="img" aria-label="Red-teaming findings versus tokens spent">/i);
+  assert.match(html, /<text[^>]*>Tokens spent \(billions\)<\/text>[\s\S]*We plot the cumulative number/);
+  assert.doesNotMatch(html, /Interactive figure not shown here/);
   const urls = imageUrls(html);
   await assertImagesLoad(urls);
   console.log(`FIGURES: ok (rendered=${out.rendered}, ${urls.length} image URLs load, ${html.length} chars)`);
+}
+
+// The deployment-gap Vimeo clip sits in the body after the fourth paragraph (not in the header), so
+// it stays in place, as a watchable player instead of a muted background loop beside its poster.
+async function checkVimeoFigure() {
+  const url = "https://openai.com/index/forward-deployed-engineering-means/";
+  const out = await extractArticle(url, { feedUrl: "https://openai.com/news/rss.xml", guid: url.replace(/\/$/, "") });
+  const html = out.contentHtml ?? "";
+  assert.match(html, /<iframe [^>]*src="https:\/\/player\.vimeo\.com\/video\/1235619942\?h=4b51ea2b10&amp;[^"]*controls=1"/);
+  assert.doesNotMatch(html, /controls=0|background=1|muted=1|loop=1|deployment-gap-poster|00:\d\d/);
+  assert.ok(html.indexOf("the deployment gap") < html.indexOf("player.vimeo.com"), "video stays after its paragraph");
+  console.log(`VIMEO FIGURE: ok (rendered=${out.rendered})`);
 }
 
 const words = (html: string | null) => (html ?? "").replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;

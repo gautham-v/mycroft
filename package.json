@@ -21,7 +21,10 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "rss-parser": "^3.13.0",
-    "sanitize-html": "^2.18.1"
+    "sanitize-html": "^2.18.1",
+    "vega": "^6.4.0",
+    "vega-interpreter": "^2.3.2",
+    "vega-lite": "^6.5.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
