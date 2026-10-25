@@ -81,6 +81,12 @@ export const ShareIcon = (p: P) => (
     <path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" />
   </Base>
 );
+export const SendIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M20 4L10.5 13.5" />
+    <path d="M20 4l-6 16-3.5-6.5L4 10z" />
+  </Base>
+);
 export const CheckIcon = (p: P) => (
   <Base {...p}>
     <path d="M5 12.5l4.5 4.5L19 7.5" />

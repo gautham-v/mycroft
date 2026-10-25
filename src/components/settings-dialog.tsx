@@ -1,29 +1,34 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import type { Folder, Source } from "@/lib/types";
+import type { ApiError, Folder, IntegrationsResponse, PutIntegrationsBody, SendTarget, Source } from "@/lib/types";
 import { relativeTime } from "@/lib/time";
 import { moveSource } from "@/hooks/use-data";
 import { useSettings, type Settings } from "@/hooks/use-settings";
+import { setIntegrations, useIntegrations } from "@/hooks/use-integrations";
 import { CloseIcon, PlusIcon } from "./icons";
 
-export type SettingsTab = "sources" | "appearance" | "playback";
+export type SettingsTab = "sources" | "appearance" | "playback" | "integrations";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "sources", label: "Sources" },
   { id: "appearance", label: "Appearance" },
   { id: "playback", label: "Playback" },
+  { id: "integrations", label: "Integrations" },
 ];
 
 const NAV_ROW = "flex h-[32px] w-full items-center rounded-[4px] px-2 text-left text-[14px] text-[var(--ink)]";
 const ROW = "flex items-center gap-3 border-t border-[var(--hairline)] py-2.5";
 
 /**
- * Settings sheet: Sources / Appearance / Playback. Stays mounted while closed, so the selected
- * tab survives reopening within a session. Full-screen with a segmented section switcher below md.
+ * Settings sheet: Sources / Appearance / Playback / Integrations. Stays mounted while closed; the
+ * selected tab is owned by the app (so the reader can open Integrations) and survives reopening
+ * within a session. Full-screen with a segmented section switcher below md.
  */
 export function SettingsDialog({
   open,
   onClose,
+  tab,
+  onTabChange: setTab,
   sources,
   folders,
   now,
@@ -34,6 +39,8 @@ export function SettingsDialog({
 }: {
   open: boolean;
   onClose: () => void;
+  tab: SettingsTab;
+  onTabChange: (tab: SettingsTab) => void;
   sources: Source[];
   folders: Folder[];
   now: number;
@@ -47,7 +54,6 @@ export function SettingsDialog({
   onOpen: (s: Source) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [tab, setTab] = useState<SettingsTab>("sources");
 
   useEffect(() => {
     const d = ref.current;
@@ -131,6 +137,7 @@ export function SettingsDialog({
           )}
           {tab === "appearance" && <AppearancePane />}
           {tab === "playback" && <PlaybackPane />}
+          {tab === "integrations" && <IntegrationsPane />}
         </div>
       </div>
 
@@ -440,6 +447,219 @@ function PlaybackPane() {
           </SettingRow>
         ))}
       </ul>
+    </>
+  );
+}
+
+// --- Integrations ------------------------------------------------------------------
+
+const INPUT =
+  "mt-1.5 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--ground)] px-3 text-[15px] text-[var(--ink)] outline-none focus:border-[var(--accent)] md:h-10 md:text-[14px]";
+const SMALL_BUTTON =
+  "h-11 rounded-md border border-[var(--border)] px-3 text-[13px] font-medium text-[var(--ink)] hover:bg-[var(--hover)] disabled:opacity-60 md:h-8";
+
+type TestState = { status: "running" } | { status: "ok"; message: string } | { status: "error"; message: string };
+
+async function putIntegrations(body: PutIntegrationsBody): Promise<IntegrationsResponse> {
+  const res = await fetch("/api/integrations", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => null)) as IntegrationsResponse | ApiError | null;
+  if (!res.ok || !data || "error" in data) throw new Error((data && "error" in data && data.error) || `Request failed (${res.status})`);
+  return data;
+}
+
+/** Readwise token and webhook URL, stored server-side; each target has its own test. */
+function IntegrationsPane() {
+  const integrations = useIntegrations();
+  const id = useId();
+  // Drafts: the token field always starts empty (the saved token never reaches the client); the
+  // webhook field shows the saved URL until edited (null = untouched).
+  const [token, setToken] = useState("");
+  const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tests, setTests] = useState<Partial<Record<SendTarget, TestState>>>({});
+
+  const savedUrl = integrations?.webhook.url ?? "";
+  const webhook = webhookDraft ?? savedUrl;
+  const dirty = token.trim() !== "" || webhook.trim() !== savedUrl;
+
+  const apply = (next: IntegrationsResponse) => {
+    setIntegrations(next);
+    setToken("");
+    setWebhookDraft(null);
+    setTests({});
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dirty || saving) return;
+    const body: PutIntegrationsBody = {};
+    if (token.trim()) body.readwise_token = token.trim();
+    if (webhook.trim() !== savedUrl) body.webhook_url = webhook.trim() || null;
+    setSaving(true);
+    setError(null);
+    try {
+      apply(await putIntegrations(body));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (target: SendTarget) => {
+    setError(null);
+    try {
+      apply(await putIntegrations(target === "readwise" ? { readwise_token: null } : { webhook_url: null }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove");
+    }
+  };
+
+  const test = async (target: SendTarget) => {
+    setTests((t) => ({ ...t, [target]: { status: "running" } }));
+    let next: TestState;
+    try {
+      const res = await fetch("/api/integrations/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ target }),
+      });
+      const data = (await res.json().catch(() => null)) as ApiError | null;
+      next = res.ok
+        ? { status: "ok", message: target === "readwise" ? "Token works" : "Test payload delivered" }
+        : { status: "error", message: data?.error || `Request failed (${res.status})` };
+    } catch (err) {
+      next = { status: "error", message: err instanceof Error ? err.message : "Request failed" };
+    }
+    setTests((t) => ({ ...t, [target]: next }));
+  };
+
+  const actions = (target: SendTarget, testLabel: string) => {
+    const t = tests[target];
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => void test(target)} disabled={t?.status === "running"} className={SMALL_BUTTON}>
+          {t?.status === "running" ? "Testing…" : testLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => void remove(target)}
+          className="h-11 rounded-md px-3 text-[13px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--danger)] md:h-8"
+        >
+          Remove
+        </button>
+        {t && t.status !== "running" && (
+          <p
+            role={t.status === "error" ? "alert" : "status"}
+            className={`min-w-0 text-[12.5px] ${t.status === "error" ? "text-[var(--danger)]" : "text-[var(--ok)]"}`}
+          >
+            {t.message}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  const status = (on: boolean, text: string) => (
+    <span className={`shrink-0 text-[12px] ${on ? "text-[var(--ok)]" : "text-[var(--faint)]"}`}>{text}</span>
+  );
+
+  return (
+    <>
+      <PaneHeading
+        title="Integrations"
+        hint="Send an item from the reader to Readwise Reader or your own webhook. Stored on the server, not this device."
+      />
+      <form onSubmit={save}>
+        <section className="border-t border-[var(--hairline)] py-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <label htmlFor={`${id}-token`} className="text-[14px] text-[var(--ink)]">
+              Readwise Reader
+            </label>
+            {integrations &&
+              status(
+                integrations.readwise.configured,
+                integrations.readwise.configured ? `Token ${integrations.readwise.token_hint}` : "Not set up",
+              )}
+          </div>
+          <p id={`${id}-token-hint`} className="text-[12px] text-[var(--muted)]">
+            Access token from{" "}
+            <a href="https://readwise.io/access_token" target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+              readwise.io/access_token
+            </a>
+            {integrations?.readwise.configured ? ". Paste a new one to replace it." : "."}
+          </p>
+          <input
+            id={`${id}-token`}
+            type="password"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-describedby={`${id}-token-hint`}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={integrations?.readwise.configured ? `Saved (${integrations.readwise.token_hint})` : "Paste your access token"}
+            className={INPUT}
+          />
+          {integrations?.readwise.configured && actions("readwise", "Check token")}
+        </section>
+
+        <section className="border-t border-[var(--hairline)] py-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <label htmlFor={`${id}-webhook`} className="text-[14px] text-[var(--ink)]">
+              Webhook
+            </label>
+            {integrations && status(integrations.webhook.configured, integrations.webhook.configured ? "On" : "Not set up")}
+          </div>
+          <p id={`${id}-webhook-hint`} className="text-[12px] text-[var(--muted)]">
+            Each sent item is POSTed as JSON: id, url, title, author, published_at, summary, source.
+          </p>
+          <input
+            id={`${id}-webhook`}
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-describedby={`${id}-webhook-hint`}
+            value={webhook}
+            onChange={(e) => setWebhookDraft(e.target.value)}
+            placeholder="https://example.com/hooks/openfeed"
+            className={INPUT}
+          />
+          {integrations?.webhook.configured && actions("webhook", "Send a test")}
+        </section>
+
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--hairline)] pt-3">
+          {error && (
+            <p role="alert" className="mr-auto min-w-0 text-[13px] text-[var(--danger)]">
+              {error}
+            </p>
+          )}
+          {saved && (
+            <p role="status" className="text-[13px] text-[var(--ok)]">
+              Saved
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={!dirty || saving}
+            className="h-11 rounded-lg bg-[var(--accent)] px-4 text-[14px] font-medium text-white disabled:opacity-50 md:h-9"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
     </>
   );
 }

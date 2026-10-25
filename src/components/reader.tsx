@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ContentResponse, Item } from "@/lib/types";
 import { useSettings, type Settings } from "@/hooks/use-settings";
 import { SourceBadge } from "./badge";
+import { SendToButton } from "./send-to";
 import {
   BackIcon,
   BookmarkIcon,
@@ -107,6 +108,7 @@ export function Reader({
   showBack,
   focused = false,
   onToggleFocus,
+  onOpenIntegrations,
 }: {
   item: Item;
   onBack: () => void;
@@ -114,6 +116,8 @@ export function Reader({
   showBack: boolean;
   focused?: boolean;
   onToggleFocus?: () => void;
+  /** Opens Settings on the Integrations tab (Send to, when no target is set up). */
+  onOpenIntegrations: () => void;
 }) {
   const content = useContent(item);
   const [settings] = useSettings();
@@ -187,6 +191,7 @@ export function Reader({
             <ActionButton label={copied ? "Link copied" : "Share"} onClick={share}>
               {copied ? <CheckIcon size={17} className="text-[var(--accent)]" /> : <ShareIcon size={17} />}
             </ActionButton>
+            <SendToButton item={item} onSetup={onOpenIntegrations} />
             {onToggleFocus && (
               <ActionButton
                 label={focused ? "Exit full screen (esc)" : "Full screen (⇧⌘F)"}

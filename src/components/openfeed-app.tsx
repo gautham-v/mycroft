@@ -9,7 +9,7 @@ import { AddSourceDialog } from "./add-source";
 import { BookmarkIcon, GearIcon, InboxIcon, RefreshIcon, SidebarIcon } from "./icons";
 import { ItemRow } from "./item-row";
 import { Reader, ReaderEmpty } from "./reader";
-import { SettingsDialog } from "./settings-dialog";
+import { SettingsDialog, type SettingsTab } from "./settings-dialog";
 import { HOME, Sidebar, type NavState } from "./sidebar";
 
 const VIEWS: View[] = ["all", "saved", "articles", "posts", "video", "podcasts"];
@@ -140,6 +140,8 @@ export function OpenfeedApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Lifted out of SettingsDialog so other surfaces (the reader's Send to) can open a given tab.
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("sources");
   const showSettings = settingsOpen || parsed.settings;
   const [extraItem, setExtraItem] = useState<Item | null>(null);
   const now = useNow();
@@ -369,6 +371,10 @@ export function OpenfeedApp() {
       showBack
       focused={focused}
       onToggleFocus={() => setFocus((v) => !v)}
+      onOpenIntegrations={() => {
+        setSettingsTab("integrations");
+        setSettingsOpen(true);
+      }}
     />
   ) : selectedId != null ? (
     <div className="h-full bg-[var(--surface)]" aria-busy="true" />
@@ -472,6 +478,8 @@ export function OpenfeedApp() {
       <SettingsDialog
         open={showSettings}
         onClose={closeSettings}
+        tab={settingsTab}
+        onTabChange={setSettingsTab}
         sources={sources}
         folders={folders}
         now={now}

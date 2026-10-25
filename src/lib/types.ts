@@ -116,3 +116,40 @@ export interface ApiError {
 export interface PatchItemBody {
   is_saved?: boolean;
 }
+
+/** "Send to" destinations for an item. */
+export type SendTarget = "readwise" | "webhook";
+
+/** GET/PUT /api/integrations. The Readwise token never leaves the server; only its last 4 characters. */
+export interface IntegrationsResponse {
+  readwise: { configured: boolean; token_hint: string | null };
+  webhook: { configured: boolean; url: string | null };
+}
+
+/** PUT /api/integrations: a string sets a value, null clears it, an omitted key is left alone. */
+export interface PutIntegrationsBody {
+  readwise_token?: string | null;
+  webhook_url?: string | null;
+}
+
+/** POST /api/items/[id]/send and POST /api/integrations/test. */
+export interface SendBody {
+  target: SendTarget;
+}
+
+/** JSON a webhook receives for each sent item (`test: true` on the Settings test payload). */
+export interface WebhookPayload {
+  id: number;
+  url: string;
+  title: string;
+  author: string | null;
+  published_at: string;
+  summary: string | null;
+  source: { title: string; host: string };
+  test?: boolean;
+}
+
+/** Success body of the send and test routes; failures are ApiError with a non-2xx status. */
+export interface SendResult {
+  ok: true;
+}
