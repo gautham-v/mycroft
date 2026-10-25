@@ -61,8 +61,9 @@ async function checkFigures() {
   console.log(`FIGURES: ok (rendered=${out.rendered}, ${urls.length} image URLs load, ${html.length} chars)`);
 }
 
-// The deployment-gap Vimeo clip sits in the body after the fourth paragraph (not in the header), so
-// it stays in place, as a watchable player instead of a muted background loop beside its poster.
+// The deployment-gap Vimeo clip sits in the body after the fourth paragraph (not in the header). It
+// mounts client-side, so Jina's render may or may not have it; the RSC payload always does. Either
+// way it ends up in its figure as a watchable player, without the poster or the muted loop.
 async function checkVimeoFigure() {
   const url = "https://openai.com/index/forward-deployed-engineering-means/";
   const out = await extractArticle(url, { feedUrl: "https://openai.com/news/rss.xml", guid: url.replace(/\/$/, "") });
@@ -70,7 +71,8 @@ async function checkVimeoFigure() {
   assert.match(html, /<iframe [^>]*src="https:\/\/player\.vimeo\.com\/video\/1235619942\?h=4b51ea2b10&amp;[^"]*controls=1"/);
   assert.doesNotMatch(html, /controls=0|background=1|muted=1|loop=1|deployment-gap-poster|00:\d\d/);
   assert.ok(html.indexOf("the deployment gap") < html.indexOf("player.vimeo.com"), "video stays after its paragraph");
-  console.log(`VIMEO FIGURE: ok (rendered=${out.rendered})`);
+  assert.equal(html.match(/<iframe /g)?.length, 1);
+  console.log(`VIMEO FIGURE: ok (rendered=${out.rendered}) ${html.match(/<figure>(?:(?!<\/figure>)[\s\S])*?<iframe[^>]*>/)?.[0]}`);
 }
 
 const words = (html: string | null) => (html ?? "").replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;

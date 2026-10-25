@@ -64,6 +64,7 @@ async function main() {
   checkFigures();
   await checkCharts();
   checkHeroVideo();
+  checkPayloadVideo();
   await checkFeedFallback();
   checkSplitArticle();
   checkHeadlineRegion();
@@ -397,6 +398,53 @@ async function checkCharts() {
   assert.equal((await renderPageCharts(ext)).size, 0);
   assert.match(extractFromHtml(ext, url, await renderPageCharts(ext)).contentHtml ?? "", /Interactive figure not shown here[\s\S]*#urgent-high-candidate-findings-vs-tokens-spent/);
   console.log("CHARTS: ok");
+}
+
+// openai.com/index/forward-deployed-engineering-means (trimmed from a Jina render, 2026-10-24): the
+// Vimeo player mounts client-side, so the figure is an empty slot; the player's props are in the
+// RSC payload (row 19e), referenced from the figure ("$L19e") after the paragraph it follows.
+const FDE_ROWS =
+  `194:["$","div",null,{"className":"col-span-full","children":[["$","p",null,{"children":[["$","span","text-0",{"children":["I founded the team in early 2025 to close what we call"]}],` +
+  `["$","b",null,{"children":["$","span",null,{"children":" “the deployment gap”: "}]}],` +
+  `["$","span","text-2",{"children":["the distance between what models appear capable of and what people can reliably use to do their work."]}]]}],` +
+  `["$","figure",null,{"id":"$undefined","children":["$","div",null,{"data-figure-content":true,"className":"flex min-h-0 w-full","children":"$L19e"}]}],"$L19f"]}]\n` +
+  `1c9:"ResizableCaptionLink"\n` +
+  `19e:[["$","$L1b3","JguUtV1eJlLMzYCDHZgLy",{"altText":"Deployment gap diagram showing the gap between available AI intelligence and business value.",` +
+  `"videoEmbedUrl":"https://player.vimeo.com/video/1235619942?h=4b51ea2b10\u0026badge=0\u0026autopause=0\u0026player_id=0\u0026app_id=58479\u0026autoplay=1\u0026muted=1\u0026playsinline=1",` +
+  `"ratio":"16:9","videoEmbedTitle":"The deployment gap","videoLoop":true,"videoAutoPlay":true,"showVideoControls":true,` +
+  `"posterImage":{"title":"Forward deployed engineering — Deployment gap video poster","file":{"url":"//images.ctfassets.net/kftzwdyauwt9/dryjb2Dj98Ropj3w8Tfyy/5916e2c71d8aa8c797770dbb44cb8f8b/forward-deployed-engineering-deployment-gap-poster.jpg",` +
+  `"fileName":"forward-deployed-engineering-deployment-gap-poster.jpg","contentType":"image/jpeg"}},"id":"JguUtV1eJlLMzYCDHZgLy","__typename":"mediaItem"}]]\n` +
+  `19f:["$","div","5",{"children":["$","p",null,{"children":[["$","span","text-0",{"children":["Model capabilities have moved faster than the systems and processes needed to put them to use."]}]]}]}]\n`;
+const fdePage = (slot: string) => {
+  const push = (str: string) => `<script>self.__next_f.push([1,${JSON.stringify(str).replace(/</g, "\\u003c")}])</script>`;
+  const cut = FDE_ROWS.indexOf("19e:");
+  return `<html><head><title>What FDE means at OpenAI</title></head><body><article><h1>What FDE means at OpenAI</h1>${PROSE}
+    <div><p><span>I founded the team in early 2025 to close what we call</span><b><span> “the deployment gap”: </span></b><span>the distance between what models appear capable of and what people can reliably use to do their work.</span></p></div>
+    <div><figure><div data-tabs-autoplay-content="true"><div data-figure-content="true"><div><div style="aspect-ratio:16/9"><div><div data-video-container="true" style="aspect-ratio:16/9">${slot}</div></div></div></div></div></div></figure></div>
+    <div><p><span>Model capabilities have moved faster than the systems and processes needed to put them to use.</span></p></div>${PROSE}</article>
+    ${push(FDE_ROWS.slice(0, cut))}${push(FDE_ROWS.slice(cut))}</body></html>`;
+};
+
+function checkPayloadVideo() {
+  const url = "https://openai.com/index/forward-deployed-engineering-means/";
+  const player =
+    /<figure><div><p><iframe allowfullscreen allow="fullscreen; picture-in-picture" src="https:\/\/player\.vimeo\.com\/video\/1235619942\?h=4b51ea2b10&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479&amp;playsinline=1&amp;controls=1"><\/iframe><\/p><\/div><\/figure>/;
+  // Empty slot (the player hadn't mounted): matched by the paragraph before it in the payload.
+  let h = extractFromHtml(fdePage(`<!--$!--><template data-dgst=""></template><!--/$-->`), url).contentHtml ?? "";
+  assert.match(h, player);
+  assert.ok(h.indexOf("reliably use to do their work") < h.indexOf("<iframe") && h.indexOf("<iframe") < h.indexOf("Model capabilities"));
+  // Poster only: the poster is replaced by the player.
+  h = extractFromHtml(fdePage(`<img alt="Forward deployed engineering — Deployment gap video poster" src="https://images.ctfassets.net/x/forward-deployed-engineering-deployment-gap-poster.jpg?w=3840">`), url).contentHtml ?? "";
+  assert.match(h, player);
+  assert.doesNotMatch(h, /poster\.jpg/);
+  // The page's own iframe (the player had mounted) wins; no second copy.
+  h = extractFromHtml(fdePage(`<iframe src="https://player.vimeo.com/video/1235619942?h=4b51ea2b10&amp;controls=0&amp;background=1"></iframe>`), url).contentHtml ?? "";
+  assert.equal(h.match(/<iframe/g)?.length, 1);
+  assert.match(h, /video\/1235619942\?h=4b51ea2b10&amp;controls=1"/);
+  // No figure to put it in: nothing is added.
+  const noSlot = fdePage("").replace(/<div><figure>[\s\S]*?<\/figure><\/div>/, "");
+  assert.doesNotMatch(extractFromHtml(noSlot, url).contentHtml ?? "", /<iframe|vimeo/);
+  console.log("PAYLOAD VIDEO: ok");
 }
 
 function checkHeroVideo() {

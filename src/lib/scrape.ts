@@ -35,6 +35,8 @@ const words = (s: string): string[] => s.toLowerCase().match(/[a-z0-9]+/g) ?? []
 /** X / Twitter profile pages: the server-rendered HTML lists posts as /<user>/status/<id>. */
 const isXHost = (host: string) => /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/i.test(host);
 const TWEET_PATH = /^\/[^/]+\/status\/\d+$/;
+/** Handle of the profile being scraped, set for the duration of scrapePage on an X profile. */
+let currentListingUser = "";
 
 /** Canonical form used as item url/guid and for "already seen" checks: no hash, no query, no trailing slash. */
 export function canonicalUrl(u: URL): string {
@@ -285,10 +287,15 @@ export function extractArticleMeta(html: string, pageUrl: string): ArticleMeta {
 function tweetMeta(meta: ReturnType<typeof metaReader>, ld: ReturnType<typeof ldArticle>, pageUrl: string): ArticleMeta {
   const text = meta("og:description", "description", "twitter:description");
   const image = pageImage(meta, ld, pageUrl);
+  // Headline: the first paragraph; the reader shows the whole post.
+  const first = text?.split(/\n\s*\n/)[0] ?? null;
+  const poster = pageUrl ? new URL(pageUrl).pathname.split("/")[1] : "";
+  const author = meta("og:title")?.replace(/\s+on X$/i, "") ?? null;
   return {
-    title: clip(text, 200) ?? clip(meta("og:title"), 300),
+    title: clip(first, 140) ?? clip(meta("og:title"), 300),
     summary: null,
-    author: clip(meta("og:title")?.replace(/\s+on X$/i, "") ?? null, 120),
+    // Only name the author when the post is someone else's (a repost on the profile).
+    author: poster.toLowerCase() === currentListingUser ? null : clip(author, 120),
     publishedAt: toDate(meta("article:published_time")),
     thumbnailUrl: image && !/\/profile_images\//.test(image) ? image : null,
     ogType: "article",
@@ -323,6 +330,8 @@ export async function scrapePage(
   const res = await fetchHtml(listingUrl, LISTING_TIMEOUT_MS);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const finalUrl = res.url || listingUrl;
+  const fu = new URL(finalUrl);
+  currentListingUser = isXHost(fu.hostname) ? (fu.pathname.split("/")[1] ?? "").toLowerCase() : "";
   const links = findArticleLinks(await res.text(), finalUrl);
   if (!links.length) throw new Error("No article links found on the page");
 

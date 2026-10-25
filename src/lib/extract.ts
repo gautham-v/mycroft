@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import sanitizeHtml from "sanitize-html";
 import { renderPageCharts } from "./charts";
+import { findPayloadVideos, type PayloadVideo } from "./payload-videos";
 import { BROWSER_HEADERS, fetchWithTimeout } from "./http";
 import { findFeedItemHtml, isHnFeed } from "./parse";
 
@@ -103,16 +104,19 @@ const BACKGROUND_PLAYER_PARAMS = ["background", "controls", "autoplay", "muted",
 
 /**
  * YouTube embeds play from youtube-nocookie (no tracking cookies until play), whatever host the
- * page used. Vimeo and YouTube embeds set up as background clips get their controls back.
+ * page used. Vimeo and YouTube embeds set up as background clips (background=1, controls=0, or
+ * autoplaying muted) get their controls back; `watchable` forces that.
  */
-function embedSrc(src: string | undefined): string {
+function embedSrc(src: string | undefined, watchable = false): string {
   if (!src) return "";
   try {
     const u = new URL(src, "https://invalid.invalid/");
     const youtube = /^(?:www\.|m\.)?youtube(?:-nocookie)?\.com$/i.test(u.hostname) && u.pathname.startsWith("/embed/");
     const vimeo = /^player\.vimeo\.com$/i.test(u.hostname);
     if (!youtube && !vimeo) return src;
-    const background = u.searchParams.get("background") === "1" || u.searchParams.get("controls") === "0";
+    const q = u.searchParams;
+    const background =
+      watchable || q.get("background") === "1" || q.get("controls") === "0" || (q.get("autoplay") === "1" && /^1$/.test(q.get("muted") ?? q.get("mute") ?? ""));
     if (background) {
       BACKGROUND_PLAYER_PARAMS.forEach((k) => u.searchParams.delete(k));
       if (vimeo) u.searchParams.set("controls", "1");
@@ -508,6 +512,53 @@ function markClientRenderedFigures(root: Doc | Element, pageUrl: string, charts?
     note.append(em);
     caption.before(note);
   });
+}
+
+const VIDEO_SLOT = "[data-video-container]";
+
+/**
+ * Put players that exist only in the RSC payload (findPayloadVideos) into their figures. A figure
+ * is matched by its poster <img> (alt text or file name) or an alt-text label, else it is the first
+ * figure after the paragraph that precedes the player in the payload, and only if that figure is
+ * an empty video slot (a `data-video-container`, or no media and no text). The poster, if any, is
+ * replaced; a video the page's HTML already has is left alone; an unmatched video is dropped.
+ */
+function placePayloadVideos(root: Doc | Element, videos: PayloadVideo[]) {
+  if (!videos.length) return;
+  const doc = root.ownerDocument ?? (root as Doc);
+  const order = new Map([...root.querySelectorAll("*")].map((el, i) => [el, i]));
+  const at = (el: Element) => order.get(el) ?? -1;
+  const figures = [...root.querySelectorAll("figure")];
+  const claimed = new Set<Element>();
+  for (const v of videos) {
+    if ([...root.querySelectorAll("iframe[src]")].some((f) => (f.getAttribute("src") ?? "").includes(v.key))) continue;
+    const names = v.names.map(norm);
+    const isPoster = (img: Element) =>
+      names.includes(norm(img.getAttribute("alt"))) || (!!v.posterFile && (img.getAttribute("src") ?? "").includes(v.posterFile));
+    const open = figures.filter((f) => !claimed.has(f));
+    let poster: Element | null = null;
+    let fig = open.find((f) => (poster = [...f.querySelectorAll("img")].find(isPoster) ?? null));
+    fig ??= open.find((f) => [...f.querySelectorAll("span, div, p")].some((el) => names.includes(norm(el.textContent))));
+    if (!fig && v.anchor) {
+      const a = norm(v.anchor);
+      const para = [...root.querySelectorAll("p, li, blockquote, h2, h3, h4")].find((el) => norm(el.textContent).includes(a));
+      const next = para ? open.find((f) => at(f) > at(para)) : undefined;
+      const slot = next && !next.querySelector("iframe, video") && (next.querySelector(VIDEO_SLOT) || (!next.querySelector(FIGURE_MEDIA) && !squash(next.textContent)));
+      if (slot) fig = next;
+    }
+    if (!fig) continue;
+    claimed.add(fig);
+    const iframe = doc.createElement("iframe");
+    iframe.setAttribute("src", embedSrc(v.src, true));
+    iframe.setAttribute("allow", "fullscreen; picture-in-picture");
+    iframe.setAttribute("allowfullscreen", "");
+    if (poster) (poster as Element).replaceWith(iframe);
+    else {
+      const slot = fig.querySelector(VIDEO_SLOT);
+      if (slot) slot.replaceChildren(iframe);
+      else fig.prepend(iframe);
+    }
+  }
 }
 
 const TINY_IMG = 64;
@@ -999,13 +1050,14 @@ function runReadability(document: Doc, media: string[], base: string): string | 
 }
 
 /** Page-wide cleanup that must happen while the page's class names and structure are intact. */
-function prepareDom(root: Doc | Element, base: string, pageUrl: string, charts?: Map<string, string>) {
+function prepareDom(root: Doc | Element, base: string, pageUrl: string, charts?: Map<string, string>, videos: PayloadVideo[] = []) {
   absolutizeDom(root, base);
   removeScreenReaderText(root);
   removePlayerChrome(root);
   normalizeCodeBlocks(root);
   dropDarkVariants(root);
   markClientRenderedFigures(root, pageUrl, charts);
+  placePayloadVideos(root, videos);
 }
 
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1035,7 +1087,7 @@ export function extractFromHtml(html: string, pageUrl: string, charts?: Map<stri
     document.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ??
     null;
   const lead = usableLead(abs(og, base));
-  prepareDom(document, base, pageUrl, charts);
+  prepareDom(document, base, pageUrl, charts, findPayloadVideos(html));
   const heroes = findHeroVideos(document);
   const media = protectMedia(document);
   neutralizeReadabilityClasses(document);
@@ -1193,11 +1245,21 @@ function isLoginWall(html: string): boolean {
 
 const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/([^/]+)\/status\/(\d+)/i;
 
-/** Tweets: X's pages are JavaScript-only and render to a login wall, but the official oEmbed works unauthenticated. */
+/**
+ * Posts on X. The status page is server-rendered with the post's data as an escaped JSON blob:
+ * the full text (long posts live under note_tweet) and the t.co link expansions. The official
+ * oEmbed is the fallback; it truncates long posts.
+ */
 async function extractTweet(url: string): Promise<ExtractResult | null> {
   const m = TWEET_RE.exec(url);
   if (!m) return null;
   const canonical = `https://x.com/${m[1]}/status/${m[2]}`;
+  try {
+    const page = await tweetFromPage(canonical, m[1]);
+    if (page) return page;
+  } catch {
+    /* fall back to oEmbed */
+  }
   const api = `https://publish.twitter.com/oembed?url=${encodeURIComponent(canonical)}&omit_script=true&dnt=true`;
   const res = await fetchWithTimeout(api, EXTRACT_TIMEOUT_MS, { headers: { Accept: "application/json" } });
   if (!res.ok) return null;
@@ -1211,6 +1273,58 @@ async function extractTweet(url: string): Promise<ExtractResult | null> {
   const by = data.author_name ? `<p><a href="${data.author_url ?? canonical}">${data.author_name}</a> on X</p>` : "";
   const html = sanitizeArticle(`<blockquote><p>${body}</p></blockquote>${by}`).trim();
   return html ? { contentHtml: html, leadImage: null } : null;
+}
+
+/** A JSON string value embedded in X's escaped page data: `\"key\":\"...\"` in the raw HTML. */
+function escapedJsonString(raw: string, key: string, from = 0): string | null {
+  const re = new RegExp(`\\\\"${key}\\\\":\\\\"((?:\\\\\\\\.|[^\\\\])*?)\\\\"`, "g");
+  re.lastIndex = from;
+  const m = re.exec(raw);
+  if (!m) return null;
+  try {
+    // Two layers: a JSON string literal holding JSON-escaped text.
+    const inner = JSON.parse(`"${m[1]}"`) as string;
+    return JSON.parse(`"${inner}"`) as string;
+  } catch {
+    return null;
+  }
+}
+
+async function tweetFromPage(canonical: string, user: string): Promise<ExtractResult | null> {
+  const res = await fetchWithTimeout(canonical, EXTRACT_TIMEOUT_MS, { headers: BROWSER_HEADERS });
+  if (!res.ok) return null;
+  const raw = await res.text();
+  // Long posts keep their full text under note_tweet; short ones only have full_text.
+  const note = raw.indexOf('\\"NoteTweet\\"');
+  const text = (note >= 0 ? escapedJsonString(raw, "text", note) : null) ?? escapedJsonString(raw, "full_text");
+  if (!text?.trim()) return null;
+  const links = new Map<string, { display: string; expanded: string }>();
+  const linkRe = /\\"display_url\\":\\"([^"\\]*)\\",\\"expanded_url\\":\\"([^"\\]*)\\",\\"indices\\":\[\d+,\d+\],\\"url\\":\\"([^"\\]*)\\"/g;
+  for (let lm = linkRe.exec(raw); lm; lm = linkRe.exec(raw)) links.set(lm[3], { display: lm[1], expanded: lm[2] });
+  const name = /<meta property="og:title" content="([^"]*?)(?: on X)?"/.exec(raw)?.[1] ?? `@${user}`;
+  const paras = text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${tweetInline(p, links)}</p>`)
+    .join("");
+  const by = `<p><a href="https://x.com/${user}">${escapeHtml(name)}</a> on X</p>`;
+  const html = sanitizeArticle(`<blockquote>${paras}</blockquote>${by}`).trim();
+  return html ? { contentHtml: html, leadImage: null } : null;
+}
+
+/** Escape a paragraph of post text; link URLs (t.co expanded) and @mentions; keep line breaks. */
+function tweetInline(p: string, links: Map<string, { display: string; expanded: string }>): string {
+  return p
+    .split(/(https?:\/\/\S+|@[A-Za-z0-9_]{1,15})/)
+    .map((tok, i) => {
+      if (i % 2 === 0) return escapeHtml(tok).replace(/\n/g, "<br>");
+      if (tok.startsWith("@")) return `<a href="https://x.com/${tok.slice(1)}">${tok}</a>`;
+      const l = links.get(tok);
+      const href = l?.expanded ?? tok;
+      return `<a href="${escapeHtml(href)}">${escapeHtml(l?.display ?? tok)}</a>`;
+    })
+    .join("");
 }
 
 export async function extractArticle(url: string, feed?: FeedRef): Promise<ExtractResult> {
