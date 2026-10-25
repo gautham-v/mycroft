@@ -388,8 +388,6 @@ export function Sidebar({
   const renderSource = (s: Source) => {
     const active = nav.source === s.id;
     const isOver = over?.kind === "row" && over.id === s.id;
-    const badge =
-      s.type === "post" ? "post" : s.type === "podcast" || s.kind === "podcast" ? "podcast" : s.kind === "page" ? "page" : undefined;
     return (
       <li
         key={s.id}
@@ -413,7 +411,6 @@ export function Sidebar({
           >
             {s.title}
           </button>
-          {badge && <span className="shrink-0 text-[11px] text-[var(--faint)] group-hover/row:hidden">{badge}</span>}
           <button
             type="button"
             aria-label={`Options for ${s.title}`}
