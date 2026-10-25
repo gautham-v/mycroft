@@ -35,6 +35,7 @@ export function SearchField({
       <SearchIcon size={phone ? 18 : 15} className="shrink-0" />
       <input
         data-search=""
+        data-no-ring=""
         type="search"
         enterKeyHint="search"
         autoComplete="off"
@@ -58,7 +59,7 @@ export function SearchField({
         }}
         // An empty field folds back into the search button when focus leaves it.
         onBlur={() => empty && onClose()}
-        className={`min-w-0 flex-1 bg-transparent text-[var(--ink)] outline-none focus-visible:outline-none placeholder:text-[var(--faint)] [&::-webkit-search-cancel-button]:appearance-none ${
+        className={`min-w-0 flex-1 bg-transparent text-[var(--ink)] outline-none placeholder:text-[var(--faint)] [&::-webkit-search-cancel-button]:appearance-none ${
           phone ? "px-2 text-[16px]" : "px-1.5 text-[14px]"
         }`}
       />
