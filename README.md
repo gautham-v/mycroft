@@ -32,6 +32,10 @@ To move subscriptions in or out, use **Import OPML** / **Export OPML** in Settin
 
 Pages with no feed (e.g. `anthropic.com/news`, `claude.com/resources/articles`) are added as scraped-page sources: the app picks the article links off the listing page and reads each article's Open Graph / JSON-LD metadata. Only new links are fetched on refresh. Anthropic and Meta AI don't publish RSS feeds, so they're not seeded (Anthropic's YouTube channel is). Ars Technica and The Verge block non-browser user agents; the fetcher sends a browser-like UA.
 
+## Send to
+
+The reader's send button (next to Share) sends the open item to Readwise Reader or to a webhook of your own. Set them up in Settings → Integrations: paste a Readwise access token (from readwise.io/access_token) and/or a webhook URL. Both are stored server-side in the `meta` table, and the token is never sent back to the browser. With one target set up the button sends straight away; with both it asks which. The webhook gets a JSON POST with `id`, `url`, `title`, `author`, `published_at`, `summary` and `source { title, host }` (10 s timeout). Each target has a test button in Settings: the webhook gets a sample payload marked `"test": true`, and the Readwise token is only checked, so nothing is added to your library.
+
 ## Local development
 
 ```bash
