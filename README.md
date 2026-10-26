@@ -99,7 +99,7 @@ The app icon and in-app logo are rendered from `design/app-icon.svg` with `scrip
 
 **Mac.** Bump `CURRENT_PROJECT_VERSION` (and `MARKETING_VERSION` when it changes) in `App/project.yml`, commit, then run `scripts/release-mac.sh`. It builds from a clean worktree of the commit, archives, signs with Developer ID, notarizes and staples the app and a DMG, and writes a Sparkle `appcast.xml` signed with the EdDSA key in the login keychain (keep a backup with `generate_keys -x`; without it existing installs can't verify updates). It needs `~/.appstoreconnect/opendispatch.env` with an App Store Connect API key for notarization. Output is in `App/build/release/`; publish with the `gh release create v<version> …` command the script prints. Installed copies read `appcast.xml` from the latest release.
 
-**iOS.** Archive the `OpenDispatch` scheme for `generic/platform=iOS` and upload it to TestFlight with `xcodebuild -exportArchive` (`method: app-store-connect`, `destination: upload`).
+**iOS.** `scripts/release-ios.sh` archives the app from a clean worktree of the commit, uploads it to App Store Connect, waits for processing and adds the build to the TestFlight Internal group (`scripts/asc-distribute.swift`), which doesn't pick up new builds on its own. Bump `CURRENT_PROJECT_VERSION` first; App Store Connect rejects a build number it has seen.
 
 ## Where data lives
 
