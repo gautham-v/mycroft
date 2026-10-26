@@ -3,20 +3,23 @@ import SwiftUI
 
 /// Source favicon (Google s2 at 64px) with a colored monogram fallback. Port of badge.tsx.
 /// Corner radius is 29% of the size. Used by list rows (16pt), the reader header and the Sources page.
+///
+/// Loaded through `CachedAsyncImage`, not `AsyncImage`: a list row is rebuilt every time it scrolls back
+/// into view, and `AsyncImage` starts from nothing each time (an empty placeholder, a request and a
+/// main-thread decode per row). Here a favicon seen before is in memory when the row is created.
 struct SourceBadge: View {
     let host: String
     let title: String
     var size: CGFloat = 16
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Group {
             if let url = URLHost.faviconURL(host: host) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image): image.resizable().scaledToFill()
-                    case .failure: monogram
-                    default: Color.ofCode
-                    }
+                CachedAsyncImage(url: url, maxPixelSize: size * max(displayScale, 2)) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { failed in
+                    if failed { monogram } else { Color.ofCode }
                 }
             } else {
                 monogram

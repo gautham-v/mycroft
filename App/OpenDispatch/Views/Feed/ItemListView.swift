@@ -29,9 +29,14 @@ struct ItemListView: View {
     @Environment(\.dismiss) private var dismiss
     #endif
     @FocusState private var searchFocused: Bool
-    @State private var hoveredID: Int64?
-    /// Id of the list's first row while it is on screen (the list is scrolled to the top).
-    @State private var visibleTopID: Int64?
+    /// Which row the pointer is over. A reference the rows observe themselves (`HoverTracking`), not
+    /// `@State` here: hover changes constantly while scrolling (rows slide under a still pointer), and
+    /// state on this view re-evaluated the whole list body, every row's menu included, each time.
+    @State private var hover = RowHover()
+    /// Id of the list's first row while it is on screen (the list is scrolled to the top). Only read in
+    /// `onChange` handlers, so it lives in a plain reference: as `@State` its first change on scrolling
+    /// away from the top re-evaluated the whole list.
+    @State private var topRow = TopRowTracker()
     /// iPhone: the tab this instance lives in, learned on first appearance (TabView keeps every tab
     /// alive, so only the instance of the active tab may push the reader).
     @State private var homeTab: PhoneTab?
@@ -200,19 +205,19 @@ struct ItemListView: View {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let selected = item.id == highlighted
                     let secondary = item.id == secondaryID
-                    let hovered = item.id == hoveredID
                     let openInTab = !selected && !secondary && openIDs.contains(item.id)
                     let previous = index > 0 ? items[index - 1].id : nil
-                    // Inset hairline above the row, hidden around the selected, secondary or hovered row.
-                    let divider = previous != nil && !selected && !secondary && !hovered
-                        && previous != highlighted && previous != secondaryID && previous != hoveredID
-                    row(item, selected: selected, secondary: secondary, openInTab: openInTab, hovered: hovered, divider: divider)
+                    // Inset hairline above the row, hidden around the selected, secondary or hovered row
+                    // (the hovered part is applied by the row, which observes the hover).
+                    let divider = previous != nil && !selected && !secondary
+                        && previous != highlighted && previous != secondaryID
+                    row(item, previousID: previous, selected: selected, secondary: secondary, openInTab: openInTab, divider: divider)
                         .onAppear {
-                            if index == 0 { visibleTopID = item.id }
+                            if index == 0 { topRow.id = item.id }
                             if index >= prefetchFrom { Task { await model.loadMore() } }
                         }
                         .onDisappear {
-                            if visibleTopID == item.id { visibleTopID = nil }
+                            if topRow.id == item.id { topRow.id = nil }
                         }
                 }
                 if model.nextCursor != nil {
@@ -232,8 +237,8 @@ struct ItemListView: View {
             .onChange(of: model.items.first?.id) { old, new in
                 // New items arrived above (a refresh finished): if the list was at the top, stay at the
                 // top instead of keeping the old first row anchored in place.
-                guard let new, let old, old != new, visibleTopID == old else { return }
-                visibleTopID = new
+                guard let new, let old, old != new, topRow.id == old else { return }
+                topRow.id = new
                 proxy.scrollTo(new, anchor: .top)
             }
             .onChange(of: model.highlightedItemID) { _, id in
@@ -243,71 +248,27 @@ struct ItemListView: View {
         }
     }
 
-    /// Where to open it, Save, Share (the reader's Share menu as a submenu), then the source's feed.
-    @ViewBuilder private func rowMenu(_ item: FeedItem) -> some View {
-        let url = URL(string: item.item.url)
-        Button("Open in New Tab") { model.openInNewTab(item) }
-        Button("Open in Split View") { model.openInSplit(item) }
-        if let url {
-            Button("Open Original") { openURL(url) }
-        }
-        Divider()
-        Button(item.isSaved ? "Remove from Saved" : "Save") { Task { await model.toggleSaved(item) } }
-        if let url {
-            Menu("Share") {
-                ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
-                    Text("Share…")
-                }
-                Button("Copy Link") { ReaderPasteboard.copy(url) }
-                Divider()
-                let targets = model.integrations.configuredTargets
-                if targets.isEmpty {
-                    Button("Set Up Send To…") { model.showSettings(.integrations) }
-                } else {
-                    ForEach(targets) { t in
-                        Button("Send to \(SendToView.menuLabel(t))") { send(item, to: t) }
-                    }
+    private func row(_ item: FeedItem, previousID: Int64?, selected: Bool, secondary: Bool, openInTab: Bool, divider: Bool) -> some View {
+        HoverTracking(hover: hover, id: item.id, previousID: previousID) { hovered, previousHovered in
+            Button(action: { open(item) }) {
+                ItemRowView(item: item, isSelected: selected, isSecondary: secondary, isOpenInTab: openInTab,
+                            isHovered: hovered, isPhone: isPhone)
+                    .equatable()
+            }
+            .buttonStyle(.plain)
+            .overlay(alignment: .top) {
+                if divider && !hovered && !previousHovered {
+                    Rectangle()
+                        .fill(Color.ofHairline)
+                        .frame(height: 1)
+                        .padding(.leading, Metrics.rowDividerInset)
+                        .padding(.trailing, Metrics.rowPaddingH)
+                        .allowsHitTesting(false)
                 }
             }
+            .padding(.horizontal, 8)
         }
-        if model.selectedSourceID != item.source.id {
-            Divider()
-            Button("Go to \(item.source.title)") { model.navigate(sourceID: item.source.id) }
-        }
-    }
-
-    private func send(_ item: FeedItem, to target: SendTarget) {
-        Task {
-            do {
-                try await model.send(item, to: target)
-            } catch {
-                sendError = HTTP.message(error)
-            }
-        }
-    }
-
-    private func row(_ item: FeedItem, selected: Bool, secondary: Bool, openInTab: Bool, hovered: Bool, divider: Bool) -> some View {
-        Button(action: { open(item) }) {
-            ItemRowView(item: item, isSelected: selected, isSecondary: secondary, isOpenInTab: openInTab,
-                        isHovered: hovered, isPhone: isPhone)
-                .equatable()
-        }
-        .buttonStyle(.plain)
-        .rowContextMenu(enabled: !isPhone) { rowMenu(item) }
-        .overlay(alignment: .top) {
-            if divider {
-                Rectangle()
-                    .fill(Color.ofHairline)
-                    .frame(height: 1)
-                    .padding(.leading, Metrics.rowDividerInset)
-                    .padding(.trailing, Metrics.rowPaddingH)
-                    .allowsHitTesting(false)
-            }
-        }
-        .padding(.horizontal, 8)
-        .onHover { inside in
-            if inside { hoveredID = item.id } else if hoveredID == item.id { hoveredID = nil }
-        }
+        .rowContextMenu(enabled: !isPhone) { RowMenu(item: item, sendError: $sendError) }
         .plainListRow()
         .id(item.id)
     }
@@ -394,6 +355,87 @@ struct ItemListView: View {
             .plainListRow()
             .id("sentinel-\(model.items.count)")
             .onAppear { Task { await model.loadMore() } }
+    }
+}
+
+/// Which row the pointer is over (macOS / iPad pointer).
+@MainActor @Observable private final class RowHover {
+    var id: Int64?
+}
+
+/// The first row on screen. Deliberately not observable.
+private final class TopRowTracker {
+    var id: Int64?
+}
+
+/// A row's hover-dependent part, so a hover change re-evaluates the rows on screen that read it (the
+/// hovered row, and the one below it for its divider) instead of the whole list.
+private struct HoverTracking<Content: View>: View {
+    let hover: RowHover
+    let id: Int64
+    let previousID: Int64?
+    /// Receives whether this row, and the row above it, is hovered.
+    @ViewBuilder let content: (_ hovered: Bool, _ previousHovered: Bool) -> Content
+
+    var body: some View {
+        let current = hover.id
+        content(current == id, previousID != nil && current == previousID)
+            .onHover { inside in
+                if inside { hover.id = id } else if hover.id == id { hover.id = nil }
+            }
+    }
+}
+
+/// The row's context menu: where to open it, Save, Share (the reader's Share menu as a submenu), then the
+/// source's feed. A view of its own so it is built when the menu opens, not for every row on every
+/// evaluation of the list (it reads `model.integrations` and `model.selectedSourceID`, which would also
+/// make the list depend on them).
+private struct RowMenu: View {
+    let item: FeedItem
+    @Binding var sendError: String?
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        let url = URL(string: item.item.url)
+        Button("Open in New Tab") { model.openInNewTab(item) }
+        Button("Open in Split View") { model.openInSplit(item) }
+        if let url {
+            Button("Open Original") { openURL(url) }
+        }
+        Divider()
+        Button(item.isSaved ? "Remove from Saved" : "Save") { Task { await model.toggleSaved(item) } }
+        if let url {
+            Menu("Share") {
+                ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
+                    Text("Share…")
+                }
+                Button("Copy Link") { ReaderPasteboard.copy(url) }
+                Divider()
+                let targets = model.integrations.configuredTargets
+                if targets.isEmpty {
+                    Button("Set Up Send To…") { model.showSettings(.integrations) }
+                } else {
+                    ForEach(targets) { t in
+                        Button("Send to \(SendToView.menuLabel(t))") { send(to: t) }
+                    }
+                }
+            }
+        }
+        if model.selectedSourceID != item.source.id {
+            Divider()
+            Button("Go to \(item.source.title)") { model.navigate(sourceID: item.source.id) }
+        }
+    }
+
+    private func send(to target: SendTarget) {
+        Task {
+            do {
+                try await model.send(item, to: target)
+            } catch {
+                sendError = HTTP.message(error)
+            }
+        }
     }
 }
 
