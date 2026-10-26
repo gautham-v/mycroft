@@ -1,5 +1,8 @@
 import OpenfeedCore
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// The item list column. Port of the list parts of src/components/openfeed-app.tsx and use-data.ts
 /// (paging lives in AppModel).
@@ -11,6 +14,9 @@ import SwiftUI
 ///   Opening a row pushes `ReaderView` onto this tab's NavigationStack.
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
+/// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
+///   in the focused pane. The context menu offers the same two. The selected row is the focused pane's
+///   item, the other pane's item gets a lighter highlight, and rows open in a background tab show a dot.
 /// - Scrolls to the top when the view/source/folder/search changes, and keeps the highlighted row
 ///   visible when it moves (keyboard).
 /// - Keyboard shortcuts (KeyboardShortcuts.swift) are attached here.
@@ -155,16 +161,21 @@ struct ItemListView: View {
         let items = model.items
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
         let highlighted = model.highlightedItemID
+        let secondaryID = model.secondaryHighlightedItemID
+        let openIDs = model.openItemIDs
         return ScrollViewReader { proxy in
             List {
                 stateRows
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let selected = item.id == highlighted
+                    let secondary = item.id == secondaryID
                     let hovered = item.id == hoveredID
+                    let openInTab = !selected && !secondary && openIDs.contains(item.id)
                     let previous = index > 0 ? items[index - 1].id : nil
-                    // Inset hairline above the row, hidden around the selected or hovered row.
-                    let divider = previous != nil && !selected && !hovered && previous != highlighted && previous != hoveredID
-                    row(item, selected: selected, hovered: hovered, divider: divider)
+                    // Inset hairline above the row, hidden around the selected, secondary or hovered row.
+                    let divider = previous != nil && !selected && !secondary && !hovered
+                        && previous != highlighted && previous != secondaryID && previous != hoveredID
+                    row(item, selected: selected, secondary: secondary, openInTab: openInTab, hovered: hovered, divider: divider)
                         .onAppear {
                             if index == 0 { visibleTopID = item.id }
                             if index >= prefetchFrom { Task { await model.loadMore() } }
@@ -201,12 +212,17 @@ struct ItemListView: View {
         }
     }
 
-    private func row(_ item: FeedItem, selected: Bool, hovered: Bool, divider: Bool) -> some View {
-        Button(action: { model.select(item) }) {
-            ItemRowView(item: item, isSelected: selected, isHovered: hovered, isPhone: isPhone)
+    private func row(_ item: FeedItem, selected: Bool, secondary: Bool, openInTab: Bool, hovered: Bool, divider: Bool) -> some View {
+        Button(action: { open(item) }) {
+            ItemRowView(item: item, isSelected: selected, isSecondary: secondary, isOpenInTab: openInTab,
+                        isHovered: hovered, isPhone: isPhone)
                 .equatable()
         }
         .buttonStyle(.plain)
+        .rowContextMenu(enabled: !isPhone) {
+            Button("Open in New Tab") { model.openInNewTab(item) }
+            Button("Open in Split View") { model.openInSplit(item) }
+        }
         .overlay(alignment: .top) {
             if divider {
                 Rectangle()
@@ -223,6 +239,22 @@ struct ItemListView: View {
         }
         .plainListRow()
         .id(item.id)
+    }
+
+    /// Row click: ⌘ opens a new tab, ⌥ opens the other pane (macOS), otherwise the focused pane.
+    private func open(_ item: FeedItem) {
+        #if os(macOS)
+        let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command) {
+            model.openInNewTab(item)
+        } else if flags.contains(.option) {
+            model.openInSplit(item)
+        } else {
+            model.open(item)
+        }
+        #else
+        model.open(item)
+        #endif
     }
 
     /// Skeleton, error and empty states (only when there are no rows).
@@ -295,6 +327,11 @@ struct ItemListView: View {
 }
 
 private extension View {
+    /// A context menu on the desktop layouts only (the iPhone row has none).
+    @ViewBuilder func rowContextMenu<Menu: View>(enabled: Bool, @ViewBuilder _ menu: () -> Menu) -> some View {
+        if enabled { contextMenu(menuItems: menu) } else { self }
+    }
+
     /// Full-bleed list row: no insets, separators or system background (rows draw their own).
     func plainListRow() -> some View {
         listRowInsets(EdgeInsets())

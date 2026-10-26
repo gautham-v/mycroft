@@ -40,6 +40,8 @@ enum OFIcon: String, CaseIterable {
     case comment = "bubble.left"
     /// SidebarIcon (show/hide sidebar)
     case sidebar = "sidebar.left"
+    /// Split view (two reader panes)
+    case split = "rectangle.split.2x1"
     /// ChevronIcon (folder disclosure)
     case chevron = "chevron.right"
     /// GearIcon (Settings)

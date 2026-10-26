@@ -93,7 +93,10 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(macOS)
         content
-            .background(FeedHostWindowReader { monitor.window = $0 })
+            .background(FeedHostWindowReader {
+                monitor.window = $0
+                ReaderWindow.current = $0
+            })
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.frame(in: .global).maxX
             } action: { maxX in
@@ -158,6 +161,13 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
 }
 
 #if os(macOS)
+/// The window hosting the item list (the reader window), so the Close Tab command (⌘W) can tell it
+/// from Settings.
+@MainActor
+enum ReaderWindow {
+    static weak var current: NSWindow?
+}
+
 /// Local NSEvent monitors for key-down (shortcuts) and mouse-down (which pane was clicked last).
 @MainActor
 private final class FeedKeyMonitor {

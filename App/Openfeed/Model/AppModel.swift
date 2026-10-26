@@ -2,6 +2,19 @@ import Foundation
 import Observation
 import OpenfeedCore
 
+/// One reader tab. `itemID` nil follows the list's first item (the desktop default selection).
+struct ReaderTab: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    var itemID: Int64?
+}
+
+/// A reader column (split view has two): its tabs and the one showing.
+struct ReaderPane: Equatable, Sendable {
+    var tabs: [ReaderTab] = [ReaderTab()]
+    var active = 0
+    var activeTab: ReaderTab { tabs[active] }
+}
+
 /// Phone tab bar (openfeed-app.tsx): Feed / Sources / Saved / Settings.
 enum PhoneTab: String, Hashable, CaseIterable, Sendable {
     case feed, sources, saved, settings
@@ -12,6 +25,9 @@ enum PhoneTab: String, Hashable, CaseIterable, Sendable {
 ///
 /// Navigation mirrors the web URL state: one of view / source / folder, an optional search query,
 /// and an optional selected item. Changing view/source/folder clears the item and the search.
+///
+/// Desktop reading: one reader pane, or two side by side (split view), each with its own tabs. The
+/// list, j/k and the item shortcuts act on the focused pane's active tab (`selectedItem`).
 @MainActor
 @Observable
 final class AppModel {
@@ -25,8 +41,9 @@ final class AppModel {
     private(set) var selectedFolderID: Int64?
     /// Legacy hn100/labs/blogs filter; nil = none. Set with setFilter(_:).
     private(set) var filter: FeedFilter?
-    /// The opened item. nil = nothing opened (see `selectedItem` for the default-selection rule).
-    private(set) var selectedItemID: Int64?
+    /// The opened item: the focused pane's active tab. nil = nothing opened (see `selectedItem` for
+    /// the default-selection rule).
+    var selectedItemID: Int64? { panes[focusedPane].activeTab.itemID }
     /// Tablet/desktop: with nothing opened, show the first item (the web app's md+ behavior). Set by RootView.
     var prefersDefaultSelection = false
     /// Phone tab. Setting it navigates like the web tab bar (Feed → All, Saved → Saved view).
@@ -62,6 +79,12 @@ final class AppModel {
     }
     /// Full-screen reader (⇧⌘F): hides sidebar and list while an item is open. Session only.
     var focusMode = false
+    /// Reader panes: one, or two in split view, each with its own tabs. Session only.
+    private(set) var panes: [ReaderPane] = [ReaderPane()]
+    /// The pane the list, j/k and the item shortcuts act on.
+    private(set) var focusedPane = 0
+    /// The left pane's share of the reader's width in split view.
+    var splitFraction: CGFloat = 0.5
     /// Collapsed sidebar folders: folder id as a string, or "unfiled". Persisted.
     var collapsedFolders: Set<String> {
         didSet { UserDefaults.standard.set(Array(collapsedFolders), forKey: Keys.collapsedFolders) }
@@ -103,8 +126,11 @@ final class AppModel {
     @ObservationIgnored private var loadGeneration = 0
     /// The query `nextCursor` belongs to; paging a different query from it would append wrong rows.
     @ObservationIgnored private var cursorQuery: ItemQuery?
-    /// The opened item when it is not in the current page (deep link, or list reloaded under it).
-    @ObservationIgnored private var pinnedItem: FeedItem?
+    /// Every item open in a tab, so a tab keeps its item when the list moves on (another feed, a
+    /// search, a deep link to an item outside the page). Pruned to the open tabs.
+    private var openItems: [Int64: FeedItem] = [:]
+    /// The sidebar's state before split view folded it away; restored when the split closes.
+    @ObservationIgnored private var sidebarCollapsedBeforeSplit: Bool?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
 
@@ -175,15 +201,32 @@ final class AppModel {
     func updatedLabel(now: Date = Date()) -> String { RelativeTime.updatedLabel(lastRefreshAt, now: now) }
 
     /// The item the reader shows: the opened one, else (tablet/desktop) the first in the list.
-    var selectedItem: FeedItem? {
-        if let id = selectedItemID {
-            return items.first { $0.id == id } ?? (pinnedItem?.id == id ? pinnedItem : nil)
-        }
-        return prefersDefaultSelection ? items.first : nil
-    }
+    var selectedItem: FeedItem? { activeItem(inPane: focusedPane) }
 
     /// Id the list highlights (the opened item or the default first one).
     var highlightedItemID: Int64? { selectedItem?.id }
+
+    /// The other pane's item in split view, which the list marks more lightly.
+    var secondaryHighlightedItemID: Int64? { isSplit ? activeItem(inPane: 1 - focusedPane)?.id : nil }
+
+    /// Items open in some tab, shown or not (the list marks the ones in background tabs).
+    var openItemIDs: Set<Int64> { Set(panes.flatMap { $0.tabs.compactMap(\.itemID) }) }
+
+    var isSplit: Bool { panes.count > 1 }
+
+    /// More than one tab anywhere, or a split: ⌘W closes a tab instead of the window.
+    var hasReaderTabs: Bool { isSplit || panes[0].tabs.count > 1 }
+
+    /// What a tab shows: its item, or with none opened (tablet/desktop) the first in the list.
+    func item(for tab: ReaderTab) -> FeedItem? {
+        if let id = tab.itemID { return items.first { $0.id == id } ?? openItems[id] }
+        return prefersDefaultSelection ? items.first : nil
+    }
+
+    /// What a pane shows: its active tab's item.
+    func activeItem(inPane pane: Int) -> FeedItem? {
+        panes.indices.contains(pane) ? item(for: panes[pane].activeTab) : nil
+    }
 
     /// Folders in sidebar order (position, id).
     var orderedFolders: [Folder] {
@@ -253,7 +296,7 @@ final class AppModel {
     func setFilter(_ f: FeedFilter?) {
         guard f != filter else { return }
         filter = f
-        selectedItemID = nil
+        setActiveItem(nil)
         Task { await loadItems(reset: true) }
     }
 
@@ -262,8 +305,7 @@ final class AppModel {
         selectedView = view
         selectedSourceID = source
         selectedFolderID = folder
-        selectedItemID = nil
-        pinnedItem = nil
+        setActiveItem(nil)
         resetSearchState()
         if changed { Task { await loadItems(reset: true) } }
     }
@@ -315,17 +357,17 @@ final class AppModel {
         }
     }
 
-    /// Open an item (nil closes the reader).
+    /// Open an item in the focused pane's active tab (nil closes the reader).
     func select(_ item: FeedItem?) {
-        selectedItemID = item?.id
-        pinnedItem = item
+        if let item { openItems[item.id] = item }
+        setActiveItem(item?.id)
     }
 
     /// Open an item by id (deep link); loads it if it is not in the current page.
     func select(itemID: Int64) async {
-        selectedItemID = itemID
+        setActiveItem(itemID)
         if items.contains(where: { $0.id == itemID }) { return }
-        if let it = try? await database.feedItem(id: itemID), selectedItemID == itemID { pinnedItem = it }
+        if let it = try? await database.feedItem(id: itemID), selectedItemID == itemID { openItems[itemID] = it }
     }
 
     /// j/k: select the next (1) or previous (-1) item; prefetches the next page near the end.
@@ -359,9 +401,9 @@ final class AppModel {
 
     private func patchLocal(_ id: Int64, _ change: (inout FeedItem) -> Void) {
         if let i = items.firstIndex(where: { $0.id == id }) { change(&items[i]) }
-        if var p = pinnedItem, p.id == id {
+        if var p = openItems[id] {
             change(&p)
-            pinnedItem = p
+            openItems[id] = p
         }
     }
 
@@ -463,6 +505,7 @@ final class AppModel {
 
     func deleteSource(id: Int64) async throws {
         try await database.deleteSource(id: id)
+        closeTabs { $0.source.id == id }
         if selectedSourceID == id { goHome() }
         await loadSources()
         await loadItems(reset: true)
@@ -624,8 +667,7 @@ final class AppModel {
         guard next != searchQuery else { return }
         searchQuery = next
         // Drop the opened item so tablet/desktop shows the first result.
-        selectedItemID = nil
-        pinnedItem = nil
+        setActiveItem(nil)
         Task { await loadItems(reset: true) }
     }
 
@@ -659,6 +701,155 @@ final class AppModel {
     func closeSourceFilter() {
         sourceFilter = ""
         isSourceFilterOpen = false
+    }
+
+    // MARK: Reader tabs and split view
+
+    /// List click: show the item in the focused pane. A tab that already has it comes forward (in
+    /// either pane); otherwise it replaces the active tab.
+    func open(_ item: FeedItem) {
+        openItems[item.id] = item
+        for p in [focusedPane, 1 - focusedPane] where panes.indices.contains(p) {
+            if let t = panes[p].tabs.firstIndex(where: { $0.itemID == item.id }) {
+                activateTab(pane: p, index: t)
+                return
+            }
+        }
+        setActiveItem(item.id)
+    }
+
+    /// ⌘-click: a new tab after the active one in the focused pane (or the tab that has it already).
+    func openInNewTab(_ item: FeedItem) {
+        let p = focusedPane
+        if let t = panes[p].tabs.firstIndex(where: { $0.itemID == item.id }) {
+            panes[p].active = t
+            return
+        }
+        pinFocusedTab()
+        openItems[item.id] = item
+        panes[p].tabs.insert(ReaderTab(itemID: item.id), at: panes[p].active + 1)
+        panes[p].active += 1
+    }
+
+    /// ⌥-click: show the item in the other pane, opening split view if it is closed.
+    func openInSplit(_ item: FeedItem) {
+        pinFocusedTab()
+        openItems[item.id] = item
+        if isSplit {
+            focusedPane = 1 - focusedPane
+            open(item)
+            return
+        }
+        sidebarCollapsedBeforeSplit = sidebarCollapsed
+        sidebarCollapsed = true
+        panes.append(ReaderPane(tabs: [ReaderTab(itemID: item.id)]))
+        focusedPane = 1
+    }
+
+    /// Split view on (the item after the current one goes on the right) or off (the focused pane stays).
+    func toggleSplit() {
+        if isSplit {
+            closePane(1 - focusedPane)
+            return
+        }
+        guard let current = selectedItem else { return }
+        let next = items.firstIndex { $0.id == current.id }.flatMap { $0 + 1 < items.count ? items[$0 + 1] : nil }
+        openInSplit(next ?? current)
+    }
+
+    /// Close one pane of a split with its tabs; the sidebar comes back if the split hid it.
+    func closePane(_ pane: Int) {
+        guard isSplit, panes.indices.contains(pane) else { return }
+        panes.remove(at: pane)
+        focusedPane = 0
+        if let was = sidebarCollapsedBeforeSplit { sidebarCollapsed = was }
+        sidebarCollapsedBeforeSplit = nil
+        pruneOpenItems()
+    }
+
+    func focusPane(_ pane: Int) {
+        guard pane != focusedPane, panes.indices.contains(pane) else { return }
+        pinFocusedTab()
+        focusedPane = pane
+    }
+
+    func activateTab(pane: Int, index: Int) {
+        guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        pinFocusedTab()
+        focusedPane = pane
+        panes[pane].active = index
+    }
+
+    /// Close a tab. A pane's last tab closes the pane in split view, else empties the reader.
+    func closeTab(pane: Int, index: Int) {
+        guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        if panes[pane].tabs.count == 1 {
+            if isSplit { closePane(pane) } else { setActiveItem(nil) }
+            return
+        }
+        panes[pane].tabs.remove(at: index)
+        let active = panes[pane].active
+        if index < active || active >= panes[pane].tabs.count { panes[pane].active = active - 1 }
+        pruneOpenItems()
+    }
+
+    func closeOtherTabs(pane: Int, index: Int) {
+        guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        panes[pane].tabs = [panes[pane].tabs[index]]
+        panes[pane].active = 0
+        pruneOpenItems()
+    }
+
+    /// ⌘W: close the focused tab (or pane). Returns false when there is only the one tab, so the
+    /// caller closes the window instead.
+    func closeActiveTab() -> Bool {
+        guard hasReaderTabs else { return false }
+        closeTab(pane: focusedPane, index: panes[focusedPane].active)
+        return true
+    }
+
+    /// ⇧⌘] / ⇧⌘[: the next or previous tab in the focused pane, wrapping around.
+    func selectTab(offset: Int) {
+        let p = focusedPane
+        let count = panes[p].tabs.count
+        guard count > 1 else { return }
+        pinFocusedTab()
+        panes[p].active = ((panes[p].active + offset) % count + count) % count
+    }
+
+    /// The focused pane's active tab shows `id` (nil: the list's first item).
+    private func setActiveItem(_ id: Int64?) {
+        panes[focusedPane].tabs[panes[focusedPane].active].itemID = id
+        pruneOpenItems()
+    }
+
+    /// A tab that follows the list's first item keeps that item once focus or the active tab moves
+    /// away, so later navigation in another tab does not change it.
+    private func pinFocusedTab() {
+        let p = focusedPane, t = panes[p].active
+        guard panes[p].tabs[t].itemID == nil, let first = item(for: panes[p].tabs[t]) else { return }
+        openItems[first.id] = first
+        panes[p].tabs[t].itemID = first.id
+    }
+
+    /// Close every tab whose item matches (a removed source); panes keep at least one tab.
+    private func closeTabs(where match: (FeedItem) -> Bool) {
+        for p in panes.indices.reversed() {
+            for t in panes[p].tabs.indices.reversed() {
+                // Closing a pane's last tab closes the pane in split view.
+                guard panes.indices.contains(p), panes[p].tabs.indices.contains(t) else { break }
+                if let it = item(for: panes[p].tabs[t]), panes[p].tabs[t].itemID != nil, match(it) {
+                    closeTab(pane: p, index: t)
+                }
+            }
+        }
+    }
+
+    private func pruneOpenItems() {
+        let keep = openItemIDs
+        if openItems.keys.contains(where: { !keep.contains($0) }) {
+            openItems = openItems.filter { keep.contains($0.key) }
+        }
     }
 
     /// Full-screen reader is in effect only while an item is shown.

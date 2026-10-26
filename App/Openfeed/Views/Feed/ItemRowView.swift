@@ -9,12 +9,16 @@ import SwiftUI
 /// (QuoteLine). iPhone rows are headline only: no snippet, and
 /// the meta line adds HN points and comments when present.
 ///
-/// The row draws its own rounded background (selected / hovered) and leaves the inset hairline to
-/// `ItemListView`, which knows the neighbours. Equatable so a hover or selection change elsewhere in
-/// the list doesn't re-render every row.
+/// The row draws its own rounded background (selected / the other pane's item / hovered) and leaves
+/// the inset hairline to `ItemListView`, which knows the neighbours. Equatable so a hover or selection
+/// change elsewhere in the list doesn't re-render every row.
 struct ItemRowView: View, Equatable {
     let item: FeedItem
     var isSelected = false
+    /// The item open in the other pane of the split view: a lighter highlight with a hairline outline.
+    var isSecondary = false
+    /// Open in a background tab (and not shown in either pane): a dot at the end of the meta line.
+    var isOpenInTab = false
     var isHovered = false
     /// iPhone: headline-only rows (no snippet) with HN points/comments in the meta line.
     var isPhone = false
@@ -32,8 +36,14 @@ struct ItemRowView: View, Equatable {
         .padding(.vertical, Metrics.rowPaddingV)
         .background(
             RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-                .fill(isSelected ? Color.ofSelection : isHovered ? Color.ofHover : Color.clear)
+                .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
         )
+        .overlay {
+            if isSecondary && !isSelected {
+                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                    .strokeBorder(Color.ofHairline, lineWidth: 1)
+            }
+        }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
@@ -87,6 +97,13 @@ struct ItemRowView: View, Equatable {
             metaText(name: name, handle: handle)
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if isOpenInTab && !isPhone {
+                Spacer(minLength: 0)
+                Circle()
+                    .fill(Color.ofAccent)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -110,6 +127,7 @@ struct ItemRowView: View, Equatable {
         if item.source.kind == .podcast { parts.append("Podcast episode") }
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
         if item.isSaved { parts.append("Saved") }
+        if isOpenInTab { parts.append("Open in a tab") }
         return parts.joined(separator: ", ")
     }
 }

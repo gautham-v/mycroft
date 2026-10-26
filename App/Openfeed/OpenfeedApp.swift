@@ -78,16 +78,37 @@ struct OpenfeedCommands: Commands {
                 Button(view.title) { model.navigate(view: view) }
             }
         }
+        CommandGroup(replacing: .saveItem) {
+            Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { closeTabOrWindow() }
+                .keyboardShortcut("w", modifiers: .command)
+        }
         CommandGroup(after: .sidebar) {
             Button(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") { model.toggleSidebar() }
                 .keyboardShortcut("\\", modifiers: .command)
             Button(model.focusMode ? "Exit Full-Screen Reader" : "Full-Screen Reader") { model.toggleFocusMode() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
+            Divider()
+            Button(model.isSplit ? "Close Split View" : "Split View") { model.toggleSplit() }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(model.selectedItem == nil && !model.isSplit)
+            Button("Show Next Tab") { model.selectTab(offset: 1) }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+                .disabled(model.panes[model.focusedPane].tabs.count < 2)
+            Button("Show Previous Tab") { model.selectTab(offset: -1) }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .disabled(model.panes[model.focusedPane].tabs.count < 2)
         }
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { model.isShortcutsPresented = true }
                 .keyboardShortcut("/", modifiers: .command)
         }
+    }
+
+    /// ⌘W: close the reader's active tab when the reader window is key and has tabs, else close the key
+    /// window (Settings, or the reader window with a single tab).
+    private func closeTabOrWindow() {
+        if let key = NSApp.keyWindow, key === ReaderWindow.current, model.closeActiveTab() { return }
+        NSApp.keyWindow?.performClose(nil)
     }
 }
 #endif

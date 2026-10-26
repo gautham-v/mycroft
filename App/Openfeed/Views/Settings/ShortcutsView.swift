@@ -33,6 +33,14 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["g", "v"], label: "Video", separator: "then"),
             ShortcutEntry(keys: ["g", "p"], label: "Podcasts", separator: "then"),
         ]),
+        ShortcutGroup(title: "Tabs and split view", items: [
+            ShortcutEntry(keys: ["⌘", "click"], label: "Open in a new tab"),
+            ShortcutEntry(keys: ["⌥", "click"], label: "Open in split view"),
+            ShortcutEntry(keys: ["⇧", "⌘", "]"], label: "Next tab"),
+            ShortcutEntry(keys: ["⇧", "⌘", "["], label: "Previous tab"),
+            ShortcutEntry(keys: ["⌘", "W"], label: "Close the tab"),
+            ShortcutEntry(keys: ["⌥", "⌘", "S"], label: "Split view on or off"),
+        ]),
         ShortcutGroup(title: "App", items: [
             ShortcutEntry(keys: ["/"], label: "Search"),
             ShortcutEntry(keys: ["⌘", "K"], label: "Filter sources in the sidebar"),

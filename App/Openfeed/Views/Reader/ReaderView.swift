@@ -6,6 +6,9 @@ import SwiftUI
 /// byline, article HTML in a height-fitted WKWebView styled by Resources/reader.css, a YouTube player
 /// for videos and a native audio player for podcasts. Shows the empty state when nothing is selected.
 ///
+/// On the desktop the reader is one pane or two side by side (ReaderSplitView), and a pane with more
+/// than one tab shows them in its bar in place of the source line (ReaderTabs.swift).
+///
 /// On iPhone it is pushed in the list's NavigationStack and uses the system navigation bar (Liquid
 /// Glass): the system back button pops (ItemListView's binding then calls `model.select(nil)`), the
 /// actions sit in the bar, and the meta row (badge, source · time) scrolls with the article.
@@ -14,11 +17,10 @@ struct ReaderView: View {
 
     var body: some View {
         Group {
-            if let item = model.selectedItem {
-                ReaderItemView(item: item)
-                    .id(item.id)
+            if model.isSplit {
+                ReaderSplitView()
             } else {
-                ReaderEmptyView()
+                ReaderPaneView(pane: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,6 +50,8 @@ enum ReaderContentState: Equatable {
 
 struct ReaderItemView: View {
     let item: FeedItem
+    /// The pane showing it (split view has two).
+    var pane = 0
 
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -70,6 +74,10 @@ struct ReaderItemView: View {
     }
 
     private var wide: Bool { !compact }
+    /// Split view: the focused pane's bar carries an accent underline, the other's source line dims.
+    private var isFocusedPane: Bool { model.isSplit && model.focusedPane == pane }
+    private var isUnfocusedPane: Bool { model.isSplit && model.focusedPane != pane }
+    private var hasTabs: Bool { model.panes.indices.contains(pane) && model.panes[pane].tabs.count > 1 }
     private var settings: AppSettings { model.settings }
     private var isVideo: Bool { item.source.kind == .youtube }
     /// Podcasts read like articles with an audio player between header and notes.
@@ -203,9 +211,16 @@ struct ReaderItemView: View {
     /// macOS / iPad toolbar row (iPhone uses the system bar, see `phoneToolbar`).
     private var toolbar: some View {
         HStack(spacing: 6) {
-            HStack(spacing: 8) {
-                SourceBadge(host: item.source.host, title: item.source.title, size: 20)
-                titleLine
+            Group {
+                if hasTabs {
+                    ReaderTabStrip(pane: pane)
+                } else {
+                    HStack(spacing: 8) {
+                        SourceBadge(host: item.source.host, title: item.source.title, size: 20)
+                        titleLine
+                    }
+                    .opacity(isUnfocusedPane ? 0.6 : 1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -221,13 +236,16 @@ struct ReaderItemView: View {
         .padding(.vertical, 8)
         .frame(minHeight: Metrics.desktopHeaderHeight)
         #endif
+        .overlay(alignment: .bottom) {
+            if isFocusedPane { Rectangle().fill(Color.ofAccent).frame(height: 2) }
+        }
         .background(Color.ofSurface.opacity(0.95))
     }
 
-    /// macOS full-screen reader: the traffic lights sit over the toolbar's leading edge.
+    /// macOS full-screen reader: the traffic lights sit over the toolbar's leading edge (the left pane's).
     private var focusInset: CGFloat {
         #if os(macOS)
-        model.isFocused ? Metrics.trafficLightInset : 16
+        model.isFocused && pane == 0 ? Metrics.trafficLightInset : 16
         #else
         16
         #endif
@@ -265,18 +283,33 @@ struct ReaderItemView: View {
             SendToView(item: item, size: buttonSize, iconSize: glyphSize)
 
             if !compact {
-                // Full screen acts on the window, not the article: set it apart with a hairline.
+                // Split and full screen act on the window, not the article: set them apart with a hairline.
                 Rectangle()
                     .fill(Color.ofBorder)
                     .frame(width: 1, height: 16)
                     .padding(.horizontal, 6 - Metrics.readerActionSpacing)
 
-                Button { model.toggleFocusMode() } label: {
-                    (model.isFocused ? OFIcon.collapse : OFIcon.expand).image
+                if model.isSplit {
+                    Button { model.closePane(pane) } label: { OFIcon.close.image }
+                        .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                        .help("Close this pane")
+                        .accessibilityLabel("Close pane")
+                } else {
+                    Button { model.toggleSplit() } label: { OFIcon.split.image }
+                        .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                        .help("Split view (⌥⌘S)")
+                        .accessibilityLabel("Split view")
                 }
-                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                .help(model.isFocused ? "Exit full screen (esc)" : "Full screen (⇧⌘F)")
-                .accessibilityLabel(model.isFocused ? "Exit full screen" : "Full screen")
+
+                // One full-screen button per window: the right pane's in split view.
+                if !model.isSplit || pane == model.panes.count - 1 {
+                    Button { model.toggleFocusMode() } label: {
+                        (model.isFocused ? OFIcon.collapse : OFIcon.expand).image
+                    }
+                    .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                    .help(model.isFocused ? "Exit full screen (esc)" : "Full screen (⇧⌘F)")
+                    .accessibilityLabel(model.isFocused ? "Exit full screen" : "Full screen")
+                }
             }
         }
     }
