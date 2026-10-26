@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Install the hooks that rebuild and reinstall the Mac app (scripts/install-mac.sh): post-commit for
-# commits on main, post-merge for merges and pulls into main (including fast-forwards).
+# commits on main, post-merge for merges and pulls into main (including fast-forwards). Also a
+# commit-msg hook that keeps AI attribution out of commits.
 ROOT=${0:A:h:h}
 HOOKS=$(git -C $ROOT rev-parse --git-common-dir)/hooks
 write_hook() {
@@ -16,3 +17,16 @@ HOOK
 }
 write_hook post-commit 'HEAD~1'
 write_hook post-merge ORIG_HEAD
+
+# commit-msg: no AI attribution in this repo. Drops Co-Authored-By trailers for Claude or Anthropic and
+# refuses a commit authored as Claude.
+cat > $HOOKS/commit-msg <<'HOOK'
+#!/bin/zsh
+if git var GIT_AUTHOR_IDENT | grep -qiE 'anthropic\.com|^claude '; then
+  echo "commit-msg: the author is Claude; commit as the repo's own git user" >&2
+  exit 1
+fi
+sed -i '' -E '/^[Cc]o-[Aa]uthored-[Bb]y:.*([Cc]laude|[Aa]nthropic)/d' "$1"
+HOOK
+chmod +x $HOOKS/commit-msg
+echo "installed $HOOKS/commit-msg"

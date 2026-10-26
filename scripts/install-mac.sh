@@ -37,7 +37,12 @@ while true; do
     if pgrep -xq OpenDispatch; then
       notify "Could not quit the running app; install skipped"
     else
-      rm -rf $APP && ditto $BUILD/Build/Products/Release/OpenDispatch.app $APP && open $APP
+      if rm -rf $APP && ditto $BUILD/Build/Products/Release/OpenDispatch.app $APP; then
+        # Re-register so the Dock takes this copy's icon, not another app with the same bundle id
+        # (the iPhone app's placeholder from iPhone Mirroring, for one).
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f $APP
+        open $APP
+      fi
       echo "installed $(date '+%T')" >> $LOG
     fi
   fi
