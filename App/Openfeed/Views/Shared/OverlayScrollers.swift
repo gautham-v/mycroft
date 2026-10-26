@@ -88,6 +88,12 @@ struct FlushWindowChrome: NSViewRepresentable {
                     FlushWindowChrome.apply(to: window)
                 })
             }
+            // Toggling a split-view column re-lays out the title bar and puts the buttons back at
+            // AppKit's default spot without a window resize. Re-apply once that layout has settled.
+            observers.append(NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification, object: nil, queue: .main) { [weak window] note in
+                guard let window, (note.object as? NSView)?.window === window else { return }
+                DispatchQueue.main.async { FlushWindowChrome.centerTrafficLights(window) }
+            })
             FlushWindowChrome.apply(to: window)
         }
 
@@ -125,6 +131,10 @@ struct FlushWindowChrome: NSViewRepresentable {
             let defaultX: CGFloat = kind == .closeButton ? 7 : kind == .miniaturizeButton ? 27 : 47
             let dx = (defaultX + Metrics.trafficLightShift) - frameInWindow.minX
             guard abs(dy) > 0.5 || abs(dx) > 0.5 else { continue }
+            // Only ever move from AppKit's own placement (x = default, centre 14pt down); anything
+            // else is a mid-layout frame we must not compound.
+            let atDefault = abs(frameInWindow.minX - defaultX) < 1 && abs((window.frame.height - 14) - frameInWindow.midY) < 1
+            guard atDefault else { continue }
             var f = b.frame
             f.origin.y += sup.isFlipped ? -dy : dy
             f.origin.x += dx
