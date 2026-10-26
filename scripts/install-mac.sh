@@ -26,12 +26,13 @@ while true; do
     echo "== $(date '+%F %T') $(git -C $ROOT log -1 --format='%h %s')"
     cd $ROOT/App || exit 1
     xcodegen generate --quiet &&
-    xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -configuration Release \
+    xcodebuild -project OpenDispatch.xcodeproj -scheme OpenDispatch -configuration Release \
       -destination 'platform=macOS' -derivedDataPath $BUILD build -quiet
   } >> $LOG 2>&1
   if [[ $? -ne 0 ]]; then
     notify "Build failed, see App/build/install.log"
   else
+    # Bundle id keeps the app's original name (see App/project.yml).
     osascript -e 'tell application id "com.gauthamv.openfeed" to quit' >/dev/null 2>&1
     for i in {1..20}; do pgrep -xq OpenDispatch || break; sleep 0.5; done
     if pgrep -xq OpenDispatch; then

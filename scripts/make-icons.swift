@@ -1,6 +1,6 @@
-// Generates the custom SF Symbols in App/Openfeed/Resources/Assets.xcassets/Icons from stroke icons drawn
+// Generates the custom SF Symbols in App/OpenDispatch/Resources/Assets.xcassets/Icons from stroke icons drawn
 // on a 24-unit grid (1.75 stroke, round caps and joins).
-//   swiftc -O scripts/make-icons.swift -o /tmp/make-icons && /tmp/make-icons App/Openfeed/Resources/Assets.xcassets/Icons
+//   swiftc -O scripts/make-icons.swift -o /tmp/make-icons && /tmp/make-icons App/OpenDispatch/Resources/Assets.xcassets/Icons
 import CoreGraphics
 import Foundation
 

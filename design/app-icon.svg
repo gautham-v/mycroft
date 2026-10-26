@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <!-- OpenDispatch app icon: a large circle with one quarter-circle wave around its top right, an ice
        front with a green trail on the circle and a pink trail on the wave, on a deep night-sky blue.
-       Source for the PNGs in App/Openfeed/Resources/Assets.xcassets; regenerate with scripts/render-icons.sh. -->
+       Source for the PNGs in App/OpenDispatch/Resources/Assets.xcassets; regenerate with scripts/render-icons.sh. -->
   <style>
     use { fill: none; stroke-linecap: round; }
     .lay { mix-blend-mode: screen; }

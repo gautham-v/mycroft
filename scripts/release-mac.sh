@@ -44,7 +44,7 @@ echo "== OpenDispatch $VERSION ($BUILD) from $(git -C $SRC log -1 --format='%h %
 rm -rf $OUT && mkdir -p $OUT/updates
 
 xcodegen generate --quiet
-xcodebuild archive -project Openfeed.xcodeproj -scheme Openfeed -configuration Release \
+xcodebuild archive -project OpenDispatch.xcodeproj -scheme OpenDispatch -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath $DD -archivePath $OUT/OpenDispatch.xcarchive \
   -allowProvisioningUpdates $AUTH -quiet
 

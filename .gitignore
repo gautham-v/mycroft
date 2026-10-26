@@ -5,7 +5,7 @@
 # Swift / Xcode
 /Core/.build/
 /Core/Packages/
-/App/Openfeed.xcodeproj/
+/App/OpenDispatch.xcodeproj/
 /App/DerivedData/
 xcuserdata/
 *.xcuserstate

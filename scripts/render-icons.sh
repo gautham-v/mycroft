@@ -4,7 +4,7 @@
 set -eu
 ROOT=${0:A:h:h}
 SVG=$ROOT/design/app-icon.svg
-ASSETS=$ROOT/App/Openfeed/Resources/Assets.xcassets
+ASSETS=$ROOT/App/OpenDispatch/Resources/Assets.xcassets
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 TMP=$(mktemp -d)
 trap 'rm -rf $TMP' EXIT

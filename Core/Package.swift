@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "OpenfeedCore",
+    name: "OpenDispatchCore",
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
-        .library(name: "OpenfeedCore", targets: ["OpenfeedCore"]),
+        .library(name: "OpenDispatchCore", targets: ["OpenDispatchCore"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
@@ -13,7 +13,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "OpenfeedCore",
+            name: "OpenDispatchCore",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
@@ -28,8 +28,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "OpenfeedCoreTests",
-            dependencies: ["OpenfeedCore"],
+            name: "OpenDispatchCoreTests",
+            dependencies: ["OpenDispatchCore"],
             swiftSettings: [
                 .swiftLanguageMode(.v5),
                 .enableUpcomingFeature("StrictConcurrency"),

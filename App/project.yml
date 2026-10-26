@@ -1,4 +1,4 @@
-name: Openfeed
+name: OpenDispatch
 options:
   bundleIdPrefix: com.gauthamv
   deploymentTarget:
@@ -7,7 +7,7 @@ options:
   createIntermediateGroups: true
   developmentLanguage: en
 packages:
-  OpenfeedCore:
+  OpenDispatchCore:
     path: ../Core
   # In-app updates for the Mac app distributed as a DMG (scripts/release-mac.sh).
   Sparkle:
@@ -22,21 +22,21 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     DEAD_CODE_STRIPPING: YES
 targets:
-  Openfeed:
+  OpenDispatch:
     type: application
     supportedDestinations: [iOS, macOS]
     sources:
-      - path: Openfeed
+      - path: OpenDispatch
         excludes:
           - "**/.DS_Store"
-          - "Openfeed.entitlements"
+          - "OpenDispatch.entitlements"
           - "Info.plist"
     dependencies:
-      - package: OpenfeedCore
+      - package: OpenDispatchCore
       - package: Sparkle
         destinationFilters: [macOS]
     info:
-      path: Openfeed/Info.plist
+      path: OpenDispatch/Info.plist
       properties:
         CFBundleDisplayName: OpenDispatch
         CFBundleShortVersionString: $(MARKETING_VERSION)
@@ -55,13 +55,17 @@ targets:
           UIApplicationSupportsMultipleScenes: true
         UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # The com.gauthamv.openfeed identifiers (bundle id, background task, URL type name) keep the app's
+        # original name on purpose: changing them would orphan installs, settings, the Keychain token and
+        # the TestFlight record.
         BGTaskSchedulerPermittedIdentifiers: [com.gauthamv.openfeed.refresh]
         UIBackgroundModes: [fetch, audio]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         CFBundleURLTypes:
+          # opendispatch:// is the documented scheme; openfeed:// still works for old links.
           - CFBundleURLName: com.gauthamv.openfeed
-            CFBundleURLSchemes: [opendispatch]
+            CFBundleURLSchemes: [opendispatch, openfeed]
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: org.opml.opml
             UTTypeDescription: OPML File
@@ -80,17 +84,17 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 26TVJ92MLZ
-        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Openfeed/Openfeed.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": OpenDispatch/OpenDispatch.entitlements
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         # The multiplatform default is iOS's @executable_path/Frameworks; a Mac app keeps Sparkle in Contents/Frameworks.
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "$(inherited) @executable_path/../Frameworks"
         ENABLE_PREVIEWS: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
 schemes:
-  Openfeed:
+  OpenDispatch:
     build:
       targets:
-        Openfeed: all
+        OpenDispatch: all
     run:
       config: Debug
     archive:
