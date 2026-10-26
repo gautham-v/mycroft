@@ -70,35 +70,6 @@ struct SidebarViewRow: View {
     }
 }
 
-/// A row styled like the view rows that runs an action (the sidebar's "Search sources").
-struct SidebarActionRow: View {
-    let icon: OFIcon
-    let label: String
-    let action: () -> Void
-    @State private var hovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                icon.image
-                    .font(.system(size: 15, weight: .regular))
-                    .frame(width: SidebarStyle.iconColumn)
-                Text(label)
-                    .font(OFFont.sidebarRow)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(.ofInk)
-            .padding(.horizontal, SidebarStyle.rowPadding)
-            .frame(height: Metrics.sidebarRowHeight)
-            .contentShape(Rectangle())
-            .modifier(SidebarRowBackground(active: false, hovered: hovered))
-        }
-        .buttonStyle(.plain)
-        .onHover { hovered = $0 }
-    }
-}
-
 /// Footer "Add source" row (13.5pt, ink).
 struct SidebarFooterRow: View {
     let icon: OFIcon

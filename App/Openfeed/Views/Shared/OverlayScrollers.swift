@@ -1,9 +1,10 @@
 import SwiftUI
 
 extension View {
-    /// macOS: show the scrollers of the scroll view this is attached to as overlays that fade out
-    /// after scrolling, even when System Settings asks for scroll bars to be shown always, drawn as
-    /// Claude's thin pill (ThinScroller). Attach to the `ScrollView` / `List` itself. No-op elsewhere.
+    /// macOS: show the vertical scroller of the scroll view this is attached to only while the pointer
+    /// is over that scroll view, as an overlay (no reserved gutter) drawn as Claude's thin pill
+    /// (ThinScroller), whatever System Settings says about showing scroll bars. Attach to the
+    /// `ScrollView` / `List` itself. No-op elsewhere.
     func overlayScrollers() -> some View {
         #if os(macOS)
         background(OverlayScrollerFinder())
@@ -39,11 +40,13 @@ private struct OverlayScrollerFinder: NSViewRepresentable {
                 hops += 1
             }
             guard let scrollView = found else { return }
-            if !(scrollView.verticalScroller is ThinScroller) {
-                scrollView.verticalScroller = ThinScroller()
-            }
             scrollView.scrollerStyle = .overlay
             scrollView.autohidesScrollers = true
+            if !(scrollView.verticalScroller is ThinScroller) {
+                let scroller = ThinScroller()
+                scrollView.verticalScroller = scroller
+                scroller.track(scrollView)
+            }
         }
 
         private static func firstScrollView(in root: NSView) -> NSScrollView? {
@@ -64,11 +67,37 @@ private struct OverlayScrollerFinder: NSViewRepresentable {
 }
 
 /// Claude desktop's scroller: a 6pt grey pill 2pt in from the edge, no track, and no widening on hover.
+/// Shown only while the pointer is over its scroll view: AppKit's overlay fade-in and fade-out go
+/// through `alphaValue`, which this pins to the hover state.
 final class ThinScroller: NSScroller {
     private static let knobWidth: CGFloat = 6
     private static let edgeInset: CGFloat = 2
 
+    private var pointerInside = false {
+        didSet { super.alphaValue = pointerInside ? 1 : 0 }
+    }
+
     override class var isCompatibleWithOverlayScrollers: Bool { true }
+
+    override var alphaValue: CGFloat {
+        get { super.alphaValue }
+        set { super.alphaValue = pointerInside ? 1 : 0 }
+    }
+
+    /// Follows the pointer in and out of `scrollView`.
+    func track(_ scrollView: NSScrollView) {
+        scrollView.addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        if let window = scrollView.window {
+            let p = scrollView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            pointerInside = scrollView.bounds.contains(p)
+        } else {
+            pointerInside = false
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) { pointerInside = true }
+    override func mouseExited(with event: NSEvent) { pointerInside = false }
 
     override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {}
 

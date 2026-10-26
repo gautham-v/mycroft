@@ -33,21 +33,18 @@ struct SidebarView: View {
     @State private var errorMessage: String?
 
     private static let newFolderAnchor = "sidebar-new-folder"
+    private static let searchAnchor = "sidebar-search"
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            // Claude-style "Search" row; it turns into the filter field when clicked or on ⌘K.
-            if model.isSourceFilterOpen {
-                SidebarFilterField()
-            } else {
-                SidebarActionRow(icon: .search, label: "Search sources") { model.openSourceFilter() }
-                    .padding(.horizontal, 12)
-                    .help("Search sources (⌘K)")
-            }
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
+                        // Scrolls with the list, like the Claude Code sidebar's search box.
+                        SidebarFilterField()
+                            .padding(.bottom, 6)
+                            .id(Self.searchAnchor)
                         if model.isFilteringSources {
                             filterResults
                         } else {
@@ -66,6 +63,10 @@ struct SidebarView: View {
                 }
                 .scrollIndicators(.hidden)
                 .overlayScrollers()
+                // ⌘K with the list scrolled down: bring the search box back into view.
+                .onChange(of: model.sourceFilterFocusRequests) { _, _ in
+                    withAnimation { proxy.scrollTo(Self.searchAnchor, anchor: .top) }
+                }
                 .onChange(of: editing) { _, value in
                     if case .newFolder = value {
                         withAnimation { proxy.scrollTo(Self.newFolderAnchor, anchor: .bottom) }
