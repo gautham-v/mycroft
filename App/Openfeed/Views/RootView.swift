@@ -69,6 +69,8 @@ struct RootView: View {
         #else
         splitLayout
             .toolbar(removing: .title)
+            .toolbar(removing: .sidebarToggle)
+            .toolbarBackground(.hidden, for: .windowToolbar)
             .background(FlushWindowChrome())
             .frame(minWidth: 900, minHeight: 560)
         #endif

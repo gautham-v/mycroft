@@ -60,99 +60,28 @@ private struct OverlayScrollerFinder: NSViewRepresentable {
     }
 }
 
-/// Hides the window toolbar that NavigationSplitView installs and lets content run under the
-/// (hidden) title bar, so the three columns reach the top edge like the Claude desktop app.
+/// Lets content run under the (hidden) title bar so the three columns reach the top edge. The
+/// window keeps its toolbar (drawn transparent, with no items) so AppKit itself lays out the traffic
+/// lights on the unified-compact row; nothing is moved by hand.
 struct FlushWindowChrome: NSViewRepresentable {
-    func makeNSView(context: Context) -> ChromeView {
-        let v = ChromeView()
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
         DispatchQueue.main.async { Self.apply(to: v.window) }
         return v
     }
 
-    func updateNSView(_ nsView: ChromeView, context: Context) {
+    func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async { Self.apply(to: nsView.window) }
-    }
-
-    /// Re-applies after resizes and full-screen transitions, which re-layout the title bar.
-    final class ChromeView: NSView {
-        private var observers: [NSObjectProtocol] = []
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            observers.forEach(NotificationCenter.default.removeObserver)
-            observers = []
-            guard let window else { return }
-            for name in [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification,
-                         NSWindow.didBecomeKeyNotification, NSWindow.didEndLiveResizeNotification] {
-                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak window] _ in
-                    FlushWindowChrome.apply(to: window)
-                })
-            }
-            // Toggling a split-view column re-lays out the title bar and puts the buttons back at
-            // AppKit's default spot without a window resize. Re-apply once that layout has settled.
-            // Correct synchronously, inside the frame change, so the default position never draws
-            // (an async re-apply flickers). `centerTrafficLights` only moves buttons that are at
-            // AppKit's default spot, so the nested change it triggers is a no-op.
-            var watched: [NSView] = []
-            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                if let b = window.standardWindowButton(kind) {
-                    watched.append(b)
-                    if let sup = b.superview, !watched.contains(sup) { watched.append(sup) }
-                }
-            }
-            for view in watched {
-                view.postsFrameChangedNotifications = true
-                observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: nil) { [weak window] _ in
-                    guard let window else { return }
-                    FlushWindowChrome.centerTrafficLights(window)
-                })
-            }
-            FlushWindowChrome.apply(to: window)
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
     static func apply(to window: NSWindow?) {
         guard let window else { return }
-        defer { centerTrafficLights(window) }
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
         window.toolbarStyle = .unifiedCompact
-        if let toolbar = window.toolbar, toolbar.isVisible {
-            toolbar.isVisible = false
-        }
-        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            if let b = window.standardWindowButton(kind) {
-                b.isHidden = false
-                b.superview?.isHidden = false
-            }
-        }
-    }
-
-    /// Moves the close / minimize / zoom buttons so their centre sits `Metrics.titleStripHeight / 2`
-    /// below the top edge (AppKit puts them 14pt down), keeping their standard x positions.
-    static func centerTrafficLights(_ window: NSWindow) {
-        guard !window.styleMask.contains(.fullScreen) else { return }
-        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let b = window.standardWindowButton(kind), let sup = b.superview else { continue }
-            let frameInWindow = sup.convert(b.frame, to: nil)
-            let targetCenterY = window.frame.height - Metrics.titleStripHeight / 2
-            let dy = targetCenterY - frameInWindow.midY
-            // Default x of the close button is 7pt; the others keep their 20pt pitch.
-            let defaultX: CGFloat = kind == .closeButton ? 7 : kind == .miniaturizeButton ? 27 : 47
-            let dx = (defaultX + Metrics.trafficLightShift) - frameInWindow.minX
-            guard abs(dy) > 0.5 || abs(dx) > 0.5 else { continue }
-            // Only ever move from AppKit's own placement (x = default, centre 14pt down); anything
-            // else is a mid-layout frame we must not compound.
-            let atDefault = abs(frameInWindow.minX - defaultX) < 1 && abs((window.frame.height - 14) - frameInWindow.midY) < 1
-            guard atDefault else { continue }
-            var f = b.frame
-            f.origin.y += sup.isFlipped ? -dy : dy
-            f.origin.x += dx
-            b.frame = f
-        }
+        window.toolbar?.isVisible = true
+        window.toolbar?.showsBaselineSeparator = false
     }
 }
 #endif

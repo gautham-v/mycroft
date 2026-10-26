@@ -132,14 +132,13 @@ enum Metrics {
     static let rowRadius: CGFloat = 6
     /// macOS: the window title bar is hidden, so the traffic lights sit over the content. Leading
     /// space that keeps the first row of controls clear of them.
-    static let trafficLightInset: CGFloat = 88
-    /// How far right of AppKit's default the lights are moved (Claude's lights start ~16pt in).
-    static let trafficLightShift: CGFloat = 9
+    /// (Window toolbar: lights end at ~65pt, the native sidebar toggle at ~106pt.)
+    static let trafficLightInset: CGFloat = 114
     /// Height of the row that holds the traffic lights (hidden title bar). FlushWindowChrome moves the
     /// lights down so they sit on this row's centre line, like the Claude desktop app.
-    static let titleStripHeight: CGFloat = 44
+    static let titleStripHeight: CGFloat = 38
     /// Air between that row and the content below it.
-    static let titleStripGap: CGFloat = 6
+    static let titleStripGap: CGFloat = 8
     /// Item row padding (px-2.5 py-[11px]) and the inset hairline start (10 + 24 + 12).
     static let rowPaddingH: CGFloat = 10
     static let rowPaddingV: CGFloat = 11

@@ -92,10 +92,8 @@ struct SidebarView: View {
     private var header: some View {
         HStack(spacing: 0) {
             #if os(macOS)
-            Spacer().frame(width: Metrics.trafficLightInset)
-            SidebarIconButton(icon: .sidebar, label: "Hide sidebar (⌘\\)", size: 28, iconSize: 15) {
-                model.toggleSidebar()
-            }
+            // The window's own (transparent) toolbar carries the traffic lights and the native
+            // sidebar toggle; this strip only reserves their row.
             Spacer(minLength: 0)
             #else
             Spacer(minLength: 0)

@@ -10,6 +10,7 @@ struct DesktopListHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            #if os(iOS)
             if model.sidebarCollapsed {
                 Button(action: { model.toggleSidebar() }) {
                     OFIcon.sidebar.image
@@ -21,6 +22,7 @@ struct DesktopListHeader: View {
                 .help("Show sidebar (⌘\\)")
                 .accessibilityLabel("Show sidebar")
             }
+            #endif
             if model.isSearchOpen {
                 FeedSearchField(focus: searchFocus)
             } else {
