@@ -39,7 +39,7 @@ final class FeedKeyHandler {
     /// Returns true when the key was handled (and should be swallowed).
     func handle(_ key: FeedKey, model: AppModel, openURL: (URL) -> Void, focusSearch: () -> Void) -> Bool {
         if key == .escape {
-            guard model.isSearchOpen || model.focusMode else { return false }
+            guard model.isSourceFilterOpen || model.isSearchOpen || model.focusMode else { return false }
             model.escape()
             return true
         }

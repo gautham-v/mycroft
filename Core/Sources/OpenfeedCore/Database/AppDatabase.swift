@@ -122,6 +122,14 @@ public final class AppDatabase: Sendable {
                 );
                 """)
         }
+        // Sidebar curation: a pinned source lists under "Pinned" (ordered by pinned_at) and a hidden one is
+        // left out of the tree. folder_id and position are untouched, so unpinning/unhiding restores it.
+        m.registerMigration("v2-pin-hide-sources") { db in
+            try db.execute(sql: """
+                ALTER TABLE sources ADD COLUMN pinned_at DATETIME;
+                ALTER TABLE sources ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0;
+                """)
+        }
         return m
     }
 }

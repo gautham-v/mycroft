@@ -77,9 +77,9 @@ struct SettingsSourcesPane: View {
     private var groups: [(key: String, label: String, sources: [Source])] {
         let vis = Set(visible.map(\.id))
         var out = model.orderedFolders.map { f in
-            (key: "f\(f.id)", label: f.title, sources: model.sources(inFolder: f.id).filter { vis.contains($0.id) })
+            (key: "f\(f.id)", label: f.title, sources: model.allSources(inFolder: f.id).filter { vis.contains($0.id) })
         }
-        out.append((key: "unfiled", label: "Unfiled", sources: model.sources(inFolder: nil).filter { vis.contains($0.id) }))
+        out.append((key: "unfiled", label: "Unfiled", sources: model.allSources(inFolder: nil).filter { vis.contains($0.id) }))
         return out.filter { !$0.sources.isEmpty }
     }
 

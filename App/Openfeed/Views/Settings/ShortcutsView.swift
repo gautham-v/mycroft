@@ -35,11 +35,12 @@ struct ShortcutsView: View {
         ]),
         ShortcutGroup(title: "App", items: [
             ShortcutEntry(keys: ["/"], label: "Search"),
+            ShortcutEntry(keys: ["⌘", "K"], label: "Filter sources in the sidebar"),
             ShortcutEntry(keys: ["r"], label: "Refresh feeds"),
             ShortcutEntry(keys: ["⌘", "N"], label: "Add a source"),
             ShortcutEntry(keys: ["⌘", "\\"], label: "Show or hide the sidebar"),
             ShortcutEntry(keys: ["⇧", "⌘", "F"], label: "Full-screen reader"),
-            ShortcutEntry(keys: ["Esc"], label: "Clear search, or leave full screen"),
+            ShortcutEntry(keys: ["Esc"], label: "Clear the source filter or search, or leave full screen"),
             ShortcutEntry(keys: ["?"], label: "Show these shortcuts"),
         ]),
     ]

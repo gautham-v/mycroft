@@ -71,6 +71,16 @@ extension AppDatabase {
     }
 
     @discardableResult
+    public func setSourcePinned(id: Int64, pinned: Bool) async throws -> Source {
+        try await writer.write { db in try Queries.setSourcePinned(db, id: id, pinned: pinned) }
+    }
+
+    @discardableResult
+    public func setSourceHidden(id: Int64, hidden: Bool) async throws -> Source {
+        try await writer.write { db in try Queries.setSourceHidden(db, id: id, hidden: hidden) }
+    }
+
+    @discardableResult
     public func deleteSource(id: Int64) async throws -> Bool {
         try await writer.write { db in try Queries.deleteSource(db, id: id) }
     }

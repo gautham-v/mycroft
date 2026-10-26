@@ -177,7 +177,7 @@ struct SourcesView: View {
     private var list: some View {
         List {
             ForEach(model.orderedFolders) { folder in
-                let sources = model.sources(inFolder: folder.id)
+                let sources = model.allSources(inFolder: folder.id)
                 Section {
                     if sources.isEmpty {
                         Text("No sources")
@@ -193,7 +193,7 @@ struct SourcesView: View {
                     folderHeader(folder, count: sources.count)
                 }
             }
-            let unfiled = model.sources(inFolder: nil)
+            let unfiled = model.allSources(inFolder: nil)
             if !unfiled.isEmpty {
                 Section {
                     ForEach(unfiled) { sourceRow($0) }

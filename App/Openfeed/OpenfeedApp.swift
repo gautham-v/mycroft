@@ -50,6 +50,8 @@ struct OpenfeedCommands: Commands {
                 .disabled(model.isRefreshing)
             Button("Search") { model.openSearch() }
                 .keyboardShortcut("f", modifiers: .command)
+            Button("Filter Sources") { model.openSourceFilter() }
+                .keyboardShortcut("k", modifiers: .command)
             Divider()
             ForEach(FeedView.allCases) { view in
                 Button(view.title) { model.navigate(view: view) }

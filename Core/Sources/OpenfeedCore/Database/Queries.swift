@@ -282,6 +282,30 @@ public enum Queries {
         return s
     }
 
+    /// Pin a source to the sidebar's Pinned group (newest pin last) or unpin it. Pinning unhides it, since
+    /// a source is either pinned or hidden. Its folder and position are kept so unpinning restores it.
+    @discardableResult
+    public static func setSourcePinned(_ db: Database, id: Int64, pinned: Bool, now: Date = Date()) throws -> Source {
+        guard var s = try Source.fetchOne(db, key: id) else { throw QueryError.notFound("Source") }
+        if pinned == s.isPinned { return s }
+        s.pinnedAt = pinned ? now : nil
+        if pinned { s.isHidden = false }
+        try s.update(db)
+        return s
+    }
+
+    /// Hide a source from the sidebar tree or show it again. Hiding unpins it. The source stays subscribed
+    /// and its items still appear in the views.
+    @discardableResult
+    public static func setSourceHidden(_ db: Database, id: Int64, hidden: Bool) throws -> Source {
+        guard var s = try Source.fetchOne(db, key: id) else { throw QueryError.notFound("Source") }
+        if hidden == s.isHidden { return s }
+        s.isHidden = hidden
+        if hidden { s.pinnedAt = nil }
+        try s.update(db)
+        return s
+    }
+
     /// DELETE /api/sources/:id (items cascade). Returns false when not found.
     @discardableResult
     public static func deleteSource(_ db: Database, id: Int64) throws -> Bool {
