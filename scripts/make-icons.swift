@@ -70,7 +70,8 @@ icon("close") { p in poly(p, [P(6, 6), P(18, 18)]); poly(p, [P(18, 6), P(6, 18)]
 icon("plus") { p in poly(p, [P(12, 5), P(12, 19)]); poly(p, [P(5, 12), P(19, 12)]) }
 
 // Template geometry (SF Symbols template, point size 100): cap height 70.459 above the baseline.
-let scale: CGFloat = 100 / 24
+/// 24 units span 1.2× the point size: at the 15pt toolbar size the 24-unit box is 18pt, like the Claude app.
+let scale: CGFloat = 120 / 24
 let baselineM: CGFloat = 1126, caplineM: CGFloat = 1055.54
 let midY = (baselineM + caplineM) / 2
 let left: CGFloat = 1400
@@ -112,7 +113,7 @@ for ic in icons {
       <line id="Baseline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="\(baselineM)" y2="\(baselineM)"/>
       <line id="Capline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="\(caplineM)" y2="\(caplineM)"/>
       <line id="left-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="\(left)" x2="\(left)" y1="1030" y2="1150"/>
-      <line id="right-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="\(left + 100)" x2="\(left + 100)" y1="1030" y2="1150"/>
+      <line id="right-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="\(left + 24 * scale)" x2="\(left + 24 * scale)" y1="1030" y2="1150"/>
      </g>
      <g id="Symbols">
       <g id="Regular-M">
