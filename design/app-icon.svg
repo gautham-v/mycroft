@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- OpenDispatch app icon: an ice front with a pink, orange, yellow, green echo trailing up-right.
+  <!-- OpenDispatch app icon: an ice front with each piece trailing its own color (green dot, orange
+       inner arc, pink outer arc) up-right, on a deep indigo like Firefox Developer Edition's.
        Source for the PNGs in App/Openfeed/Resources/Assets.xcassets; regenerate with scripts/render-icons.sh. -->
   <style>
     use { fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -8,10 +9,9 @@
     .g { stroke-width: 84; }
     .l { stroke-width: 79; }
     .b { stroke-width: 73; }
-    .hp .r { stroke: #ff5ad8; } .hp .b { stroke: #5a0c4c; }
-    .ho .r { stroke: #ff8f3a; } .ho .b { stroke: #6a2405; }
-    .hy .r { stroke: #ffe45a; } .hy .b { stroke: #5e4605; }
-    .hg .r { stroke: #8dff5a; } .hg .b { stroke: #1f5a0c; }
+    .r.cg { stroke: #8dff5a; } .b.cg { stroke: #1f5a0c; }
+    .r.co { stroke: #ff9a3a; } .b.co { stroke: #6a2405; }
+    .r.cp { stroke: #ff5ad8; } .b.cp { stroke: #5a0c4c; }
     .fr .r { stroke: #eef4ff; } .fr .g { stroke: #16204a; } .fr .l { stroke: #d3e6ff; } .fr .b { stroke: url(#ice); }
     .gl .b { stroke: url(#ice); }
   </style>
@@ -25,31 +25,36 @@
       <stop offset="0.6" stop-color="#b9c6f0"/>
       <stop offset="1" stop-color="#eadcf7"/>
     </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a1b4e"/>
+      <stop offset="0.5" stop-color="#1e1339"/>
+      <stop offset="1" stop-color="#140c27"/>
+    </linearGradient>
+    <!-- Faint light along the top edge, like other macOS icons. -->
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
     <filter id="glow" filterUnits="userSpaceOnUse" x="-200" y="-200" width="1424" height="1424">
       <feGaussianBlur stdDeviation="30"/>
     </filter>
   </defs>
-  <rect width="1024" height="1024" fill="#000"/>
-  <g transform="translate(-40 26)">
-    <g class="lay hg" opacity=".45" transform="translate(80 -48)">
-      <use class="r" href="#dot"/><use class="b" href="#dot"/>
-      <use class="r" href="#inner"/><use class="b" href="#inner"/>
-      <use class="r" href="#outer"/><use class="b" href="#outer"/>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g transform="translate(-30 20)">
+    <g class="lay" opacity=".3" transform="translate(60 -36)">
+      <use class="r cg" href="#dot"/><use class="b cg" href="#dot"/>
+      <use class="r co" href="#inner"/><use class="b co" href="#inner"/>
+      <use class="r cp" href="#outer"/><use class="b cp" href="#outer"/>
     </g>
-    <g class="lay hy" opacity=".45" transform="translate(60 -36)">
-      <use class="r" href="#dot"/><use class="b" href="#dot"/>
-      <use class="r" href="#inner"/><use class="b" href="#inner"/>
-      <use class="r" href="#outer"/><use class="b" href="#outer"/>
+    <g class="lay" opacity=".42" transform="translate(40 -24)">
+      <use class="r cg" href="#dot"/><use class="b cg" href="#dot"/>
+      <use class="r co" href="#inner"/><use class="b co" href="#inner"/>
+      <use class="r cp" href="#outer"/><use class="b cp" href="#outer"/>
     </g>
-    <g class="lay ho" opacity=".5" transform="translate(40 -24)">
-      <use class="r" href="#dot"/><use class="b" href="#dot"/>
-      <use class="r" href="#inner"/><use class="b" href="#inner"/>
-      <use class="r" href="#outer"/><use class="b" href="#outer"/>
-    </g>
-    <g class="lay hp" opacity=".55" transform="translate(20 -12)">
-      <use class="r" href="#dot"/><use class="b" href="#dot"/>
-      <use class="r" href="#inner"/><use class="b" href="#inner"/>
-      <use class="r" href="#outer"/><use class="b" href="#outer"/>
+    <g class="lay" opacity=".55" transform="translate(20 -12)">
+      <use class="r cg" href="#dot"/><use class="b cg" href="#dot"/>
+      <use class="r co" href="#inner"/><use class="b co" href="#inner"/>
+      <use class="r cp" href="#outer"/><use class="b cp" href="#outer"/>
     </g>
     <g class="lay gl" opacity=".45" filter="url(#glow)">
       <use class="b" href="#dot"/>
@@ -62,4 +67,5 @@
       <use class="r" href="#outer"/><use class="g" href="#outer"/><use class="l" href="#outer"/><use class="b" href="#outer"/>
     </g>
   </g>
+  <rect x="3" y="3" width="1018" height="1018" rx="226" fill="none" stroke="url(#edge)" stroke-width="6"/>
 </svg>

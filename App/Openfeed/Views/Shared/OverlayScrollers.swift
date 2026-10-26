@@ -179,7 +179,9 @@ final class TrafficLightsView: NSView {
                                           NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
                                           NSWindow.willEnterFullScreenNotification]
         observers = names.map {
-            NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in self?.sync() }
+            NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sync() }
+            }
         }
     }
 

@@ -9,12 +9,16 @@ options:
 packages:
   OpenfeedCore:
     path: ../Core
+  # In-app updates for the Mac app distributed as a DMG (scripts/release-mac.sh).
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: "2.10.0"  # pinned; bump deliberately
 settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     DEAD_CODE_STRIPPING: YES
 targets:
@@ -29,6 +33,8 @@ targets:
           - "Info.plist"
     dependencies:
       - package: OpenfeedCore
+      - package: Sparkle
+        destinationFilters: [macOS]
     info:
       path: Openfeed/Info.plist
       properties:
@@ -36,6 +42,12 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.news
+        # Sparkle (macOS): the appcast is attached to the latest GitHub release; updates are signed
+        # with the EdDSA key in the login keychain. The installer runs as an XPC service (sandbox).
+        SUFeedURL: https://github.com/gautham-v/opendispatch/releases/latest/download/appcast.xml
+        SUPublicEDKey: OyQttpMtNaMVzkFDCat5UJz3orsN82BUi1SJjP8HqFE=
+        SUEnableInstallerLauncherService: true
+        SUEnableAutomaticChecks: true
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen:
           UIColorName: ""

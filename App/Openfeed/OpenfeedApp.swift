@@ -1,10 +1,17 @@
 import OpenfeedCore
 import SwiftUI
+#if os(macOS)
+import Sparkle
+#endif
 
 @main
 struct OpenfeedApp: App {
     /// The single app model (owns AppDatabase via OpenfeedServices). Injected with `.environment(model)`.
     @State private var model = AppModel.live()
+    #if os(macOS)
+    /// Sparkle: checks the appcast on its own schedule and backs "Check for Updates…".
+    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    #endif
 
     #if os(macOS)
     init() {
@@ -25,7 +32,7 @@ struct OpenfeedApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 820)
         .windowResizability(.contentMinSize)
-        .commands { OpenfeedCommands(model: model) }
+        .commands { OpenfeedCommands(model: model, updater: updater.updater) }
         #endif
         #if os(iOS)
         .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) { [services = model.services] in
@@ -48,8 +55,12 @@ struct OpenfeedApp: App {
 /// Views/Feed/KeyboardShortcuts.swift; these are the ⌘ equivalents that belong in menus.
 struct OpenfeedCommands: Commands {
     let model: AppModel
+    let updater: SPUUpdater
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { updater.checkForUpdates() }
+        }
         CommandGroup(replacing: .newItem) {
             Button("Add Source…") { model.isAddSourcePresented = true }
                 .keyboardShortcut("n", modifiers: .command)
