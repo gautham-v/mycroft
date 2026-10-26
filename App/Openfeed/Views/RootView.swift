@@ -86,6 +86,7 @@ struct RootView: View {
     private var splitLayout: some View {
         NavigationSplitView(columnVisibility: columnVisibility) {
             SidebarView()
+                // Fixed; on macOS HairlineSplitView keeps it so (SwiftUI leaves the column resizable).
                 .navigationSplitViewColumnWidth(Metrics.sidebarWidth)
                 #if os(macOS)
                 // The sidebar header and list header draw their own toggle (white, like Claude's).
@@ -94,7 +95,7 @@ struct RootView: View {
                 .flushToWindowTop()
         } content: {
             ItemListView()
-                .navigationSplitViewColumnWidth(min: 320, ideal: Metrics.listWidth, max: 520)
+                .navigationSplitViewColumnWidth(min: Metrics.listMinWidth, ideal: Metrics.listWidth, max: Metrics.listMaxWidth)
                 .flushToWindowTop()
         } detail: {
             ReaderView()

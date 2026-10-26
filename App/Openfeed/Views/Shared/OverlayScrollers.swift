@@ -226,9 +226,44 @@ final class HairlineSplitView: NSSplitView {
         }
         if let split = root as? HairlineSplitView {
             split.subviews.forEach(split.restyle)
+            split.restoreSidebarWidth()
             return
         }
         root.subviews.forEach(adopt(in:))
+    }
+
+    /// The sidebar is fixed at `Metrics.sidebarWidth`, but SwiftUI leaves its split-view item
+    /// resizable (140pt minimum, no maximum) whatever `navigationSplitViewColumnWidth` says, and AppKit
+    /// restores whatever width was saved. Put it back.
+    func restoreSidebarWidth() {
+        guard isVertical, let sidebar = arrangedSubviews.first, !isSubviewCollapsed(sidebar), !sidebar.isHidden,
+              abs(sidebar.frame.width - Metrics.sidebarWidth) > 0.5 else { return }
+        setPosition(Metrics.sidebarWidth, ofDividerAt: 0)
+    }
+
+    /// Divider drags, handled here so the columns stay independent. AppKit's own tracking lets the
+    /// sidebar's divider move (the sidebar is meant to be fixed) and, once the list reaches its
+    /// minimum, keeps going by shrinking the sidebar. Here the sidebar's divider doesn't move and the
+    /// list's divider stops at the list's minimum and maximum widths.
+    override func mouseDown(with event: NSEvent) {
+        let views = arrangedSubviews
+        let point = convert(event.locationInWindow, from: nil)
+        guard isVertical, views.count == 3, let window,
+              let index = (0..<2).first(where: { i in
+                  !isSubviewCollapsed(views[i + 1]) && abs(point.x - (views[i].frame.maxX + dividerThickness / 2)) <= 4
+              })
+        else { return super.mouseDown(with: event) }
+        guard index == 1, !isSubviewCollapsed(views[1]) else { return }  // the sidebar's divider stays put
+
+        let list = views[1]
+        let grab = point.x - list.frame.maxX
+        let range = (list.frame.minX + Metrics.listMinWidth)...(list.frame.minX + Metrics.listMaxWidth)
+        window.trackEvents(matching: [.leftMouseDragged, .leftMouseUp], timeout: .infinity, mode: .eventTracking) { ev, stop in
+            guard let ev else { return }
+            let x = self.convert(ev.locationInWindow, from: nil).x - grab
+            self.setPosition(min(max(x, range.lowerBound), range.upperBound), ofDividerAt: 1)
+            if ev.type == .leftMouseUp { stop.pointee = true }
+        }
     }
 
     // Dividers are rebuilt when columns show or hide.

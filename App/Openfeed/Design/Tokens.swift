@@ -116,6 +116,9 @@ enum Metrics {
     static let sidebarWidth: CGFloat = 230
     /// Item list column: 410 on desktop (lg), 380 on tablet (md).
     static let listWidth: CGFloat = 410
+    /// Desktop list column drag limits.
+    static let listMinWidth: CGFloat = 320
+    static let listMaxWidth: CGFloat = 520
     static let listWidthTablet: CGFloat = 380
     /// Reading column max width (`max-w-[640px]`), with 20pt (phone) / 32pt (md+) side padding.
     static let readerMaxWidth: CGFloat = 640
