@@ -498,7 +498,9 @@ struct ExtractionTweetTests {
     @Test func mediaOnlyPost() throws {
         let data = Self.escaped(#"{"core":{"name":"Al","screen_name":"al"},"details":{"created_at_ms":1793047057000,"display_text_range":[0,0],"full_text":"https://t.co/m1"},"media_entities2":[{"expanded_url":"https://x.com/al/status/1/photo/1","indices":[0,23],"media_url_https":"https://pbs.twimg.com/media/A.jpg","original_info":{"height":1254,"width":1254},"type":"photo"},{"media_url_https":"https://pbs.twimg.com/amplify_video_thumb/2/img/B.jpg","original_info":{"height":1080,"width":1920},"type":"video","video_info":{"variants":[{"content_type":"application/x-mpegURL","url":"https://video.twimg.com/b.m3u8"},{"bitrate":832000,"content_type":"video/mp4","url":"https://video.twimg.com/lo.mp4"},{"bitrate":2176000,"content_type":"video/mp4","url":"https://video.twimg.com/hi.mp4"}]}},{"media_url_https":"https://pbs.twimg.com/tweet_video_thumb/C.jpg","type":"animated_gif","video_info":{"variants":[{"bitrate":0,"content_type":"video/mp4","url":"https://video.twimg.com/tweet_video/C.mp4"}]}}],"mention_entities":[]}"#)
         let raw = "<html><body><script>window.x=\"\(data)\"</script></body></html>"
-        let html = try #require(TweetExtraction.fromPage(raw: raw, canonical: "https://x.com/al/status/1", user: "al")?.contentHtml)
+        let out = try #require(TweetExtraction.fromPage(raw: raw, canonical: "https://x.com/al/status/1", user: "al"))
+        #expect(out.leadImage == "https://pbs.twimg.com/media/A.jpg?name=small")
+        let html = try #require(out.contentHtml)
         #expect(!html.contains("t.co"))
         #expect(!html.contains("x-body"))
         #expect(html.contains("<div class=\"x-media x-media-grid\">"))

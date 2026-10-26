@@ -273,8 +273,9 @@ struct ReaderItemView: View {
                     .help("Open original")
                     .accessibilityLabel("Open original")
 
-                // Share…, Copy link and Send to in one menu.
-                SendToView(item: item, size: buttonSize, iconSize: glyphSize, share: url)
+                // Share…, Copy link, Send to and Retry extraction in one menu.
+                SendToView(item: item, size: buttonSize, iconSize: glyphSize, share: url,
+                           retry: isVideo ? nil : { Task { await load(refresh: true) } })
             } else {
                 SendToView(item: item, size: buttonSize, iconSize: glyphSize)
             }

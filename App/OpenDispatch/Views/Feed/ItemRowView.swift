@@ -6,7 +6,7 @@ import SwiftUI
 /// Article/video/podcast rows: 16pt badge + "Source · 3h", then the title (14.5/500) with an optional
 /// 64×42 thumbnail on the right. Posts on X lead with the author ("Name @handle · 3h"), then up to two
 /// lines of text and (macOS/iPad) a one-line snippet, or for a quote post the quoted account and text
-/// (QuoteLine). iPhone rows are headline only: no snippet, and
+/// (QuoteLine), with the post's first photo or video as the thumbnail. iPhone rows are headline only: no snippet, and
 /// the meta line adds HN points and comments when present.
 ///
 /// The row draws its own rounded background (selected / the other pane's item / hovered) and leaves
@@ -72,20 +72,26 @@ struct ItemRowView: View, Equatable {
         let (name, handle) = TextFormat.splitHandle(item.item.author)
         return VStack(alignment: .leading, spacing: 4) {
             metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
-            Text(item.item.title)
-                .font(OFFont.ui(14.5))
-                .lineSpacing(2.5)
-                .foregroundStyle(.ofInk)
-                .lineLimit(2)
-            if !isPhone, let snippet {
-                if let quote = QuoteLine.parse(snippet, avatar: item.item.quoteAvatarUrl) {
-                    quote
-                } else {
-                    Text(snippet)
-                        .font(OFFont.itemSnippet)
-                        .foregroundStyle(.ofMuted)
-                        .lineLimit(1)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.item.title)
+                        .font(OFFont.ui(14.5))
+                        .lineSpacing(2.5)
+                        .foregroundStyle(.ofInk)
+                        .lineLimit(2)
+                    if !isPhone, let snippet {
+                        if let quote = QuoteLine.parse(snippet, avatar: item.item.quoteAvatarUrl) {
+                            quote
+                        } else {
+                            Text(snippet)
+                                .font(OFFont.itemSnippet)
+                                .foregroundStyle(.ofMuted)
+                                .lineLimit(1)
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ItemThumbnail(item: item)
             }
         }
     }

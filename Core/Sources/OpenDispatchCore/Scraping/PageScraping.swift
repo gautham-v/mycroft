@@ -321,12 +321,15 @@ public enum PageScraping {
 
     /// A post on X: og:title is the author ("Kun Chen (@kunchenguid) on X") and the post text is the
     /// description. The first paragraph is the headline; the summary names a quoted post, and the quoted
-    /// account's avatar comes along. No thumbnail. A post with only media has no description beyond the og:title,
-    /// so its headline names the media instead ("Photo").
+    /// account's avatar comes along. A post with photos, a video or a GIF has the first as og:image: that is its
+    /// thumbnail (X's small size; otherwise og:image is the author's avatar, so no thumbnail). A post with only
+    /// media has no description beyond the og:title, so its headline names the media instead ("Photo").
     private static func tweetMeta(_ meta: PageMeta.Reader, html: String, now: Date) -> ArticleMeta {
         var text = meta("og:description", "description", "twitter:description")
+        let image = meta("og:image")
+        let mediaKind = image.flatMap { ScrapingText.firstGroups(postMedia, $0)?[1] }
         if text == nil || text == meta("og:title") {
-            switch meta("og:image").flatMap({ ScrapingText.firstGroups(postMedia, $0)?[1] }) {
+            switch mediaKind {
             case "media": text = "Photo"
             case "tweet_video_thumb": text = "GIF"
             case .some: text = "Video"
@@ -352,7 +355,7 @@ public enum PageScraping {
             summary: summary,
             author: ScrapingText.clip(author, 120),
             publishedAt: PageMeta.toDate(meta("article:published_time"), now: now),
-            thumbnailUrl: nil,
+            thumbnailUrl: mediaKind == nil ? nil : image.map { $0.replacingOccurrences(of: "name=large", with: "name=small") },
             ogType: "article",
             quoteAvatarUrl: quoteAvatar
         )

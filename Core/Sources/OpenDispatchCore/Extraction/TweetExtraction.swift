@@ -190,7 +190,8 @@ enum TweetExtraction {
     }
 
     /// A post rendered as a post from the status page HTML: author row, text, the quoted post as a card, the link
-    /// card, a footer. Pure; nil when the page carries neither post text nor media.
+    /// card, a footer. The first photo or video still is the lead image (the list thumbnail of a post stored
+    /// without one). Pure; nil when the page carries neither post text nor media.
     static func fromPage(raw: String, canonical: String, user: String) -> ExtractResult? {
         let rawNS = ns(raw)
         // The quoted post's data is nested inside the main post's, after its own fields.
@@ -244,7 +245,8 @@ enum TweetExtraction {
         let html = ArticleSanitizer.sanitize(
             "<div class=\"x-post\">\(whoHTML(author, date: nil))\(bodyHTML(text, links: links, drop: card.isEmpty ? nil : cardURL))\(mediaHTML(media))\(quoted)\(card)\(foot)</div>"
         ).trimmingCharacters(in: .whitespacesAndNewlines)
-        return html.isEmpty ? nil : ExtractResult(contentHtml: html, leadImage: nil)
+        let lead = media.first.map { "\(($0.poster ?? $0.url).replacingOccurrences(of: "?name=large", with: ""))?name=small" }
+        return html.isEmpty ? nil : ExtractResult(contentHtml: html, leadImage: lead)
     }
 
     /// The oEmbed fallback's HTML → a blockquote and a byline. Pure.
