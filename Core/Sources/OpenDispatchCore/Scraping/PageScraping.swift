@@ -316,13 +316,23 @@ public enum PageScraping {
     private static let onX = ScrapingText.regex(#"\s+on X$"#, [.caseInsensitive])
     private static let quotedName = ScrapingText.regex(#"\\"core\\":\{\\"name\\":\\"((?:\\\\.|[^\\])*?)\\",\\"screen_name\\""#)
     private static let quotedText = ScrapingText.regex(#"\\"full_text\\":\\"((?:\\\\.|[^\\])*?)\\""#)
+    private static let postMedia = ScrapingText.regex(#"^https://pbs\.twimg\.com/(media|amplify_video_thumb|ext_tw_video_thumb|tweet_video_thumb)/"#)
     private static let quotedAvatar = ScrapingText.regex(#"\\"avatar\\":\{\\"image_url\\":\\"(https://pbs\.twimg\.com/[^\\"]+)\\""#)
 
     /// A post on X: og:title is the author ("Kun Chen (@kunchenguid) on X") and the post text is the
     /// description. The first paragraph is the headline; the summary names a quoted post, and the quoted
-    /// account's avatar comes along. No thumbnail.
+    /// account's avatar comes along. No thumbnail. A post with only media has no description beyond the og:title,
+    /// so its headline names the media instead ("Photo").
     private static func tweetMeta(_ meta: PageMeta.Reader, html: String, now: Date) -> ArticleMeta {
-        let text = meta("og:description", "description", "twitter:description")
+        var text = meta("og:description", "description", "twitter:description")
+        if text == nil || text == meta("og:title") {
+            switch meta("og:image").flatMap({ ScrapingText.firstGroups(postMedia, $0)?[1] }) {
+            case "media": text = "Photo"
+            case "tweet_video_thumb": text = "GIF"
+            case .some: text = "Video"
+            case nil: break
+            }
+        }
         let first = text.map { ScrapingText.split($0, by: paragraphBreak).first ?? $0 }
         let author = meta("og:title").map { ScrapingText.replace(onX, in: $0, with: "") }
         var summary: String?

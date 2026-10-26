@@ -495,6 +495,25 @@ struct ExtractionTweetTests {
         #expect(html.contains("Open on X"))
     }
 
+    @Test func mediaOnlyPost() throws {
+        let data = Self.escaped(#"{"core":{"name":"Al","screen_name":"al"},"details":{"created_at_ms":1793047057000,"display_text_range":[0,0],"full_text":"https://t.co/m1"},"media_entities2":[{"expanded_url":"https://x.com/al/status/1/photo/1","indices":[0,23],"media_url_https":"https://pbs.twimg.com/media/A.jpg","original_info":{"height":1254,"width":1254},"type":"photo"},{"media_url_https":"https://pbs.twimg.com/amplify_video_thumb/2/img/B.jpg","original_info":{"height":1080,"width":1920},"type":"video","video_info":{"variants":[{"content_type":"application/x-mpegURL","url":"https://video.twimg.com/b.m3u8"},{"bitrate":832000,"content_type":"video/mp4","url":"https://video.twimg.com/lo.mp4"},{"bitrate":2176000,"content_type":"video/mp4","url":"https://video.twimg.com/hi.mp4"}]}},{"media_url_https":"https://pbs.twimg.com/tweet_video_thumb/C.jpg","type":"animated_gif","video_info":{"variants":[{"bitrate":0,"content_type":"video/mp4","url":"https://video.twimg.com/tweet_video/C.mp4"}]}}],"mention_entities":[]}"#)
+        let raw = "<html><body><script>window.x=\"\(data)\"</script></body></html>"
+        let html = try #require(TweetExtraction.fromPage(raw: raw, canonical: "https://x.com/al/status/1", user: "al")?.contentHtml)
+        #expect(!html.contains("t.co"))
+        #expect(!html.contains("x-body"))
+        #expect(html.contains("<div class=\"x-media x-media-grid\">"))
+        #expect(html.contains("src=\"https://pbs.twimg.com/media/A.jpg?name=large\""))
+        #expect(html.contains("src=\"https://video.twimg.com/hi.mp4\""))
+        #expect(html.contains("poster=\"https://pbs.twimg.com/amplify_video_thumb/2/img/B.jpg\""))
+        #expect(html.contains("src=\"https://video.twimg.com/tweet_video/C.mp4\""))
+        #expect(html.contains("loop"))
+    }
+
+    @Test func mediaLinkDroppedButRealLinkKept() {
+        let links: TweetExtraction.Links = ["https://t.co/real": ("e.com", "https://e.com")]
+        #expect(TweetExtraction.withoutMediaLinks("Look https://t.co/real https://t.co/m1", links: links) == "Look https://t.co/real")
+    }
+
     @Test func oEmbedFallback() {
         let out = TweetExtraction.fromOEmbed(html: "<blockquote class=\"twitter-tweet\"><p lang=\"en\">Short <a href=\"https://t.co/x\">post</a></p>&mdash; Jane</blockquote>", authorName: "Jane", authorURL: "https://twitter.com/jane", canonical: "https://x.com/jane/status/1")
         #expect(out?.contentHtml?.hasPrefix("<blockquote><p>Short <a href=\"https://t.co/x\"") == true)

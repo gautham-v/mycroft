@@ -17,6 +17,7 @@ enum TweetExtraction {
     private static let normalAvatar = P(#"_normal(\.\w+)$"#)
     private static let inlineToken = P(#"https?://\S+|@[A-Za-z0-9_]{1,15}"#)
     private static let blankLine = P(#"\n\s*\n"#)
+    private static let trailingTco = P(#"\s*(https://t\.co/\w+)\s*$"#)
 
     struct User: Equatable {
         var name: String
@@ -25,6 +26,15 @@ enum TweetExtraction {
     }
 
     typealias Links = [String: (display: String, expanded: String)]
+
+    struct Media: Equatable {
+        enum Kind: String { case photo, video, gif = "animated_gif" }
+        var kind: Kind
+        var url: String
+        var poster: String?
+        var width: Int?
+        var height: Int?
+    }
 
     /// Two layers: a JSON string literal holding JSON-escaped text.
     static func unescapeTwice(_ s: String) -> String? {
@@ -84,6 +94,63 @@ enum TweetExtraction {
         return unescapeTwice(v)
     }
 
+    /// The post's photos, videos and GIFs: the first `media_entities2` array in [from, to). Every post in the page
+    /// data carries one (empty when it has no media), sorted before `quoted_tweet_results`.
+    static func tweetMedia(_ raw: String, from: Int, to: Int) -> [Media] {
+        let n = ns(raw)
+        let key = n.range(of: #"\"media_entities2\":["#, range: NSRange(location: from, length: max(0, min(to, n.length) - from)))
+        guard key.location != NSNotFound else { return [] }
+        // The array runs to its matching bracket (URLs and ids hold none).
+        let open = key.location + key.length - 1
+        var depth = 0
+        var close = -1
+        for i in open..<n.length {
+            let c = n.character(at: i)
+            if c == 0x5B { depth += 1 } else if c == 0x5D { depth -= 1; if depth == 0 { close = i; break } }
+        }
+        guard close > open,
+              let json = ExtractionPayload.jsonString("\"\(n.substring(with: NSRange(location: open, length: close - open + 1)))\""),
+              let list = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [[String: Any]] else { return [] }
+        return list.compactMap { m in
+            guard let kind = (m["type"] as? String).flatMap(Media.Kind.init(rawValue:)),
+                  let image = m["media_url_https"] as? String else { return nil }
+            let info = m["original_info"] as? [String: Any]
+            let width = info?["width"] as? Int, height = info?["height"] as? Int
+            if kind == .photo {
+                return Media(kind: kind, url: "\(image)?name=large", width: width, height: height)
+            }
+            let variants = ((m["video_info"] as? [String: Any])?["variants"] as? [[String: Any]]) ?? []
+            let best = variants.filter { $0["content_type"] as? String == "video/mp4" }
+                .max { ($0["bitrate"] as? Int ?? 0) < ($1["bitrate"] as? Int ?? 0) }
+            guard let url = best?["url"] as? String else { return nil }
+            return Media(kind: kind, url: url, poster: image, width: width, height: height)
+        }
+    }
+
+    /// Media under the text: photos as images, videos with controls, GIFs as muted loops.
+    static func mediaHTML(_ media: [Media]) -> String {
+        guard !media.isEmpty else { return "" }
+        let items = media.map { m -> String in
+            let size = [m.width.map { " width=\"\($0)\"" }, m.height.map { " height=\"\($0)\"" }].compactMap { $0 }.joined()
+            let poster = m.poster.map { " poster=\"\(DOM.escapeAttr($0))\"" } ?? ""
+            switch m.kind {
+            case .photo: return "<img src=\"\(DOM.escapeAttr(m.url))\" alt=\"\"\(size)>"
+            case .video: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) playsinline></video>"
+            case .gif: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) autoplay loop muted playsinline></video>"
+            }
+        }
+        return "<div class=\"x-media\(media.count > 1 ? " x-media-grid" : "")\">\(items.joined())</div>"
+    }
+
+    /// Post text with the t.co links X appends for attached media removed (they are not among the post's links).
+    static func withoutMediaLinks(_ text: String, links: Links) -> String {
+        var t = text
+        while let m = trailingTco.firstMatchWithRange(t), let url = m.groups[1], links[url] == nil {
+            t = ns(t).replacingCharacters(in: m.range, with: "")
+        }
+        return t
+    }
+
     static func whoHTML(_ u: User, date: String?) -> String {
         let av = u.avatar.map { "<img class=\"x-avatar\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
         let when = date.map { "<span class=\"x-when\">· \(DOM.escapeHTML($0))</span>" } ?? ""
@@ -97,6 +164,7 @@ enum TweetExtraction {
             if let drop, !drop.isEmpty, let r = s.range(of: drop) { s.removeSubrange(r) }
             return s.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty }
+        if paras.isEmpty { return "" }
         return "<div class=\"x-body\">\(paras.map { "<p>\(tweetInline($0, links: links))</p>" }.joined())</div>"
     }
 
@@ -122,18 +190,21 @@ enum TweetExtraction {
     }
 
     /// A post rendered as a post from the status page HTML: author row, text, the quoted post as a card, the link
-    /// card, a footer. Pure; nil when the page carries no post text.
+    /// card, a footer. Pure; nil when the page carries neither post text nor media.
     static func fromPage(raw: String, canonical: String, user: String) -> ExtractResult? {
         let rawNS = ns(raw)
         // The quoted post's data is nested inside the main post's, after its own fields.
         let qiRange = rawNS.range(of: #"\"quoted_tweet_results\""#)
         let qi = qiRange.location == NSNotFound ? -1 : qiRange.location
         let end = qi >= 0 ? qi : rawNS.length
-        guard let text = tweetText(raw, from: 0, to: end), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         var links: Links = [:]
         for m in linkPattern.allMatches(raw) {
             if let display = m[1], let expanded = m[2], let url = m[3] { links[url] = (display, expanded) }
         }
+        let media = tweetMedia(raw, from: 0, to: end)
+        guard var text = tweetText(raw, from: 0, to: end) else { return nil }
+        if !media.isEmpty { text = withoutMediaLinks(text, links: links) }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !media.isEmpty else { return nil }
         let ogName = ogTitle.firstMatch(raw)?[1] ?? nil
         let author = tweetUser(raw, from: 0) ?? User(name: ogName ?? "@\(user)", handle: user, avatar: nil)
 
@@ -159,16 +230,19 @@ enum TweetExtraction {
         var quoted = ""
         if qi >= 0 {
             let qid = restID.firstMatch(slice(raw, qi, qi + 400))?[1] ?? nil
-            if let qu = tweetUser(raw, from: qi), let qt = tweetText(raw, from: qi, to: rawNS.length),
-               !qt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let href = qid.map { "https://x.com/\(qu.handle)/status/\($0)" } ?? "https://x.com/\(qu.handle)"
-                quoted = "<div class=\"x-quote\">\(whoHTML(qu, date: tweetDate(raw, from: qi)))\(bodyHTML(qt, links: links))<a class=\"x-quote-link\" href=\"\(href)\">View post</a></div>"
+            let qm = tweetMedia(raw, from: qi, to: rawNS.length)
+            if let qu = tweetUser(raw, from: qi), var qt = tweetText(raw, from: qi, to: rawNS.length) {
+                if !qm.isEmpty { qt = withoutMediaLinks(qt, links: links) }
+                if !qt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !qm.isEmpty {
+                    let href = qid.map { "https://x.com/\(qu.handle)/status/\($0)" } ?? "https://x.com/\(qu.handle)"
+                    quoted = "<div class=\"x-quote\">\(whoHTML(qu, date: tweetDate(raw, from: qi)))\(bodyHTML(qt, links: links))\(mediaHTML(qm))<a class=\"x-quote-link\" href=\"\(href)\">View post</a></div>"
+                }
             }
         }
 
         let foot = "<div class=\"x-foot\"><span>\(DOM.escapeHTML(tweetDate(raw, from: 0) ?? ""))</span><a class=\"x-open\" href=\"\(canonical)\">Open on X</a></div>"
         let html = ArticleSanitizer.sanitize(
-            "<div class=\"x-post\">\(whoHTML(author, date: nil))\(bodyHTML(text, links: links, drop: card.isEmpty ? nil : cardURL))\(quoted)\(card)\(foot)</div>"
+            "<div class=\"x-post\">\(whoHTML(author, date: nil))\(bodyHTML(text, links: links, drop: card.isEmpty ? nil : cardURL))\(mediaHTML(media))\(quoted)\(card)\(foot)</div>"
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         return html.isEmpty ? nil : ExtractResult(contentHtml: html, leadImage: nil)
     }

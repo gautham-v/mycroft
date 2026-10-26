@@ -243,6 +243,17 @@ struct ScrapingMetaTests {
         #expect(m.ogType == "article")
     }
 
+    @Test func mediaOnlyTweetTitle() {
+        func title(_ image: String) -> String? {
+            let html = #"<head><meta property="og:title" content="almonk (@almonk) on X"><meta property="og:description" content="almonk (@almonk) on X"><meta property="og:image" content="\#(image)"></head>"#
+            return PageScraping.extractArticleMeta(html: html, pageURL: "https://x.com/almonk/status/1").title
+        }
+        #expect(title("https://pbs.twimg.com/media/HVl?format=webp&amp;name=large") == "Photo")
+        #expect(title("https://pbs.twimg.com/amplify_video_thumb/2/img/B?format=webp") == "Video")
+        #expect(title("https://pbs.twimg.com/tweet_video_thumb/C.jpg") == "GIF")
+        #expect(title("https://pbs.twimg.com/profile_images/1/a_400x400.jpg") == "almonk (@almonk) on X")
+    }
+
     @Test func pageImageHelpers() {
         let html = #"""
         <head><script type="application/ld+json">[{"@type":"NewsArticle","image":[{"url":"img/a.png"}]}]</script></head>
