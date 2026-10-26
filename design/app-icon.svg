@@ -42,6 +42,8 @@
     </filter>
   </defs>
   <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- Scaled up from the center so the mark fills about 78% of the tile, like the icons beside it in the Dock. -->
+  <g transform="translate(512 512) scale(1.4) translate(-512 -512)">
   <g class="lay" opacity=".3" transform="translate(60 -36)">
     <use class="dr cg" href="#rim"/><use class="db cg" href="#body"/>
     <use class="r cp" href="#wave"/><use class="b cp" href="#wave"/>
@@ -61,6 +63,7 @@
   <g class="lay fr" opacity=".9">
     <use class="dr" href="#rim"/><use class="dg" href="#gap"/><use class="dl" href="#line"/><use class="db" href="#body"/>
     <use class="r" href="#wave"/><use class="g" href="#wave"/><use class="l" href="#wave"/><use class="b" href="#wave"/>
+  </g>
   </g>
   <rect x="3" y="3" width="1018" height="1018" rx="226" fill="none" stroke="url(#edge)" stroke-width="6"/>
 </svg>
