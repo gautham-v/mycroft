@@ -44,6 +44,16 @@ final class AppModel {
     private(set) var searchQuery = ""
     var isSearchOpen = false
 
+    // MARK: Sidebar source filter (⌘K)
+
+    /// Text in the sidebar's source filter; matching sources replace the tree while it is non-blank.
+    var sourceFilter = ""
+    var isSourceFilterOpen = false
+    /// Bumped by ⌘K so the field takes focus even when it is already open.
+    private(set) var sourceFilterFocusRequests = 0
+    /// The sidebar's collapsed-by-default "Hidden (N)" group is open. Session only.
+    var isHiddenGroupExpanded = false
+
     // MARK: Layout state
 
     /// Desktop sidebar hidden (⌘\). Persisted.
@@ -180,12 +190,36 @@ final class AppModel {
         folders.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
     }
 
-    /// Sources in a folder (nil = Unfiled) in sidebar order: position, then title.
+    /// Sources shown in a folder (nil = Unfiled) in sidebar order: position, then title. Pinned and hidden
+    /// sources are listed in their own groups instead.
     func sources(inFolder folderId: Int64?) -> [Source] {
-        sources.filter { $0.folderId == folderId }.sorted {
-            $0.position != $1.position ? $0.position < $1.position : $0.title.localizedStandardCompare($1.title) == .orderedAscending
-        }
+        SourceList.inFolder(sources, folderId)
     }
+
+    /// Every source of a folder, pinned and hidden included (iPhone Sources tab, which has no such groups).
+    func allSources(inFolder folderId: Int64?) -> [Source] {
+        SourceList.allInFolder(sources, folderId)
+    }
+
+    /// Sidebar "Pinned" group, in pin order.
+    var pinnedSources: [Source] { SourceList.pinned(sources) }
+
+    /// Sidebar "Hidden" group, by title.
+    var hiddenSources: [Source] { SourceList.hidden(sources) }
+
+    /// Sources matching the sidebar filter field, flat and by title; empty while the field is blank.
+    var filteredSources: [Source] { SourceList.matching(sources, query: sourceFilter) }
+
+    /// True while the sidebar shows filter matches instead of the tree.
+    var isFilteringSources: Bool { !sourceFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var isPinnedGroupCollapsed: Bool { collapsedFolders.contains(Self.pinnedKey) }
+
+    func togglePinnedGroupCollapsed() {
+        if collapsedFolders.contains(Self.pinnedKey) { collapsedFolders.remove(Self.pinnedKey) } else { collapsedFolders.insert(Self.pinnedKey) }
+    }
+
+    private static let pinnedKey = "pinned"
 
     func isFolderCollapsed(_ folderId: Int64?) -> Bool { collapsedFolders.contains(Self.folderKey(folderId)) }
 
@@ -439,6 +473,18 @@ final class AppModel {
         await loadSources()
     }
 
+    /// Pin to (or unpin from) the sidebar's Pinned group. The source keeps its folder.
+    func setSourcePinned(id: Int64, pinned: Bool) async throws {
+        try await database.setSourcePinned(id: id, pinned: pinned)
+        await loadSources()
+    }
+
+    /// Hide from (or show again in) the sidebar tree. Items still appear in the views.
+    func setSourceHidden(id: Int64, hidden: Bool) async throws {
+        try await database.setSourceHidden(id: id, hidden: hidden)
+        await loadSources()
+    }
+
     /// Move a source to a folder (nil = Unfiled), at the end of it.
     func moveSource(id: Int64, toFolder folderId: Int64?) async throws {
         try await database.moveSource(id: id, toFolder: folderId)
@@ -597,9 +643,22 @@ final class AppModel {
 
     func toggleFocusMode() { focusMode.toggle() }
 
-    /// Esc: close an open search, else leave the full-screen reader.
+    /// Esc: close an open sidebar filter, else an open search, else leave the full-screen reader.
     func escape() {
-        if isSearchOpen { closeSearch() } else { focusMode = false }
+        if isSourceFilterOpen { closeSourceFilter() } else if isSearchOpen { closeSearch() } else { focusMode = false }
+    }
+
+    /// Show the sidebar (if hidden) and open its source filter; the field focuses itself when this flips.
+    func openSourceFilter() {
+        sidebarCollapsed = false
+        isSourceFilterOpen = true
+        sourceFilterFocusRequests += 1
+    }
+
+    /// Empty the filter and close it, restoring the tree.
+    func closeSourceFilter() {
+        sourceFilter = ""
+        isSourceFilterOpen = false
     }
 
     /// Full-screen reader is in effect only while an item is shown.

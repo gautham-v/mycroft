@@ -327,6 +327,124 @@ struct SourceFolderTests {
     }
 }
 
+@Suite("Pinned and hidden sources")
+struct PinHideTests {
+    @Test func pinKeepsFolderAndPositionAndUnpinRestoresPlace() async throws {
+        let db = try Fixture.db()
+        let f = try await db.createFolder(title: "F")
+        let a = try Fixture.source(db, title: "A", folderId: f.id, position: 0)
+        let b = try Fixture.source(db, title: "B", folderId: f.id, position: 1)
+        let pinned = try await db.setSourcePinned(id: b.id, pinned: true)
+        #expect(pinned.isPinned)
+        #expect(pinned.folderId == f.id)
+        #expect(pinned.position == 1)
+        var all = try await db.sources()
+        #expect(SourceList.inFolder(all, f.id).map(\.id) == [a.id])
+        #expect(SourceList.pinned(all).map(\.id) == [b.id])
+        // The iPhone list has no Pinned group and still shows it in its folder.
+        #expect(SourceList.allInFolder(all, f.id).map(\.id) == [a.id, b.id])
+        try await db.setSourcePinned(id: b.id, pinned: false)
+        all = try await db.sources()
+        #expect(SourceList.inFolder(all, f.id).map(\.id) == [a.id, b.id])
+        #expect(SourceList.pinned(all).isEmpty)
+    }
+
+    @Test func pinsListInPinOrder() async throws {
+        let db = try Fixture.db()
+        let a = try Fixture.source(db, title: "A")
+        let b = try Fixture.source(db, title: "B")
+        let c = try Fixture.source(db, title: "C")
+        let t = Date(timeIntervalSince1970: 1_000)
+        try await db.writer.write { d in
+            try Queries.setSourcePinned(d, id: c.id, pinned: true, now: t)
+            try Queries.setSourcePinned(d, id: a.id, pinned: true, now: t.addingTimeInterval(1))
+            try Queries.setSourcePinned(d, id: b.id, pinned: true, now: t.addingTimeInterval(2))
+        }
+        #expect(SourceList.pinned(try await db.sources()).map(\.title) == ["C", "A", "B"])
+    }
+
+    @Test func hiddenSourcesLeaveTheTreeButStaySubscribed() async throws {
+        let db = try Fixture.db()
+        let a = try Fixture.source(db, title: "A")
+        let b = try Fixture.source(db, title: "B")
+        try Fixture.items(db, sourceId: b.id, Fixture.parsed(2))
+        try await db.setSourceHidden(id: b.id, hidden: true)
+        let all = try await db.sources()
+        #expect(all.count == 2)
+        #expect(SourceList.inFolder(all, nil).map(\.id) == [a.id])
+        #expect(SourceList.hidden(all).map(\.id) == [b.id])
+        // Items of a hidden source still show in the views.
+        #expect(try await db.items(ItemQuery()).items.count == 2)
+        try await db.setSourceHidden(id: b.id, hidden: false)
+        #expect(SourceList.inFolder(try await db.sources(), nil).map(\.id) == [a.id, b.id])
+    }
+
+    @Test func pinningUnhidesAndHidingUnpins() async throws {
+        let db = try Fixture.db()
+        let s = try Fixture.source(db)
+        try await db.setSourceHidden(id: s.id, hidden: true)
+        var row = try await db.setSourcePinned(id: s.id, pinned: true)
+        #expect(row.isPinned && !row.isHidden)
+        row = try await db.setSourceHidden(id: s.id, hidden: true)
+        #expect(row.isHidden && !row.isPinned)
+        await #expect(throws: QueryError.notFound("Source")) { try await db.setSourcePinned(id: 999, pinned: true) }
+        await #expect(throws: QueryError.notFound("Source")) { try await db.setSourceHidden(id: 999, hidden: true) }
+    }
+
+    @Test func pinAndHideSurviveReorderAndFolderDelete() async throws {
+        let db = try Fixture.db()
+        let f = try await db.createFolder(title: "F")
+        let a = try Fixture.source(db, title: "A", folderId: f.id, position: 0)
+        let b = try Fixture.source(db, title: "B", folderId: f.id, position: 1)
+        try await db.setSourcePinned(id: a.id, pinned: true)
+        try await db.reorderSources([SourceOrderEntry(id: b.id, folderId: nil)])
+        #expect(try await db.source(id: a.id)?.isPinned == true)
+        try await db.deleteFolder(id: f.id)
+        let row = try #require(try await db.source(id: a.id))
+        #expect(row.isPinned)
+        #expect(row.folderId == nil)
+    }
+
+    @Test func searchIgnoresCaseAndDiacriticsAcrossPinnedAndHidden() async throws {
+        let db = try Fixture.db()
+        let f = try await db.createFolder(title: "F")
+        let cafe = try Fixture.source(db, title: "Café Notes", folderId: f.id)
+        let pinned = try Fixture.source(db, title: "The CAFETERIA")
+        let hidden = try Fixture.source(db, title: "cafe society")
+        try Fixture.source(db, title: "Unrelated")
+        try await db.setSourcePinned(id: pinned.id, pinned: true)
+        try await db.setSourceHidden(id: hidden.id, hidden: true)
+        let all = try await db.sources()
+        #expect(SourceList.matching(all, query: "cafe").map(\.id) == [cafe.id, hidden.id, pinned.id].sorted { a, b in
+            let t = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0.title) })
+            return t[a]!.localizedStandardCompare(t[b]!) == .orderedAscending
+        })
+        #expect(SourceList.matching(all, query: "  CAFÉ ").count == 3)
+        #expect(SourceList.matching(all, query: "").isEmpty)
+        #expect(SourceList.matching(all, query: "zzz").isEmpty)
+    }
+
+    @Test func opmlExportIncludesPinnedAndHiddenSources() async throws {
+        let db = try Fixture.db()
+        let a = try Fixture.source(db, title: "Pinned One", feedUrl: "https://a.example/feed")
+        let b = try Fixture.source(db, title: "Hidden One", feedUrl: "https://b.example/feed")
+        try await db.setSourcePinned(id: a.id, pinned: true)
+        try await db.setSourceHidden(id: b.id, hidden: true)
+        let services = OpenfeedServices.live(database: db)
+        let xml = try await services.exportOPML()
+        #expect(xml.contains("https://a.example/feed"))
+        #expect(xml.contains("https://b.example/feed"))
+    }
+
+    @Test func migrationAddsColumnsToExistingRows() async throws {
+        let db = try Fixture.db()
+        let s = try Fixture.source(db)
+        let row = try #require(try await db.source(id: s.id))
+        #expect(row.pinnedAt == nil)
+        #expect(row.isHidden == false)
+    }
+}
+
 @Suite("Meta and OPML")
 struct MetaOPMLTests {
     @Test func metaRoundTrip() async throws {

@@ -9,6 +9,9 @@ import SwiftUI
 /// dragged), "New folder",
 /// and a footer with "Add source" and Settings. Sources drag to reorder and between folders; folder
 /// headers drag to reorder folders. Context menus and the hover "..." button offer the same actions.
+/// Pinned sources list in a "Pinned" group under the views (not in their folder); hidden ones in a
+/// collapsed "Hidden (N)" group at the end. Both are not drag targets. The filter field (⌘K) swaps the
+/// tree for a flat list of matches.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -34,15 +37,22 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            SidebarFilterField()
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        viewRows
-                        ForEach(model.orderedFolders) { folder in
-                            folderSection(folder)
+                        if model.isFilteringSources {
+                            filterResults
+                        } else {
+                            viewRows
+                            pinnedSection
+                            ForEach(model.orderedFolders) { folder in
+                                folderSection(folder)
+                            }
+                            folderSection(nil)
+                            hiddenSection
+                            newFolderArea.id(Self.newFolderAnchor)
                         }
-                        folderSection(nil)
-                        newFolderArea.id(Self.newFolderAnchor)
                     }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 16)
@@ -65,12 +75,12 @@ struct SidebarView: View {
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .confirmationDialog(
-            pendingDelete.map { "Delete \($0.title)?" } ?? "Delete source?",
+            pendingDelete.map { "Remove \($0.title)?" } ?? "Remove source?",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
             titleVisibility: .visible,
             presenting: pendingDelete
         ) { source in
-            Button("Delete", role: .destructive) { deleteSource(source) }
+            Button("Remove", role: .destructive) { deleteSource(source) }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
             Text("Removing a source also removes its items.")
@@ -233,8 +243,9 @@ struct SidebarView: View {
         .onDrop(of: [.plainText], delegate: dropDelegate(.end(folderId)))
     }
 
-    private func sourceRow(_ source: Source) -> some View {
-        SidebarSourceRow(
+    @ViewBuilder
+    private func sourceRow(_ source: Source, draggable: Bool = true) -> some View {
+        let row = SidebarSourceRow(
             source: source,
             active: model.selectedSourceID == source.id,
             isEditing: editing == .renameSource(source.id),
@@ -246,13 +257,79 @@ struct SidebarView: View {
             onCancelRename: { editing = nil },
             menu: { sourceMenu(source) }
         )
-        .modifier(SidebarDropIndicator(visible: over == .row(source.id)))
-        .contextMenu { sourceMenu(source) }
-        .onDrag {
-            dragging = .source(source.id)
-            return NSItemProvider(object: SidebarDrag.source(source.id).payload as NSString)
+        if draggable {
+            row
+                .modifier(SidebarDropIndicator(visible: over == .row(source.id)))
+                .contextMenu { sourceMenu(source) }
+                .onDrag {
+                    dragging = .source(source.id)
+                    return NSItemProvider(object: SidebarDrag.source(source.id).payload as NSString)
+                }
+                .onDrop(of: [.plainText], delegate: dropDelegate(.row(source.id)))
+        } else {
+            // Pinned, hidden and filtered rows aren't in the folder tree: no drag, no drop.
+            row.contextMenu { sourceMenu(source) }
         }
-        .onDrop(of: [.plainText], delegate: dropDelegate(.row(source.id)))
+    }
+
+    // MARK: Pinned, Hidden and filter results
+
+    /// "Pinned" group between the view rows and the folders; its sources are not repeated in their folders.
+    @ViewBuilder
+    private var pinnedSection: some View {
+        let list = model.pinnedSources
+        if !list.isEmpty {
+            let open = !model.isPinnedGroupCollapsed
+            VStack(alignment: .leading, spacing: 0) {
+                groupHeader("Pinned", count: list.count, open: open) { model.togglePinnedGroupCollapsed() }
+                if open {
+                    ForEach(list) { source in sourceRow(source, draggable: false) }
+                }
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    /// Collapsed "Hidden (N)" group after Unfiled: hidden sources stay reachable here and through the filter.
+    @ViewBuilder
+    private var hiddenSection: some View {
+        let list = model.hiddenSources
+        if !list.isEmpty {
+            let open = model.isHiddenGroupExpanded
+            VStack(alignment: .leading, spacing: 0) {
+                groupHeader("Hidden (\(list.count))", count: list.count, open: open) { model.isHiddenGroupExpanded.toggle() }
+                if open {
+                    ForEach(list) { source in sourceRow(source, draggable: false) }
+                }
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    /// Flat matches of the filter field, by title.
+    @ViewBuilder
+    private var filterResults: some View {
+        let list = model.filteredSources
+        VStack(alignment: .leading, spacing: 0) {
+            if list.isEmpty {
+                Text("No sources match")
+                    .font(OFFont.ui(12))
+                    .foregroundStyle(.ofFaint)
+                    .padding(.horizontal, SidebarStyle.rowPadding)
+                    .padding(.vertical, 6)
+            } else {
+                ForEach(list) { source in sourceRow(source, draggable: false) }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func groupHeader(_ title: String, count: Int, open: Bool, toggle: @escaping () -> Void) -> some View {
+        SidebarFolderHeader(
+            title: title, count: count, open: open, active: false, hasMenu: false, isEditing: false,
+            showsCount: false, onTitle: toggle, onToggle: toggle, onRename: { _ in }, onCancelRename: {},
+            menu: { EmptyView() }
+        )
     }
 
     @ViewBuilder
@@ -283,13 +360,16 @@ struct SidebarView: View {
         Button("Rename") { editing = .renameFolder(folder.id) }
         Button("New folder") { editing = .newFolder(withSource: nil) }
         Divider()
-        Button(model.sources(inFolder: folder.id).isEmpty ? "Delete folder" : "Delete folder (keep sources)", role: .destructive) {
+        Button(model.allSources(inFolder: folder.id).isEmpty ? "Delete folder" : "Delete folder (keep sources)", role: .destructive) {
             deleteFolder(folder.id)
         }
     }
 
     @ViewBuilder
     private func sourceMenu(_ source: Source) -> some View {
+        Button(source.isPinned ? "Unpin" : "Pin to sidebar") { setPinned(source, !source.isPinned) }
+        Button(source.isHidden ? "Unhide" : "Hide from sidebar") { setHidden(source, !source.isHidden) }
+        Divider()
         Section("Move to") {
             ForEach(model.orderedFolders) { folder in
                 Toggle(folder.title, isOn: moveBinding(source, to: folder.id))
@@ -303,7 +383,7 @@ struct SidebarView: View {
             Button("Open site") { openURL(url) }
         }
         Divider()
-        Button("Delete source...", role: .destructive) { pendingDelete = source }
+        Button("Remove source…", role: .destructive) { pendingDelete = source }
     }
 
     /// Checked when the source is in that folder; checking it moves the source there.
@@ -358,6 +438,14 @@ struct SidebarView: View {
 
     private func renameSource(_ id: Int64, _ title: String) {
         perform { try await model.renameSource(id: id, title: title) }
+    }
+
+    private func setPinned(_ source: Source, _ pinned: Bool) {
+        perform { try await model.setSourcePinned(id: source.id, pinned: pinned) }
+    }
+
+    private func setHidden(_ source: Source, _ hidden: Bool) {
+        perform { try await model.setSourceHidden(id: source.id, hidden: hidden) }
     }
 
     private func deleteSource(_ source: Source) {
@@ -437,6 +525,8 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
     let active: Bool
     let hasMenu: Bool
     let isEditing: Bool
+    /// Show the count beside the title while collapsed (off when the title carries it, "Hidden (3)").
+    var showsCount = true
     let onTitle: () -> Void
     let onToggle: () -> Void
     let onRename: (String) -> Void
@@ -457,7 +547,7 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
                 }
                 .buttonStyle(.plain)
                 .help(hasMenu ? "Show everything in \(title)" : "")
-                if !open {
+                if !open && showsCount {
                     Text("\(count)").monospacedDigit()
                 }
                 if hasMenu {

@@ -23,11 +23,17 @@ public struct Source: Sendable, Hashable, Identifiable {
     /// Order within its folder (or within Unfiled).
     public var position: Int
     public var createdAt: Date
+    /// When the source was pinned to the sidebar's Pinned group; nil = not pinned. Pins list in this order.
+    /// `folderId` and `position` are kept while pinned, so unpinning puts the source back.
+    public var pinnedAt: Date?
+    /// Left out of the sidebar tree (still subscribed; its items still show in All and the other views).
+    public var isHidden: Bool
 
     public init(
         id: Int64 = 0, title: String, url: String, feedUrl: String, kind: SourceKind, group: String,
         iconUrl: String? = nil, lastFetchedAt: Date? = nil, lastError: String? = nil, seenUrls: [String]? = nil,
-        folderId: Int64? = nil, position: Int = 0, createdAt: Date = Date()
+        folderId: Int64? = nil, position: Int = 0, createdAt: Date = Date(),
+        pinnedAt: Date? = nil, isHidden: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -42,7 +48,11 @@ public struct Source: Sendable, Hashable, Identifiable {
         self.folderId = folderId
         self.position = position
         self.createdAt = createdAt
+        self.pinnedAt = pinnedAt
+        self.isHidden = isHidden
     }
+
+    public var isPinned: Bool { pinnedAt != nil }
 
     /// article / post / video / podcast.
     public var type: SourceType { SourceType(kind: kind, url: url) }
@@ -67,6 +77,8 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         public static let folderId = Column("folder_id")
         public static let position = Column("position")
         public static let createdAt = Column("created_at")
+        public static let pinnedAt = Column("pinned_at")
+        public static let isHidden = Column("is_hidden")
     }
 
     public init(row: Row) throws {
@@ -86,6 +98,8 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         folderId = row["folder_id"]
         position = row["position"]
         createdAt = row["created_at"]
+        pinnedAt = row["pinned_at"]
+        isHidden = row["is_hidden"]
     }
 
     public func encode(to container: inout PersistenceContainer) throws {
@@ -102,6 +116,8 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         container["folder_id"] = folderId
         container["position"] = position
         container["created_at"] = createdAt
+        container["pinned_at"] = pinnedAt
+        container["is_hidden"] = isHidden
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
