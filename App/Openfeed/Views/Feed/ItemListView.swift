@@ -4,8 +4,8 @@ import SwiftUI
 /// The item list column. Port of the list parts of src/components/openfeed-app.tsx and use-data.ts
 /// (paging lives in AppModel).
 ///
-/// - macOS / iPad (regular width): 54pt desktop header, rows without snippets. On macOS the column is an
-///   inset `ofSurface` panel on `ofGround` (10pt top/bottom, and left when the sidebar is hidden).
+/// - macOS / iPad (regular width): 54pt desktop header, rows without snippets. On macOS the column runs
+///   flush to the window edges (like the Claude desktop app); the split view draws the column dividers.
 /// - iPhone (compact): no header or title; the system navigation bar carries a filter menu (content
 ///   type + hn100/labs/blogs) and the `.searchable` search item; headline-only rows; pull to refresh.
 ///   Opening a row pushes `ReaderView` onto this tab's NavigationStack.
@@ -75,12 +75,6 @@ struct ItemListView: View {
             list
         }
         .background(Color.ofSurface)
-        #if os(macOS)
-        .clipShape(RoundedRectangle(cornerRadius: Metrics.panelRadius, style: .continuous))
-        .padding(.bottom, Metrics.panelInset)
-        .padding(.leading, model.sidebarCollapsed ? Metrics.panelInset : 0)
-        .background(Color.ofGround)
-        #endif
     }
 
     #if os(iOS)

@@ -121,7 +121,8 @@ struct ReaderItemView: View {
         ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, theme: settings.theme, wide: wide)
     }
 
-    private var buttonSize: CGFloat { compact ? Metrics.touchTarget : Metrics.desktopIconButton }
+    private var buttonSize: CGFloat { compact ? Metrics.touchTarget : Metrics.readerActionButton }
+    private var glyphSize: CGFloat { compact ? 17 : Metrics.readerActionGlyph }
 
     // MARK: Body
 
@@ -215,8 +216,9 @@ struct ReaderItemView: View {
         .padding(.leading, focusInset)
         .padding(.trailing, 16)
         #if os(macOS)
-        .frame(height: Metrics.titleStripHeight)
-        .padding(.bottom, Metrics.titleStripGap)
+        // Same total height as the list header (strip + gap), with a hairline under it like Claude's bar.
+        .frame(height: Metrics.titleStripHeight + Metrics.titleStripGap)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
         #else
         .padding(.vertical, 8)
         .frame(minHeight: Metrics.desktopHeaderHeight)
@@ -234,38 +236,47 @@ struct ReaderItemView: View {
     }
 
     private var actions: some View {
-        HStack(spacing: compact ? 0 : 2) {
+        HStack(spacing: compact ? 0 : Metrics.readerActionSpacing) {
             Button {
                 Task { await model.toggleSaved(item) }
             } label: {
-                (item.isSaved ? OFIcon.bookmarkFilled : OFIcon.bookmark).image
-                    .foregroundStyle(item.isSaved ? AnyShapeStyle(Color.ofAccent) : AnyShapeStyle(.foreground))
+                if item.isSaved {
+                    OFIcon.bookmarkFilled.image.foregroundStyle(Color.ofAccent)
+                } else {
+                    OFIcon.bookmark.image
+                }
             }
-            .buttonStyle(ReaderIconButtonStyle(size: buttonSize))
+            .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
             .help(item.isSaved ? "Remove from saved" : "Save")
             .accessibilityLabel(item.isSaved ? "Remove from saved" : "Save")
 
             if let url = itemURL {
                 Button { openURL(url) } label: { OFIcon.external.image }
-                    .buttonStyle(ReaderIconButtonStyle(size: buttonSize))
+                    .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
                     .help("Open original")
                     .accessibilityLabel("Open original")
 
                 ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
                     OFIcon.share.image
                 }
-                .buttonStyle(ReaderIconButtonStyle(size: buttonSize))
+                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
                 .help("Share")
                 .accessibilityLabel("Share")
             }
 
-            SendToView(item: item, size: buttonSize, iconSize: 17)
+            SendToView(item: item, size: buttonSize, iconSize: glyphSize)
 
             if !compact {
+                // Full screen acts on the window, not the article: set it apart with a hairline.
+                Rectangle()
+                    .fill(Color.ofBorder)
+                    .frame(width: 1, height: 16)
+                    .padding(.horizontal, 6 - Metrics.readerActionSpacing)
+
                 Button { model.toggleFocusMode() } label: {
                     (model.isFocused ? OFIcon.collapse : OFIcon.expand).image
                 }
-                .buttonStyle(ReaderIconButtonStyle(size: buttonSize))
+                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
                 .help(model.isFocused ? "Exit full screen (esc)" : "Full screen (⇧⌘F)")
                 .accessibilityLabel(model.isFocused ? "Exit full screen" : "Full screen")
             }

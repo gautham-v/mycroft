@@ -10,25 +10,27 @@ import AppKit
 /// muted icon that turns ink on hover, 8pt rounded hover background.
 struct ReaderIconButtonStyle: ButtonStyle {
     var size: CGFloat
+    var glyph: CGFloat = 17
 
     func makeBody(configuration: Configuration) -> some View {
-        ReaderIconButtonBody(configuration: configuration, size: size)
+        ReaderIconButtonBody(configuration: configuration, size: size, glyph: glyph)
     }
 }
 
 private struct ReaderIconButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let size: CGFloat
+    let glyph: CGFloat
     @State private var hovering = false
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         configuration.label
-            .font(.system(size: 17, weight: .regular))
+            .font(.system(size: glyph, weight: .regular))
             .foregroundStyle(hovering || configuration.isPressed ? Color.ofInk : Color.ofMuted)
             .frame(width: size, height: size)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(hovering || configuration.isPressed ? Color.ofHover : Color.clear)
             )
             .contentShape(Rectangle())

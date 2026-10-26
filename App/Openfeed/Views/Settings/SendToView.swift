@@ -119,7 +119,7 @@ struct SendToView: View {
         .font(.system(size: iconSize, weight: .regular))
         .frame(width: size, height: size)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(hovering && !inSystemToolbar ? Color.ofHover : Color.clear)
         )
         .contentShape(Rectangle())

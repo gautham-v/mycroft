@@ -6,8 +6,8 @@ import AppKit
 #endif
 
 // Design tokens ported from src/app/globals.css (:root and the dark block). Neutral Apple greys,
-// blue accent; teal only for the logo. On desktop the sidebar sits on `ofGround` and the list and
-// reader are inset `ofSurface` panels; on phones the panels go full-bleed.
+// blue accent; teal only for the logo. On desktop the sidebar sits on `ofGround` (translucent on
+// macOS) and the list and reader are flush `ofSurface` columns; on phones they go full-bleed.
 //
 // Names carry an `of` prefix so they never collide with SwiftUI's own ShapeStyle members
 // (.selection, .primary, ...). Use them as `Color.ofInk` or `.foregroundStyle(.ofInk)`.
@@ -117,13 +117,14 @@ enum Metrics {
     static let readerPaddingWide: CGFloat = 32
     /// Video player max width in theater layout.
     static let theaterMaxWidth: CGFloat = 960
-    /// Desktop panels are inset 10pt from the window with 6pt corners.
-    static let panelInset: CGFloat = 10
-    static let panelRadius: CGFloat = 6
     /// Desktop list/reader header height.
     static let desktopHeaderHeight: CGFloat = 54
     /// Desktop icon buttons 30pt; phone touch targets 44pt.
     static let desktopIconButton: CGFloat = 30
+    /// Reader toolbar actions on desktop: 28pt boxes 4pt apart, glyphs at 15pt, one grey (like Claude's bar).
+    static let readerActionButton: CGFloat = 28
+    static let readerActionSpacing: CGFloat = 4
+    static let readerActionGlyph: CGFloat = 15
     static let touchTarget: CGFloat = 44
     /// Phone tab bar item min height.
     static let tabBarItemHeight: CGFloat = 52
