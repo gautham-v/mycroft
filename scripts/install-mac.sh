@@ -40,7 +40,9 @@ while true; do
     else
       if rm -rf $APP && ditto $BUILD/Build/Products/Release/OpenDispatch.app $APP; then
         # Re-register so the Dock takes this copy's icon, not another app with the same bundle id
-        # (the iPhone app's placeholder from iPhone Mirroring, for one).
+        # (the iPhone app's placeholder from iPhone Mirroring, for one). The fresh modification date
+        # makes launchers that cache app icons (Raycast, Spotlight) pick up a changed icon.
+        touch $APP
         /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f $APP
         open $APP
       fi
