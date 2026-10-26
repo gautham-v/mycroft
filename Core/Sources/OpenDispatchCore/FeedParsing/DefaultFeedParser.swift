@@ -68,7 +68,8 @@ public struct DefaultFeedParser: FeedParser {
         }
         guard let url else { return nil }
         let guid = raw.guid ?? raw.id ?? url
-        let title = S.nonEmpty(raw.title) ?? "(untitled)"
+        // Titles are plain text, but WordPress feeds (The Verge) put HTML entities inside CDATA: `&#8216;revolutionize`.
+        let title = S.nonEmpty(raw.title.map(S.decodeHTMLEntities)) ?? "(untitled)"
         let author = S.nonEmpty(raw.creator) ?? S.displayAuthor(raw.author, fallback: raw.itunesAuthor)
         let publishedAt = S.date(from: raw.pubDate) ?? now
 

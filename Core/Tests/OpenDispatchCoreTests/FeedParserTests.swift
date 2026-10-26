@@ -120,6 +120,12 @@ struct FeedParserFixtureTests {
         #expect(item.thumbnailUrl == "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
     }
 
+    @Test func titleEntitiesInsideCDATA() throws {
+        let xml = #"<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="html"><![CDATA[A plan to &#8216;revolutionize&#8217; AT&amp;T]]></title><link href="https://x.com/a"/><id>a</id></entry></feed>"#
+        let item = try #require(try parser.parse(data(xml), kind: .rss, feedURL: "https://x.com/feed").items.first)
+        #expect(item.title == "A plan to \u{2018}revolutionize\u{2019} AT&T")
+    }
+
     @Test func blog() throws {
         let feed = try parser.parse(data(ParseFixtures.blog), kind: .rss, feedURL: "https://blog.example.com/feed")
         #expect(feed.items.count == 2)
