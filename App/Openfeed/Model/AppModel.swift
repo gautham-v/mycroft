@@ -96,7 +96,7 @@ final class AppModel {
     /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
     var pendingAddSourceURL: String?
     var isShortcutsPresented = false
-    /// iOS/iPad settings sheet (macOS uses the Settings scene). `settingsTab` picks the pane.
+    /// Settings: the sheet on iOS/iPad, the in-window overlay on macOS. `settingsTab` picks the pane.
     var isSettingsPresented = false
     var settingsTab: SettingsTab = .sources
 
@@ -855,7 +855,7 @@ final class AppModel {
     /// Full-screen reader is in effect only while an item is shown.
     var isFocused: Bool { focusMode && selectedItem != nil }
 
-    /// Opens Settings on `tab`: the sheet on iOS/iPad; on macOS RootView turns the flag into `openSettings()`.
+    /// Opens Settings on `tab`: the sheet on iOS/iPad, the overlay in the main window on macOS.
     func showSettings(_ tab: SettingsTab = .sources) {
         settingsTab = tab
         isSettingsPresented = true

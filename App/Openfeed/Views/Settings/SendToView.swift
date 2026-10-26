@@ -36,9 +36,6 @@ struct SendToView: View {
     }
 
     @Environment(AppModel.self) private var model
-    #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
-    #endif
     @State private var status: Status = .idle
     @State private var timer: Task<Void, Never>?
     @State private var hovering = false
@@ -166,11 +163,6 @@ struct SendToView: View {
     }
 
     private func openIntegrationsSettings() {
-        #if os(macOS)
-        model.settingsTab = .integrations
-        openSettings()
-        #else
         model.showSettings(.integrations)
-        #endif
     }
 }

@@ -15,9 +15,6 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
-    #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
-    #endif
 
     /// Inline text field in use (sidebar.tsx `editing`).
     private enum Editing: Equatable {
@@ -137,12 +134,7 @@ struct SidebarView: View {
                 model.isAddSourcePresented = true
             }
             SidebarIconButton(icon: .gear, label: "Settings") {
-                #if os(macOS)
-                model.settingsTab = .sources
-                openSettings()
-                #else
                 model.showSettings(.sources)
-                #endif
             }
         }
         .padding(.horizontal, 12)

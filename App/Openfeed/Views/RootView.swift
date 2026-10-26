@@ -8,9 +8,6 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
-    #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
-    #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -48,13 +45,6 @@ struct RootView: View {
             .sheet(isPresented: $model.isSettingsPresented) {
                 NavigationStack { SettingsView() }.environment(model)
             }
-            #else
-            // macOS: `model.showSettings(_:)` opens the Settings window on `settingsTab`.
-            .onChange(of: model.isSettingsPresented) { _, shown in
-                guard shown else { return }
-                model.isSettingsPresented = false
-                openSettings()
-            }
             #endif
     }
 
@@ -82,6 +72,13 @@ struct RootView: View {
             // `.detailOnly`, so the reader covers the window instead (the detail column steps aside).
             .overlay {
                 if model.isFocused { ReaderView().flushToWindowTop() }
+            }
+            // Settings: a panel over the dimmed window (`model.showSettings(_:)`, ⌘,), not a window.
+            .overlay {
+                ZStack {
+                    if model.isSettingsPresented { SettingsOverlay().transition(.opacity) }
+                }
+                .animation(.easeOut(duration: 0.15), value: model.isSettingsPresented)
             }
             .background(FlushWindowChrome())
             .frame(minWidth: 900, minHeight: 560)

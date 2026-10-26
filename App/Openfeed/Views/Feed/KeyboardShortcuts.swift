@@ -12,7 +12,8 @@ import WebKit
 /// ⌘\, ⇧⌘F, ⌘F, ⌘R and ⌘/ are menu commands (OpenfeedApp.swift).
 ///
 /// macOS: a local key monitor scoped to the window hosting the list. Keys pass through while a text
-/// field has focus (except Esc in the search field), while a sheet is attached, or with ⌘/⌃/⌥ held.
+/// field has focus (except Esc in the search field), while a sheet is attached or the Settings overlay
+/// is up (its close button takes Esc), or with ⌘/⌃/⌥ held.
 /// Arrows keep scrolling the article after the last click landed right of the list (the reader),
 /// like the web's `readerClicked`.
 /// iPad with a hardware keyboard (regular width): hidden buttons with `.keyboardShortcut`.
@@ -114,6 +115,7 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
                 }
                 monitor.isSearchFocused = { searchFocus.wrappedValue }
                 monitor.isReaderFullScreen = { model.isFocused }
+                monitor.isSuspended = { model.isSettingsPresented }
                 monitor.install()
             }
             .onDisappear { monitor.uninstall() }
@@ -163,7 +165,7 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
 
 #if os(macOS)
 /// The window hosting the item list (the reader window), so the Close Tab command (⌘W) can tell it
-/// from Settings.
+/// from other windows.
 @MainActor
 enum ReaderWindow {
     static weak var current: NSWindow?
@@ -179,6 +181,8 @@ private final class FeedKeyMonitor {
     var isSearchFocused: (() -> Bool)?
     /// The full-screen reader covers the list, so every click lands in the reader.
     var isReaderFullScreen: (() -> Bool)?
+    /// An overlay covers the window (Settings): keys and clicks are its own.
+    var isSuspended: (() -> Bool)?
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
     private var readerClicked = false
@@ -205,7 +209,7 @@ private final class FeedKeyMonitor {
         }
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             MainActor.assumeIsolated {
-                if let self, let window = self.window, event.window === window {
+                if let self, let window = self.window, event.window === window, self.isSuspended?() != true {
                     self.readerClicked = self.isReaderFullScreen?() == true || event.locationInWindow.x > self.listMaxX
                     self.readerScrollView = self.readerClicked ? Self.readerScrollTarget(in: window, at: event.locationInWindow) : nil
                 }
@@ -222,7 +226,8 @@ private final class FeedKeyMonitor {
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
-        guard let window, event.window === window, window.attachedSheet == nil, window.isKeyWindow else { return false }
+        guard let window, event.window === window, window.attachedSheet == nil, window.isKeyWindow,
+              isSuspended?() != true else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if !flags.intersection([.command, .control, .option]).isEmpty { return false }
 
@@ -256,7 +261,7 @@ private final class FeedKeyMonitor {
     }
 }
 
-/// Reports the NSWindow hosting this view (so the key monitor ignores other windows, like Settings).
+/// Reports the NSWindow hosting this view (so the key monitor ignores other windows).
 private struct FeedHostWindowReader: NSViewRepresentable {
     let onWindow: (NSWindow?) -> Void
 

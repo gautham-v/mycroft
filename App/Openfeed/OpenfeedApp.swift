@@ -39,14 +39,6 @@ struct OpenfeedApp: App {
             await BackgroundRefresh.run(services)
         }
         #endif
-
-        #if os(macOS)
-        Settings {
-            SettingsView()
-                .environment(model)
-                .frame(minWidth: 640, minHeight: 460)
-        }
-        #endif
     }
 }
 
@@ -60,6 +52,11 @@ struct OpenfeedCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") { updater.checkForUpdates() }
+        }
+        // Settings is an overlay in the main window (SettingsOverlay), so there's no Settings scene.
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { model.showSettings(model.settingsTab) }
+                .keyboardShortcut(",", modifiers: .command)
         }
         CommandGroup(replacing: .newItem) {
             Button("Add Source…") { model.isAddSourcePresented = true }
@@ -104,10 +101,16 @@ struct OpenfeedCommands: Commands {
         }
     }
 
-    /// ⌘W: close the reader's active tab when the reader window is key and has tabs, else close the key
-    /// window (Settings, or the reader window with a single tab).
+    /// ⌘W: close the Settings overlay when it's up; else close the reader's active tab when the reader
+    /// window is key and has tabs, else close the key window.
     private func closeTabOrWindow() {
-        if let key = NSApp.keyWindow, key === ReaderWindow.current, model.closeActiveTab() { return }
+        if let key = NSApp.keyWindow, key === ReaderWindow.current {
+            if model.isSettingsPresented {
+                model.isSettingsPresented = false
+                return
+            }
+            if model.closeActiveTab() { return }
+        }
         NSApp.keyWindow?.performClose(nil)
     }
 }

@@ -17,9 +17,9 @@ extension SettingsTab {
     }
 }
 
-/// Port of src/components/settings-dialog.tsx. Hosted by the macOS Settings scene, the iOS Settings
-/// tab, and the iOS/iPad sheet (`model.showSettings(_:)`).
-/// - Regular width (macOS, iPad sheet): the web's 140pt nav column on ground + a scrolling pane on surface.
+/// Port of src/components/settings-dialog.tsx. Hosted by the macOS in-window overlay (SettingsOverlay),
+/// the iOS Settings tab, and the iOS/iPad sheet (`model.showSettings(_:)`).
+/// - Regular width (macOS overlay, iPad sheet): the web's 140pt nav column on ground + a scrolling pane on surface.
 /// - Compact width (iPhone): a list of sections; each opens its pane. When opened as a sheet with a tab
 ///   (e.g. Send to → Integrations), that pane is pushed right away.
 struct SettingsView: View {
@@ -106,17 +106,14 @@ struct SettingsView: View {
             .id(pane)
         }
         .overlay(alignment: .topTrailing) { closeButton }
-        #if os(macOS)
-        .navigationTitle(pane.label)
-        #else
+        #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .foregroundStyle(.ofBody)
     }
 
-    /// iOS sheet close button (the macOS Settings window has its own).
+    /// Close button for the iOS sheet and the macOS overlay; on macOS Esc presses it.
     @ViewBuilder private var closeButton: some View {
-        #if os(iOS)
         if model.isSettingsPresented {
             Button {
                 model.isSettingsPresented = false
@@ -124,14 +121,27 @@ struct SettingsView: View {
                 OFIcon.close.image
                     .font(.system(size: 16, weight: .regular))
                     .foregroundStyle(.ofMuted)
-                    .frame(width: Metrics.touchTarget, height: Metrics.touchTarget)
+                    .frame(width: closeButtonSize, height: closeButtonSize)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close settings")
+            #if os(macOS)
+            .keyboardShortcut(.cancelAction)
+            .padding(.trailing, 10)
+            .padding(.top, 10)
+            #else
             .padding(.trailing, 4)
             .padding(.top, 2)
+            #endif
         }
+    }
+
+    private var closeButtonSize: CGFloat {
+        #if os(macOS)
+        Metrics.desktopIconButton
+        #else
+        Metrics.touchTarget
         #endif
     }
 
@@ -224,15 +234,15 @@ struct SettingsView: View {
         }
     }
 
-    /// Tapping a source title opens its feed (and leaves Settings on iOS).
+    /// Tapping a source title opens its feed and leaves Settings.
     private func open(source: Source) {
         #if os(iOS)
         if compact {
             // Feed first: selecting the tab goes home, then show the source.
             model.phoneTab = .feed
         }
-        model.isSettingsPresented = false
         #endif
+        model.isSettingsPresented = false
         model.navigate(sourceID: source.id)
     }
 }
