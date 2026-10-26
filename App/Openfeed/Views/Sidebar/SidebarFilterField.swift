@@ -51,6 +51,7 @@ struct SidebarFilterField: View {
         )
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
+        .onAppear { if model.isSourceFilterOpen { focused = true } }
         .onChange(of: model.sourceFilterFocusRequests) { _, _ in focused = true }
         .onChange(of: focused) { _, _ in syncOpen() }
         .onChange(of: model.sourceFilter) { _, _ in syncOpen() }

@@ -37,7 +37,14 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            SidebarFilterField()
+            // Claude-style "Search" row; it turns into the filter field when clicked or on ⌘K.
+            if model.isSourceFilterOpen {
+                SidebarFilterField()
+            } else {
+                SidebarActionRow(icon: .search, label: "Search sources") { model.openSourceFilter() }
+                    .padding(.horizontal, 12)
+                    .help("Search sources (⌘K)")
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
