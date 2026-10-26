@@ -2,7 +2,7 @@ import OpenDispatchCore
 import SwiftUI
 
 /// Reading pane (port of src/components/reader.tsx): sticky toolbar (back on phones, source badge,
-/// source · time, Save, Open original, Share, Send to, full screen on desktop), headline,
+/// source · time, Save, Open original, a Share menu that also sends, then split and full screen on desktop), headline,
 /// byline, article HTML in a height-fitted WKWebView styled by Resources/reader.css, a YouTube player
 /// for videos and a native audio player for podcasts. Shows the empty state when nothing is selected.
 ///
@@ -273,17 +273,18 @@ struct ReaderItemView: View {
                     .help("Open original")
                     .accessibilityLabel("Open original")
 
-                ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
-                    OFIcon.share.image
-                }
-                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                .help("Share")
-                .accessibilityLabel("Share")
+                // Share…, Copy link and Send to in one menu.
+                SendToView(item: item, size: buttonSize, iconSize: glyphSize, share: url)
+            } else {
+                SendToView(item: item, size: buttonSize, iconSize: glyphSize)
             }
 
-            SendToView(item: item, size: buttonSize, iconSize: glyphSize)
-
             if !compact {
+                // Article actions on the left, window controls on the right.
+                Rectangle().fill(Color.ofHairline)
+                    .frame(width: 1, height: 16)
+                    .padding(.horizontal, 6)
+
                 if model.isSplit {
                     Button { model.closePane(pane) } label: { OFIcon.close.image }
                         .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))

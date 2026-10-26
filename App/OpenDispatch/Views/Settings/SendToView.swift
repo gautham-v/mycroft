@@ -6,8 +6,12 @@ import SwiftUI
 /// Integrations pane. While sending the icon pulses; on success it turns into an accent check for
 /// 1.8 s; an error shows in a small popover for 5 s.
 ///
+/// Given `share`, it is the desktop reader's Share button instead: the share glyph opens one menu with
+/// Share…, Copy link and the send targets, and the same sending / sent / error feedback.
+///
 ///     SendToView(item: item)                       // 30pt desktop button
 ///     SendToView(item: item, size: Metrics.touchTarget)   // phone
+///     SendToView(item: item, share: url)           // desktop reader: Share and Send in one menu
 struct SendToView: View {
     let item: FeedItem
     var size: CGFloat = Metrics.desktopIconButton
@@ -15,6 +19,8 @@ struct SendToView: View {
     /// In a system toolbar (iPhone reader): primary-colored glyph, no hover background; the bar draws
     /// the Liquid Glass chrome.
     var inSystemToolbar = false
+    /// The link to share: Share and Send to become one menu under the share glyph.
+    var share: URL? = nil
 
     /// MENU_LABEL in send-to.tsx.
     static func menuLabel(_ target: SendTarget) -> String {
@@ -55,7 +61,16 @@ struct SendToView: View {
 
     var body: some View {
         Group {
-            if targets.count > 1 && status != .sending {
+            if let share {
+                Menu {
+                    shareItems(share)
+                } label: {
+                    icon
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(.plain)
+            } else if targets.count > 1 && status != .sending {
                 Menu {
                     ForEach(targets) { t in
                         Button(Self.menuLabel(t)) { Task { await send(to: t) } }
@@ -77,8 +92,8 @@ struct SendToView: View {
             }
         }
         .fixedSize()
-        .help(label)
-        .accessibilityLabel(label)
+        .help(share == nil ? label : shareLabel)
+        .accessibilityLabel(share == nil ? label : shareLabel)
         .onHover { hovering = $0 }
         .popover(isPresented: errorShown, arrowEdge: Self.errorArrowEdge) {
             if case .error(let message) = status {
@@ -101,11 +116,38 @@ struct SendToView: View {
         .onDisappear { timer?.cancel() }
     }
 
+    private var shareLabel: String {
+        switch status {
+        case .sent, .sending: label
+        default: "Share"
+        }
+    }
+
+    @ViewBuilder private func shareItems(_ url: URL) -> some View {
+        ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
+            Text("Share…")
+        }
+        Button("Copy link") { ReaderPasteboard.copy(url) }
+        Divider()
+        if targets.isEmpty {
+            Button("Send to… (set up in Settings)") { openIntegrationsSettings() }
+        } else {
+            ForEach(targets) { t in
+                Button("Send to \(Self.menuLabel(t))") { Task { await send(to: t) } }
+                    .disabled(status == .sending)
+            }
+        }
+    }
+
     private var icon: some View {
         Group {
             if case .sent = status {
                 OFIcon.check.image
                     .foregroundStyle(.ofAccent)
+            } else if share != nil {
+                OFIcon.share.image
+                    .foregroundStyle(Color.ofInk)
+                    .symbolEffect(.pulse, options: .repeating, isActive: status == .sending)
             } else {
                 OFIcon.send.image
                     .foregroundStyle(inSystemToolbar ? AnyShapeStyle(.primary)

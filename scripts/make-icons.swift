@@ -47,8 +47,15 @@ let bookmarkR: [CGFloat] = [2, 2, 0.5, 0.5, 0.5]
 icon("bookmark") { p in rounded(p, bookmarkPts, bookmarkR) }
 icon("bookmark.fill", fill: { p in rounded(p, bookmarkPts, bookmarkR) }) { p in rounded(p, bookmarkPts, bookmarkR) }
 icon("external") { p in
-    poly(p, [P(14, 3.5), P(20.5, 3.5), P(20.5, 10)]); poly(p, [P(20.5, 3.5), P(11, 13)])
-    rounded(p, [P(10, 5.5), P(5.5, 5.5), P(5.5, 18.5), P(18.5, 18.5), P(18.5, 14)], [0, 2.5, 2.5, 2.5, 0])
+    // An open box (`rounded` would close it with a diagonal), the arrow leaving through its corner.
+    let box = CGMutablePath()
+    box.move(to: P(10.5, 4.5)); box.addLine(to: P(7, 4.5))
+    box.addArc(tangent1End: P(4.5, 4.5), tangent2End: P(4.5, 7), radius: 2.5)
+    box.addArc(tangent1End: P(4.5, 19.5), tangent2End: P(7, 19.5), radius: 2.5)
+    box.addArc(tangent1End: P(19.5, 19.5), tangent2End: P(19.5, 17), radius: 2.5)
+    box.addLine(to: P(19.5, 13.5))
+    p.addPath(box)
+    poly(p, [P(14, 4.5), P(19.5, 4.5), P(19.5, 10)]); poly(p, [P(19.5, 4.5), P(11, 13)])
 }
 icon("share") { p in
     let t = CGMutablePath()
