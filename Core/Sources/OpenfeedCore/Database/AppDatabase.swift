@@ -130,6 +130,10 @@ public final class AppDatabase: Sendable {
                 ALTER TABLE sources ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0;
                 """)
         }
+        // Quote posts on X show the quoted account's avatar in the list.
+        m.registerMigration("v3-quote-avatar") { db in
+            try db.execute(sql: "ALTER TABLE items ADD COLUMN quote_avatar_url TEXT")
+        }
         return m
     }
 }

@@ -132,7 +132,7 @@ public enum Queries {
     }
 
     /// Insert or update items by (source_id, guid), with the fetcher.ts conflict rules:
-    /// title/url/hn_* replaced; summary/thumbnail/audio/duration kept when the new value is null;
+    /// title/url/hn_* replaced; summary/thumbnail/audio/duration/quote avatar kept when the new value is null;
     /// content, saved state and published_at untouched. Returns one row per input, in order.
     @discardableResult
     public static func upsertItems(_ db: Database, sourceId: Int64, items: [ParsedItem], now: Date = Date()) throws -> [UpsertedItem] {
@@ -140,8 +140,8 @@ public enum Queries {
         var existing = Set(try String.fetchAll(db, sql: "SELECT guid FROM items WHERE source_id = ?", arguments: [sourceId]))
         let sql = """
             INSERT INTO items (source_id, guid, url, title, summary, author, published_at, thumbnail_url, video_id,
-              duration_sec, audio_url, hn_points, hn_comments, hn_comments_url, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              duration_sec, audio_url, hn_points, hn_comments, hn_comments_url, quote_avatar_url, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source_id, guid) DO UPDATE SET
               title = excluded.title,
               url = excluded.url,
@@ -151,7 +151,8 @@ public enum Queries {
               duration_sec = coalesce(excluded.duration_sec, items.duration_sec),
               hn_points = excluded.hn_points,
               hn_comments = excluded.hn_comments,
-              hn_comments_url = excluded.hn_comments_url
+              hn_comments_url = excluded.hn_comments_url,
+              quote_avatar_url = coalesce(excluded.quote_avatar_url, items.quote_avatar_url)
             RETURNING id, url, thumbnail_url, published_at
             """
         let statement = try db.cachedStatement(sql: sql)
@@ -160,7 +161,7 @@ public enum Queries {
         for it in items {
             let args: StatementArguments = [
                 sourceId, it.guid, it.url, it.title, it.summary, it.author, it.publishedAt, it.thumbnailUrl, it.videoId,
-                it.durationSec, it.audioUrl, it.hnPoints, it.hnComments, it.hnCommentsUrl, now,
+                it.durationSec, it.audioUrl, it.hnPoints, it.hnComments, it.hnCommentsUrl, it.quoteAvatarUrl, now,
             ]
             guard let row = try Row.fetchOne(statement, arguments: args) else { continue }
             let inserted = !existing.contains(it.guid)

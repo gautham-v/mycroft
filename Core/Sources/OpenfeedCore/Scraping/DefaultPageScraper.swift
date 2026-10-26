@@ -152,7 +152,8 @@ public struct DefaultPageScraper: PageScraper {
                 summary: m.summary,
                 author: m.author,
                 publishedAt: m.publishedAt ?? fallbackDate,
-                thumbnailUrl: m.thumbnailUrl
+                thumbnailUrl: m.thumbnailUrl,
+                quoteAvatarUrl: m.quoteAvatarUrl
             ))
         } catch {
             return .retry  // timeout / network: retry next refresh

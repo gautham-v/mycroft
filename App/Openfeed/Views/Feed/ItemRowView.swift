@@ -5,7 +5,8 @@ import SwiftUI
 ///
 /// Article/video/podcast rows: 16pt badge + "Source · 3h", then the title (14.5/500) with an optional
 /// 64×42 thumbnail on the right. Posts on X lead with the author ("Name @handle · 3h"), then up to two
-/// lines of text and (macOS/iPad) a one-line snippet. iPhone rows are headline only: no snippet, and
+/// lines of text and (macOS/iPad) a one-line snippet, or for a quote post the quoted account and text
+/// (QuoteLine). iPhone rows are headline only: no snippet, and
 /// the meta line adds HN points and comments when present.
 ///
 /// The row draws its own rounded background (selected / hovered) and leaves the inset hairline to
@@ -67,10 +68,14 @@ struct ItemRowView: View, Equatable {
                 .foregroundStyle(.ofInk)
                 .lineLimit(2)
             if !isPhone, let snippet {
-                Text(snippet)
-                    .font(OFFont.itemSnippet)
-                    .foregroundStyle(.ofMuted)
-                    .lineLimit(1)
+                if let quote = QuoteLine.parse(snippet, avatar: item.item.quoteAvatarUrl) {
+                    quote
+                } else {
+                    Text(snippet)
+                        .font(OFFont.itemSnippet)
+                        .foregroundStyle(.ofMuted)
+                        .lineLimit(1)
+                }
             }
         }
     }
@@ -106,6 +111,59 @@ struct ItemRowView: View, Equatable {
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
         if item.isSaved { parts.append("Saved") }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// The quoted post under a quote post on X: a turn arrow, the quoted account's avatar (a monogram until
+/// it loads, or when the post was fetched before avatars were kept), its name and the first line of
+/// its text, with t.co links dropped. Built from the summary the scraper writes ("Quoting Name: text").
+struct QuoteLine: View {
+    let name: String
+    let text: String
+    let avatar: URL?
+    @Environment(\.displayScale) private var displayScale
+
+    private static let size: CGFloat = 14
+    private static let tco = try! NSRegularExpression(pattern: #"\s*https?://t\.co/\S*"#)
+
+    static func parse(_ summary: String, avatar: String?) -> QuoteLine? {
+        guard summary.hasPrefix("Quoting "), let colon = summary.range(of: ": ") else { return nil }
+        let name = String(summary[summary.index(summary.startIndex, offsetBy: 8)..<colon.lowerBound])
+        let raw = String(summary[colon.upperBound...])
+        let text = tco.stringByReplacingMatches(in: raw, range: NSRange(raw.startIndex..., in: raw), withTemplate: "")
+            .trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        return QuoteLine(name: name, text: text, avatar: avatar.flatMap(URL.init(string:)))
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            OFIcon.quoted.image
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.ofFaint)
+            avatarView
+            Text("\(Text(verbatim: name).foregroundStyle(Color.ofInk.opacity(0.82)))\(Text(verbatim: text.isEmpty ? "" : "  " + text))")
+                .font(OFFont.itemSnippet)
+                .foregroundStyle(.ofMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private var avatarView: some View {
+        CachedAsyncImage(url: avatar, maxPixelSize: Self.size * max(displayScale, 2)) { image in
+            image.resizable().scaledToFill()
+        } placeholder: { _ in
+            ZStack {
+                Color.ofCode
+                Text(verbatim: String(name.prefix(1)).uppercased())
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.ofMuted)
+            }
+        }
+        .frame(width: Self.size, height: Self.size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 }
 

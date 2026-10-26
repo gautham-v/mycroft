@@ -26,6 +26,8 @@ public struct Item: Sendable, Hashable, Identifiable {
     public var hnPoints: Int?
     public var hnComments: Int?
     public var hnCommentsUrl: String?
+    /// A post on X that quotes another: the quoted account's avatar (the summary names the account).
+    public var quoteAvatarUrl: String?
     public var isSaved: Bool
     public var createdAt: Date
 
@@ -34,7 +36,7 @@ public struct Item: Sendable, Hashable, Identifiable {
         contentHtml: String? = nil, contentRendered: Bool = false, author: String? = nil, publishedAt: Date,
         thumbnailUrl: String? = nil, thumbnailChecked: Bool = false, videoId: String? = nil, durationSec: Int? = nil,
         audioUrl: String? = nil, hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil,
-        isSaved: Bool = false, createdAt: Date = Date()
+        quoteAvatarUrl: String? = nil, isSaved: Bool = false, createdAt: Date = Date()
     ) {
         self.id = id
         self.sourceId = sourceId
@@ -54,6 +56,7 @@ public struct Item: Sendable, Hashable, Identifiable {
         self.hnPoints = hnPoints
         self.hnComments = hnComments
         self.hnCommentsUrl = hnCommentsUrl
+        self.quoteAvatarUrl = quoteAvatarUrl
         self.isSaved = isSaved
         self.createdAt = createdAt
     }
@@ -81,6 +84,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         public static let hnPoints = Column("hn_points")
         public static let hnComments = Column("hn_comments")
         public static let hnCommentsUrl = Column("hn_comments_url")
+        public static let quoteAvatarUrl = Column("quote_avatar_url")
         public static let isSaved = Column("is_saved")
         public static let createdAt = Column("created_at")
     }
@@ -105,6 +109,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         hnPoints = row["hn_points"]
         hnComments = row["hn_comments"]
         hnCommentsUrl = row["hn_comments_url"]
+        quoteAvatarUrl = row["quote_avatar_url"]
         isSaved = row["is_saved"] ?? false
         createdAt = row["created_at"]
     }
@@ -128,6 +133,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         container["hn_points"] = hnPoints
         container["hn_comments"] = hnComments
         container["hn_comments_url"] = hnCommentsUrl
+        container["quote_avatar_url"] = quoteAvatarUrl
         container["is_saved"] = isSaved
         container["created_at"] = createdAt
     }
@@ -144,7 +150,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
             Columns.id, Columns.sourceId, Columns.guid, Columns.url, Columns.title, Columns.summary,
             Columns.contentRendered, Columns.author, Columns.publishedAt, Columns.thumbnailUrl,
             Columns.thumbnailChecked, Columns.videoId, Columns.durationSec, Columns.audioUrl, Columns.hnPoints,
-            Columns.hnComments, Columns.hnCommentsUrl, Columns.isSaved, Columns.createdAt,
+            Columns.hnComments, Columns.hnCommentsUrl, Columns.quoteAvatarUrl, Columns.isSaved, Columns.createdAt,
             (Columns.contentHtml != nil).forKey("has_content"),
         ]
     }

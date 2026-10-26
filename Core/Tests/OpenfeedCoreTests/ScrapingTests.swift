@@ -232,12 +232,13 @@ struct ScrapingMetaTests {
 
         Second paragraph.">
         <meta property="og:image" content="https://pbs.twimg.com/x.jpg">
-        </head><body><script>window.__DATA__="{\"quoted_tweet_results\":{\"result\":{\"core\":{\"name\":\"Jane \\u00e9 Doe\",\"screen_name\":\"jane\"},\"legacy\":{\"full_text\":\"Quoted line one\\nline two\"}}}}"</script></body>
+        </head><body><script>window.__DATA__="{\"quoted_tweet_results\":{\"result\":{\"avatar\":{\"image_url\":\"https://pbs.twimg.com/profile_images/1/a_normal.jpg\"},\"core\":{\"name\":\"Jane \\u00e9 Doe\",\"screen_name\":\"jane\"},\"legacy\":{\"full_text\":\"Quoted line one\\nline two\"}}}}"</script></body>
         """#
         let m = PageScraping.extractArticleMeta(html: html, pageURL: "https://x.com/kunchenguid/status/123")
         #expect(m.title == "First paragraph here.")
         #expect(m.author == "Kun Chen (@kunchenguid)")
         #expect(m.summary == "Quoting Jane é Doe: Quoted line one")
+        #expect(m.quoteAvatarUrl == "https://pbs.twimg.com/profile_images/1/a_normal.jpg")
         #expect(m.thumbnailUrl == nil)
         #expect(m.ogType == "article")
     }

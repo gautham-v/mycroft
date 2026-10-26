@@ -17,11 +17,13 @@ public struct ParsedItem: Sendable, Hashable {
     public var hnPoints: Int?
     public var hnComments: Int?
     public var hnCommentsUrl: String?
+    /// A post on X that quotes another: the quoted account's avatar.
+    public var quoteAvatarUrl: String?
 
     public init(
         guid: String, url: String, title: String, summary: String? = nil, author: String? = nil, publishedAt: Date,
         thumbnailUrl: String? = nil, videoId: String? = nil, durationSec: Int? = nil, audioUrl: String? = nil,
-        hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil
+        hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil, quoteAvatarUrl: String? = nil
     ) {
         self.guid = guid
         self.url = url
@@ -36,6 +38,7 @@ public struct ParsedItem: Sendable, Hashable {
         self.hnPoints = hnPoints
         self.hnComments = hnComments
         self.hnCommentsUrl = hnCommentsUrl
+        self.quoteAvatarUrl = quoteAvatarUrl
     }
 }
 

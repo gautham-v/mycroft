@@ -60,6 +60,8 @@ enum OFIcon: String, CaseIterable {
     case keyboard = "keyboard"
     /// Saved tab / view (same as bookmark)
     case saved = "bookmark.circle"
+    /// The quoted post under a quote post on X (list rows)
+    case quoted = "arrow.turn.down.right"
 
     var image: Image { Image(systemName: rawValue) }
 }

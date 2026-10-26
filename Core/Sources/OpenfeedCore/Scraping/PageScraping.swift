@@ -10,15 +10,18 @@ public struct ArticleMeta: Sendable, Hashable {
     public var thumbnailUrl: String?
     /// og:type when present ("article", "website", ...), lowercased.
     public var ogType: String?
+    /// A post on X that quotes another: the quoted account's avatar (pbs.twimg.com).
+    public var quoteAvatarUrl: String?
 
     public init(title: String? = nil, summary: String? = nil, author: String? = nil, publishedAt: Date? = nil,
-                thumbnailUrl: String? = nil, ogType: String? = nil) {
+                thumbnailUrl: String? = nil, ogType: String? = nil, quoteAvatarUrl: String? = nil) {
         self.title = title
         self.summary = summary
         self.author = author
         self.publishedAt = publishedAt
         self.thumbnailUrl = thumbnailUrl
         self.ogType = ogType
+        self.quoteAvatarUrl = quoteAvatarUrl
     }
 }
 
@@ -313,14 +316,17 @@ public enum PageScraping {
     private static let onX = ScrapingText.regex(#"\s+on X$"#, [.caseInsensitive])
     private static let quotedName = ScrapingText.regex(#"\\"core\\":\{\\"name\\":\\"((?:\\\\.|[^\\])*?)\\",\\"screen_name\\""#)
     private static let quotedText = ScrapingText.regex(#"\\"full_text\\":\\"((?:\\\\.|[^\\])*?)\\""#)
+    private static let quotedAvatar = ScrapingText.regex(#"\\"avatar\\":\{\\"image_url\\":\\"(https://pbs\.twimg\.com/[^\\"]+)\\""#)
 
     /// A post on X: og:title is the author ("Kun Chen (@kunchenguid) on X") and the post text is the
-    /// description. The first paragraph is the headline; the summary names a quoted post. No thumbnail.
+    /// description. The first paragraph is the headline; the summary names a quoted post, and the quoted
+    /// account's avatar comes along. No thumbnail.
     private static func tweetMeta(_ meta: PageMeta.Reader, html: String, now: Date) -> ArticleMeta {
         let text = meta("og:description", "description", "twitter:description")
         let first = text.map { ScrapingText.split($0, by: paragraphBreak).first ?? $0 }
         let author = meta("og:title").map { ScrapingText.replace(onX, in: $0, with: "") }
         var summary: String?
+        var quoteAvatar: String?
         if let qi = html.range(of: #"\"quoted_tweet_results\""#) {
             let tail = String(html[qi.lowerBound...])
             if let qn = ScrapingText.firstGroups(quotedName, tail)?[1], let qt = ScrapingText.firstGroups(quotedText, tail)?[1],
@@ -328,6 +334,7 @@ public enum PageScraping {
                let full = ScrapingText.jsonStringLiteral(qt).flatMap(ScrapingText.jsonStringLiteral) {
                 let line = full.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? full
                 summary = ScrapingText.clip("Quoting \(name): \(line)", 200)
+                quoteAvatar = ScrapingText.firstGroups(quotedAvatar, tail)?[1]
             }
         }
         return ArticleMeta(
@@ -336,7 +343,8 @@ public enum PageScraping {
             author: ScrapingText.clip(author, 120),
             publishedAt: PageMeta.toDate(meta("article:published_time"), now: now),
             thumbnailUrl: nil,
-            ogType: "article"
+            ogType: "article",
+            quoteAvatarUrl: quoteAvatar
         )
     }
 }
