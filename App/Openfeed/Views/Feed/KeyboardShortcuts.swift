@@ -113,6 +113,7 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
                     return handler.handle(key, model: model, openURL: { openURL($0) }, focusSearch: focusSearch)
                 }
                 monitor.isSearchFocused = { searchFocus.wrappedValue }
+                monitor.isReaderFullScreen = { model.isFocused }
                 monitor.install()
             }
             .onDisappear { monitor.uninstall() }
@@ -176,6 +177,8 @@ private final class FeedKeyMonitor {
     var listMaxX: CGFloat = 0
     var onKey: ((FeedKey, _ typingInSearch: Bool) -> Bool)?
     var isSearchFocused: (() -> Bool)?
+    /// The full-screen reader covers the list, so every click lands in the reader.
+    var isReaderFullScreen: (() -> Bool)?
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
     private var readerClicked = false
@@ -203,7 +206,7 @@ private final class FeedKeyMonitor {
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             MainActor.assumeIsolated {
                 if let self, let window = self.window, event.window === window {
-                    self.readerClicked = event.locationInWindow.x > self.listMaxX
+                    self.readerClicked = self.isReaderFullScreen?() == true || event.locationInWindow.x > self.listMaxX
                     self.readerScrollView = self.readerClicked ? Self.readerScrollTarget(in: window, at: event.locationInWindow) : nil
                 }
             }

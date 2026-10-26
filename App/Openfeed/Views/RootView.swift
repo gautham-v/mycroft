@@ -78,6 +78,11 @@ struct RootView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .windowToolbar)
+            // Full-screen reader: macOS NavigationSplitView doesn't hide the content column for
+            // `.detailOnly`, so the reader covers the window instead (the detail column steps aside).
+            .overlay {
+                if model.isFocused { ReaderView().flushToWindowTop() }
+            }
             .background(FlushWindowChrome())
             .frame(minWidth: 900, minHeight: 560)
         #endif
@@ -98,8 +103,16 @@ struct RootView: View {
                 .navigationSplitViewColumnWidth(min: Metrics.listMinWidth, ideal: Metrics.listWidth, max: Metrics.listMaxWidth)
                 .flushToWindowTop()
         } detail: {
-            ReaderView()
-                .flushToWindowTop()
+            Group {
+                #if os(macOS)
+                // The full-screen reader shows in an overlay (see `layout`); one reader at a time, so a
+                // video doesn't play twice.
+                if model.isFocused { Color.ofSurface } else { ReaderView() }
+                #else
+                ReaderView()
+                #endif
+            }
+            .flushToWindowTop()
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear { model.prefersDefaultSelection = true }
@@ -109,7 +122,9 @@ struct RootView: View {
     private var columnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
             get: {
+                #if os(iOS)
                 if model.isFocused { return .detailOnly }
+                #endif
                 return model.sidebarCollapsed ? .doubleColumn : .all
             },
             set: { v in
