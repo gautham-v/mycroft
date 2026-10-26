@@ -1,16 +1,11 @@
 import SwiftUI
 
-// The web app's current globals.css uses system font stacks (not Inter / IBM Plex Mono as in the
-// original SPEC): -apple-system / SF Pro for UI, ui-monospace / SF Mono for mono, ui-serif / New York
-// for the reader. So no font files are bundled; SwiftUI's system designs match exactly.
+// System fonts only, no bundled font files: SF (the default design) for all UI and metadata, New York
+// (`.serif`) for article text. No monospace anywhere outside code blocks in articles (reader.css).
 
 enum OFFont {
     static func ui(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight)
-    }
-
-    static func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
     }
 
     static func serif(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
@@ -23,7 +18,7 @@ enum OFFont {
     /// Meta line: 12.5, source name in ink/500, rest muted.
     static let itemMeta = ui(12.5)
     static let itemMetaSource = ui(12.5, .medium)
-    /// Snippet (phone only): 13 muted, 2-line clamp.
+    /// X-post snippet: 13 muted, one line (macOS / iPad rows).
     static let itemSnippet = ui(13)
     /// Duration badge on thumbnails: 10 / 500, tabular.
     static let thumbBadge = ui(10, .medium).monospacedDigit()
@@ -32,11 +27,6 @@ enum OFFont {
     /// Desktop list header title 15 / 600, tracking -0.01em; subline 13 muted.
     static let listHeaderTitle = ui(15, .semibold)
     static let listHeaderSubline = ui(13)
-    /// Phone large title 28 / 700, tracking -0.02em; subline 12 muted.
-    static let phoneTitle = ui(28, .bold)
-    static let phoneSubline = ui(12)
-    /// Phone filter chips 13 / 500.
-    static let chip = ui(13, .medium)
     /// Bottom tab labels 11 / 500.
     static let tabLabel = ui(11, .medium)
 

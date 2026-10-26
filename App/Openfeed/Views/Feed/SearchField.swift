@@ -1,30 +1,26 @@
 import SwiftUI
 
-/// The list's search input (search-field.tsx). `.desktop` sits in the 54pt list header (30pt tall,
-/// 14pt text); `.phone` is a full-width 44pt row under the phone title (16pt text).
+/// The list's search input (search-field.tsx) for macOS and iPad: sits in the 54pt list header (30pt
+/// tall, 14pt text). iPhone uses the system `.searchable` field instead.
 /// Esc clears and closes; Enter commits right away and leaves the field so j/k work on results;
 /// an empty field folds back into the search button when focus leaves it.
 /// Bound to `AppModel.searchDraft`, which commits after 250 ms (use-search.ts).
 struct FeedSearchField: View {
-    enum Variant { case desktop, phone }
-
     @Environment(AppModel.self) private var model
-    let variant: Variant
     var focus: FocusState<Bool>.Binding
 
-    private var phone: Bool { variant == .phone }
     private var isEmpty: Bool { model.searchDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         @Bindable var model = model
         HStack(spacing: 0) {
             OFIcon.search.image
-                .font(.system(size: phone ? 16 : 13))
+                .font(.system(size: 13))
                 .foregroundStyle(.ofMuted)
                 .accessibilityHidden(true)
             TextField("", text: $model.searchDraft, prompt: Text(model.searchPlaceholder).foregroundStyle(.ofFaint))
                 .textFieldStyle(.plain)
-                .font(OFFont.ui(phone ? 16 : 14))
+                .font(OFFont.ui(14))
                 .foregroundStyle(.ofInk)
                 .autocorrectionDisabled()
                 #if os(iOS)
@@ -32,7 +28,7 @@ struct FeedSearchField: View {
                 .submitLabel(.search)
                 #endif
                 .focused(focus)
-                .padding(.horizontal, phone ? 8 : 6)
+                .padding(.horizontal, 6)
                 .accessibilityLabel("Search items")
                 .onSubmit {
                     model.flushSearch()
@@ -43,16 +39,15 @@ struct FeedSearchField: View {
                 #endif
             Button(action: { isEmpty ? close() : model.clearSearch() }) {
                 OFIcon.close.image
-                    .font(.system(size: phone ? 16 : 13))
-                    .frame(width: phone ? Metrics.touchTarget : Metrics.desktopIconButton,
-                           height: phone ? Metrics.touchTarget : Metrics.desktopIconButton)
+                    .font(.system(size: 13))
+                    .frame(width: Metrics.desktopIconButton, height: Metrics.desktopIconButton)
                     .contentShape(Rectangle())
             }
             .buttonStyle(FeedHoverIconButtonStyle(inkOnHover: true, hoverBackground: false))
             .accessibilityLabel(isEmpty ? "Close search" : "Clear search")
         }
-        .padding(.leading, phone ? 12 : 8)
-        .frame(height: phone ? Metrics.touchTarget : Metrics.desktopIconButton)
+        .padding(.leading, 8)
+        .frame(height: Metrics.desktopIconButton)
         .frame(maxWidth: .infinity)
         .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(

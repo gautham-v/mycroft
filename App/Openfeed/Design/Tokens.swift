@@ -140,6 +140,4 @@ enum Metrics {
     static let thumbWidth: CGFloat = 64
     static let thumbHeight: CGFloat = 42
     static let thumbRadius: CGFloat = 3
-    /// Phone filter chip pill height (inside a 44pt target).
-    static let chipHeight: CGFloat = 32
 }

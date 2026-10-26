@@ -12,6 +12,9 @@ struct SendToView: View {
     let item: FeedItem
     var size: CGFloat = Metrics.desktopIconButton
     var iconSize: CGFloat = 17
+    /// In a system toolbar (iPhone reader): primary-colored glyph, no hover background; the bar draws
+    /// the Liquid Glass chrome.
+    var inSystemToolbar = false
 
     /// MENU_LABEL in send-to.tsx.
     static func menuLabel(_ target: SendTarget) -> String {
@@ -108,7 +111,8 @@ struct SendToView: View {
                     .foregroundStyle(.ofAccent)
             } else {
                 OFIcon.send.image
-                    .foregroundStyle(hovering ? Color.ofInk : Color.ofMuted)
+                    .foregroundStyle(inSystemToolbar ? AnyShapeStyle(.primary)
+                                     : AnyShapeStyle(hovering ? Color.ofInk : Color.ofMuted))
                     .symbolEffect(.pulse, options: .repeating, isActive: status == .sending)
             }
         }
@@ -116,7 +120,7 @@ struct SendToView: View {
         .frame(width: size, height: size)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(hovering ? Color.ofHover : Color.clear)
+                .fill(hovering && !inSystemToolbar ? Color.ofHover : Color.clear)
         )
         .contentShape(Rectangle())
     }

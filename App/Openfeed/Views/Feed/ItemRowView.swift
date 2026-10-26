@@ -4,8 +4,9 @@ import SwiftUI
 /// One list row. Port of src/components/item-row.tsx.
 ///
 /// Article/video/podcast rows: 16pt badge + "Source · 3h", then the title (14.5/500) with an optional
-/// 64×42 thumbnail on the right, then (phone only) a 2-line snippet. Posts on X lead with the author
-/// ("Name @handle · 3h"), then up to two lines of text and a one-line snippet.
+/// 64×42 thumbnail on the right. Posts on X lead with the author ("Name @handle · 3h"), then up to two
+/// lines of text and (macOS/iPad) a one-line snippet. iPhone rows are headline only: no snippet, and
+/// the meta line adds HN points and comments when present.
 ///
 /// The row draws its own rounded background (selected / hovered) and leaves the inset hairline to
 /// `ItemListView`, which knows the neighbours. Equatable so a hover or selection change elsewhere in
@@ -14,8 +15,8 @@ struct ItemRowView: View, Equatable {
     let item: FeedItem
     var isSelected = false
     var isHovered = false
-    /// Phone: show the summary snippet under the title (`md:hidden` on the web).
-    var showsSnippet = false
+    /// iPhone: headline-only rows (no snippet) with HN points/comments in the meta line.
+    var isPhone = false
 
     var body: some View {
         Group {
@@ -53,13 +54,6 @@ struct ItemRowView: View, Equatable {
                     .fixedSize(horizontal: false, vertical: true)
                 ItemThumbnail(item: item)
             }
-            if showsSnippet, let snippet = snippet {
-                Text(snippet)
-                    .font(OFFont.itemSnippet)
-                    .lineSpacing(1.5)
-                    .foregroundStyle(.ofMuted)
-                    .lineLimit(2)
-            }
         }
     }
 
@@ -72,7 +66,7 @@ struct ItemRowView: View, Equatable {
                 .lineSpacing(2.5)
                 .foregroundStyle(.ofInk)
                 .lineLimit(2)
-            if let snippet {
+            if !isPhone, let snippet {
                 Text(snippet)
                     .font(OFFont.itemSnippet)
                     .foregroundStyle(.ofMuted)
@@ -93,7 +87,12 @@ struct ItemRowView: View, Equatable {
 
     private func metaText(name: String, handle: String?) -> Text {
         let lead = Text(verbatim: name).font(OFFont.itemMetaSource).foregroundStyle(Color.ofInk)
-        let rest = Text(verbatim: (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt))
+        var tail = (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt)
+        if isPhone {
+            if let points = item.item.hnPoints { tail += " · \(points) points" }
+            if let comments = item.item.hnComments { tail += " · \(comments) comments" }
+        }
+        let rest = Text(verbatim: tail)
             .font(OFFont.itemMeta).foregroundStyle(Color.ofMuted)
         return Text("\(lead)\(rest)")
     }
@@ -230,7 +229,7 @@ struct ItemSkeletonRow: View {
     let a = FeedItem(item: Item(id: 1, sourceId: 1, guid: "a", url: "https://simonwillison.net/a", title: "Notes on running a local model for structured extraction", summary: "<p>Some summary text that runs on for a while to show the snippet clamp on phones.</p>", publishedAt: Date().addingTimeInterval(-3_600)), source: source)
     let v = FeedItem(item: Item(id: 2, sourceId: 2, guid: "v", url: "https://www.youtube.com/watch?v=x", title: "This new AI renders light in real time", publishedAt: Date().addingTimeInterval(-86_400), thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", durationSec: 425), source: video)
     return VStack(spacing: 0) {
-        ItemRowView(item: a, isSelected: true, showsSnippet: true)
+        ItemRowView(item: a, isSelected: true, isPhone: true)
         ItemRowView(item: v)
         ItemSkeletonRow()
     }

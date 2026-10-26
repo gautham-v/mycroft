@@ -1,7 +1,7 @@
 import OpenfeedCore
 import SwiftUI
 
-/// Desktop list header (openfeed-app.tsx, lg and up): 54pt, title 15/600 + "updated X ago" 13 muted on
+/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 54pt, title 15/600 + "updated X ago" 13 muted on
 /// one baseline, search button (or the search field in place of the title), refresh button.
 /// A show-sidebar button leads when the sidebar is collapsed.
 struct DesktopListHeader: View {
@@ -22,7 +22,7 @@ struct DesktopListHeader: View {
                 .accessibilityLabel("Show sidebar")
             }
             if model.isSearchOpen {
-                FeedSearchField(variant: .desktop, focus: searchFocus)
+                FeedSearchField(focus: searchFocus)
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(model.listTitle)
@@ -36,76 +36,13 @@ struct DesktopListHeader: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
-                FeedSearchButton(phone: false, searchFocus: searchFocus)
+                FeedSearchButton(searchFocus: searchFocus)
             }
-            FeedRefreshButton(phone: false)
+            FeedRefreshButton()
         }
         .padding(.leading, model.sidebarCollapsed ? 12 : 18)
         .padding(.trailing, 12)
         .frame(height: Metrics.desktopHeaderHeight)
-    }
-}
-
-/// Phone/tablet header: large title 28/700 with the subline under it, back chevron in a source or
-/// folder feed, search and refresh buttons (44pt), the full-width search row when open, then the view
-/// chips on the Feed tab.
-struct PhoneListHeader: View {
-    @Environment(AppModel.self) private var model
-    var searchFocus: FocusState<Bool>.Binding
-    /// Show the All/Articles/Posts/Video/Podcasts chips (the Feed tab).
-    var showsChips: Bool
-    var onBack: (() -> Void)?
-
-    /// Blank while a source/folder feed waits for the sources list, rather than flashing the view name.
-    private var title: String {
-        if model.isInSourceFeed, model.activeSource == nil, model.activeFolder == nil { return "" }
-        return model.listTitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                if let onBack {
-                    Button(action: onBack) {
-                        OFIcon.back.image
-                            .font(.system(size: 20, weight: .medium))
-                            .frame(width: Metrics.touchTarget, height: Metrics.touchTarget)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(FeedHoverIconButtonStyle(inkOnHover: false, baseColor: .ofInk))
-                    .accessibilityLabel("Back to sources")
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(OFFont.phoneTitle)
-                        .tracking(-0.56)
-                        .foregroundStyle(.ofInk)
-                        .lineLimit(1)
-                        .accessibilityAddTraits(.isHeader)
-                    FeedUpdatedLabel(font: OFFont.phoneSubline)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if !model.isSearchOpen {
-                    FeedSearchButton(phone: true, searchFocus: searchFocus)
-                }
-                FeedRefreshButton(phone: true)
-            }
-            .padding(.leading, onBack == nil ? 16 : 4)
-            .padding(.trailing, 8)
-            .padding(.top, 12)
-
-            if model.isSearchOpen {
-                FeedSearchField(variant: .phone, focus: searchFocus)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-            }
-            if showsChips {
-                FeedViewChips()
-                    .padding(.top, 6)
-            } else {
-                Color.clear.frame(height: 12)
-            }
-        }
     }
 }
 
@@ -124,21 +61,19 @@ struct FeedUpdatedLabel: View {
     }
 }
 
-/// Refresh feeds (forced). Spins while refreshing; disabled meanwhile.
+/// Refresh feeds (forced). Spins while refreshing; disabled meanwhile. (iPhone uses pull to refresh.)
 struct FeedRefreshButton: View {
     @Environment(AppModel.self) private var model
-    let phone: Bool
 
     var body: some View {
         Button(action: { Task { await model.refresh(force: true) } }) {
             OFIcon.refresh.image
-                .font(.system(size: phone ? 18 : 15, weight: .regular))
+                .font(.system(size: 15, weight: .regular))
                 .symbolEffect(.rotate, options: .repeat(.continuous), isActive: model.isRefreshing)
-                .frame(width: phone ? Metrics.touchTarget : Metrics.desktopIconButton,
-                       height: phone ? Metrics.touchTarget : Metrics.desktopIconButton)
+                .frame(width: Metrics.desktopIconButton, height: Metrics.desktopIconButton)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(FeedHoverIconButtonStyle(inkOnHover: !phone, baseColor: phone ? .ofInk : .ofMuted))
+        .buttonStyle(FeedHoverIconButtonStyle())
         .disabled(model.isRefreshing)
         .opacity(model.isRefreshing ? 0.7 : 1)
         .help("Refresh (r)")
@@ -146,10 +81,9 @@ struct FeedRefreshButton: View {
     }
 }
 
-/// Opens and focuses the search field.
+/// Opens and focuses the search field. (iPhone uses `.searchable`.)
 struct FeedSearchButton: View {
     @Environment(AppModel.self) private var model
-    let phone: Bool
     var searchFocus: FocusState<Bool>.Binding
 
     var body: some View {
@@ -161,51 +95,64 @@ struct FeedSearchButton: View {
             }
         }) {
             OFIcon.search.image
-                .font(.system(size: phone ? 18 : 15))
-                .frame(width: phone ? Metrics.touchTarget : Metrics.desktopIconButton,
-                       height: phone ? Metrics.touchTarget : Metrics.desktopIconButton)
+                .font(.system(size: 15))
+                .frame(width: Metrics.desktopIconButton, height: Metrics.desktopIconButton)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(FeedHoverIconButtonStyle(inkOnHover: !phone, baseColor: phone ? .ofInk : .ofMuted))
+        .buttonStyle(FeedHoverIconButtonStyle())
         .help("Search (/)")
         .accessibilityLabel("Search")
     }
 }
 
-/// Phone view chips: All, Articles, Posts, Video, Podcasts (CHIPS in openfeed-app.tsx). Horizontally
-/// scrolling; each is a 44pt touch target with a 32pt pill inside. Active = ink pill with surface text.
-struct FeedViewChips: View {
+/// iPhone filter toolbar button (replaces the old view chips): a Menu with the content type (All,
+/// Articles, Posts, Video, Podcasts; Feed tab only) and the hn100 / labs / blogs filter, both single
+/// selection. The symbol fills while anything but All / no filter is active.
+struct FeedFilterMenu: View {
     @Environment(AppModel.self) private var model
-    private static let chips: [(FeedView, String)] = [
-        (.all, "All"), (.articles, "Articles"), (.posts, "Posts"), (.video, "Video"), (.podcasts, "Podcasts"),
-    ]
+    /// Show the content-type section (the Feed tab's home list, not Saved or a source/folder feed).
+    var showsContentTypes: Bool
 
-    private var activeChip: FeedView? {
-        model.isInSourceFeed || model.selectedView == .saved ? nil : model.selectedView
+    static let contentTypes: [FeedView] = [.all, .articles, .posts, .video, .podcasts]
+    static let filters: [(FeedFilter, String)] = [(.hn100, "HN \u{2265} 100"), (.labs, "Labs"), (.blogs, "Blogs")]
+
+    private var isActive: Bool {
+        model.filter != nil || (showsContentTypes && model.selectedView != .all)
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Self.chips, id: \.0) { view, label in
-                    let active = activeChip == view
-                    Button(action: { model.navigate(view: view) }) {
-                        Text(label)
-                            .font(OFFont.chip)
-                            .foregroundStyle(active ? Color.ofSurface : Color.ofInk)
-                            .padding(.horizontal, 14)
-                            .frame(height: Metrics.chipHeight)
-                            .background(active ? Color.ofInk : Color.ofCode, in: Capsule())
-                            .frame(height: Metrics.touchTarget)
-                            .contentShape(Rectangle())
+        Menu {
+            if showsContentTypes {
+                Section("Show") {
+                    ForEach(Self.contentTypes) { view in
+                        Toggle(view.title, isOn: contentTypeBinding(view))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(active ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 6)
+            Section("Filter") {
+                ForEach(Self.filters, id: \.0) { filter, label in
+                    Toggle(label, isOn: filterBinding(filter))
+                }
+            }
+        } label: {
+            Label("Filter", systemImage: isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
         }
-        .accessibilityLabel("Views")
+        // Monochrome like the system search item; accent only while a selection is active.
+        .tint(isActive ? Color.ofAccent : Color.primary)
+        .accessibilityLabel("Filter")
+        .accessibilityValue(isActive ? "On" : "Off")
+    }
+
+    /// Single selection: checking a type switches to it; unchecking the current one keeps it.
+    private func contentTypeBinding(_ view: FeedView) -> Binding<Bool> {
+        Binding(
+            get: { model.selectedView == view },
+            set: { on in if on, view != model.selectedView { model.navigate(view: view) } })
+    }
+
+    private func filterBinding(_ filter: FeedFilter) -> Binding<Bool> {
+        Binding(
+            get: { model.filter == filter },
+            set: { on in model.setFilter(on ? filter : (model.filter == filter ? nil : model.filter)) })
     }
 }

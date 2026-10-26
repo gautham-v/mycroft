@@ -6,8 +6,8 @@ Single user, no accounts, no server. Everything runs and is stored on the device
 
 ## Requirements
 
-- macOS 15 or later to run the Mac app; iOS/iPadOS 18 or later for iPhone and iPad.
-- Xcode 16 or later (built and tested with Xcode 26.3) and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+- macOS 15 or later to run the Mac app; iOS/iPadOS 26 or later for iPhone and iPad (the iPhone UI uses Liquid Glass).
+- Xcode 26 or later (built and tested with Xcode 26.3; the iOS 26 SDK is required) and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 - Swift packages are fetched by Xcode/SwiftPM on first build: GRDB.swift (SQLite) and SwiftSoup (HTML). Feeds are parsed with Foundation's `XMLParser`.
 
 ## Build and run
@@ -23,7 +23,7 @@ From the command line:
 ```bash
 cd App
 xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=macOS' build
-xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build   # any iOS 26 simulator
 ```
 
 Run `xcodegen generate` again after adding or removing files under `App/Openfeed/`. Both platforms use automatic signing with team `26TVJ92MLZ` (`DEVELOPMENT_TEAM` in `project.yml`); the Mac build signs with the Apple Development certificate in the keychain. To run on a real iPhone, sign in to that team's Apple ID in Xcode → Settings → Accounts, connect the phone, pick it as the destination and Run; Xcode creates the provisioning profile for `com.gauthamv.openfeed`. From the command line, once Xcode is signed in: `xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'generic/platform=iOS' -allowProvisioningUpdates build`.

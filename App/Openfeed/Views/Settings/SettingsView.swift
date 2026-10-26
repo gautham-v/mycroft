@@ -173,6 +173,12 @@ struct SettingsView: View {
         }
         .background(Color.ofSurface)
         .navigationTitle("Settings")
+        #if os(iOS)
+        // No title text in the bar on any iPhone tab; the pane list speaks for itself.
+        .toolbar(removing: .title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarRole(.editor)
+        #endif
         .navigationDestination(item: $pushed) { p in
             ScrollView {
                 paneContent(p)

@@ -141,7 +141,7 @@ struct SettingsDataPane: View {
             }
             if let url = databaseURL {
                 Text(Self.displayPath(url))
-                    .font(OFFont.mono(11.5))
+                    .font(OFFont.ui(11.5))
                     .foregroundStyle(.ofMuted)
                     .textSelection(.enabled)
                     .lineLimit(compact ? 3 : 2)

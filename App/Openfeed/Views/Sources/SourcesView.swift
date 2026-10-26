@@ -7,7 +7,7 @@ import SwiftUI
 /// Folders are sections; the folder header opens everything in that folder, a source row opens that
 /// source's feed (pushed, with back to Sources). Unfiled shows only when it has sources. Beyond the web
 /// page, rows swipe to delete and long-press for Move to / Rename / Open site / Delete, folder headers
-/// long-press for Rename / Delete, and the header "+" menu adds a source or a folder.
+/// long-press for Rename / Delete, and the toolbar "+" menu adds a source or a folder.
 struct SourcesView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -60,15 +60,17 @@ struct SourcesView: View {
         dialogs(navigation(content))
     }
 
+    /// The list alone under the system navigation bar (no title text); "+" sits in the toolbar.
     private var content: some View {
-        VStack(spacing: 0) {
-            header
-            list
-        }
-        .background(Color.ofSurface)
-        #if os(iOS)
-        .toolbar(.hidden, for: .navigationBar)
-        #endif
+        list
+            .background(Color.ofSurface)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { addMenu }
+            }
     }
 
     private func navigation(_ view: some View) -> some View {
@@ -149,46 +151,25 @@ struct SourcesView: View {
         Binding(get: { pendingFolderDelete != nil }, set: { if !$0 { pendingFolderDelete = nil } })
     }
 
-    // MARK: Header
+    // MARK: Toolbar
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Sources")
-                    .font(OFFont.phoneTitle)
-                    .tracking(-0.56)
-                    .foregroundStyle(.ofInk)
-                    .lineLimit(1)
-                Text("\(model.sources.count) \(model.sources.count == 1 ? "source" : "sources")")
-                    .font(OFFont.phoneSubline)
-                    .foregroundStyle(.ofMuted)
-            }
-            Spacer(minLength: 0)
-            Menu {
-                Button {
-                    model.isAddSourcePresented = true
-                } label: {
-                    Label("Add source", systemImage: OFIcon.plus.rawValue)
-                }
-                Button {
-                    open(.newFolder(withSource: nil))
-                } label: {
-                    Label("New folder", systemImage: OFIcon.folder.rawValue)
-                }
+    private var addMenu: some View {
+        Menu {
+            Button {
+                model.isAddSourcePresented = true
             } label: {
-                OFIcon.plus.image
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(.ofMuted)
-                    .frame(width: Metrics.touchTarget, height: Metrics.touchTarget)
-                    .contentShape(Rectangle())
+                Label("Add source", systemImage: OFIcon.plus.rawValue)
             }
-            .menuIndicator(.hidden)
-            .accessibilityLabel("Add")
+            Button {
+                open(.newFolder(withSource: nil))
+            } label: {
+                Label("New folder", systemImage: OFIcon.folder.rawValue)
+            }
+        } label: {
+            Label("Add", systemImage: OFIcon.plus.rawValue)
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 8)
-        .padding(.top, 12)
-        .padding(.bottom, 4)
+        .tint(Color.primary)
+        .accessibilityLabel("Add")
     }
 
     // MARK: List

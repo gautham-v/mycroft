@@ -6,8 +6,9 @@ import SwiftUI
 /// byline, article HTML in a height-fitted WKWebView styled by Resources/reader.css, a YouTube player
 /// for videos and a native audio player for podcasts. Shows the empty state when nothing is selected.
 ///
-/// On iPhone push it in the list's NavigationStack: it draws its own toolbar with a back button (like
-/// the web app) and hides the navigation bar; Back closes the item (`model.select(nil)`) and pops.
+/// On iPhone it is pushed in the list's NavigationStack and uses the system navigation bar (Liquid
+/// Glass): the system back button pops (ItemListView's binding then calls `model.select(nil)`), the
+/// actions sit in the bar, and the meta row (badge, host · date · read time) scrolls with the article.
 struct ReaderView: View {
     @Environment(AppModel.self) private var model
 
@@ -50,8 +51,7 @@ struct ReaderItemView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.isPresented) private var isPresented
+
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -127,9 +127,14 @@ struct ReaderItemView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            if !compact { toolbar }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    if compact {
+                        metaRow
+                            .readerColumn(wide: false)
+                            .padding(.top, 8)
+                    }
                     if isVideo {
                         ReaderVideoBody(item: item, autoplay: settings.autoplay, theater: settings.theater, wide: wide)
                     } else {
@@ -142,30 +147,58 @@ struct ReaderItemView: View {
         }
         .background(Color.ofSurface)
         #if os(iOS)
-        .toolbar(compact ? .hidden : .automatic, for: .navigationBar)
+        .toolbar { if compact { phoneToolbar } }
+        .navigationBarTitleDisplayMode(.inline)
         #endif
         .task { await load(refresh: false) }
     }
 
+    /// Source badge + host · date · read time.
+    private var metaRow: some View {
+        HStack(spacing: 8) {
+            SourceBadge(host: item.source.host, title: item.source.title, size: 20)
+            Text(metaLine)
+                .font(OFFont.readerToolbarMeta)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    #if os(iOS)
+    /// iPhone: Save, Open original, Share and Send to in the system bar (it groups them in glass).
+    @ToolbarContentBuilder private var phoneToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                Task { await model.toggleSaved(item) }
+            } label: {
+                Label(item.isSaved ? "Remove from saved" : "Save",
+                      systemImage: (item.isSaved ? OFIcon.bookmarkFilled : OFIcon.bookmark).rawValue)
+            }
+            .tint(item.isSaved ? Color.ofAccent : Color.primary)
+            if let url = itemURL {
+                Button { openURL(url) } label: {
+                    Label("Open original", systemImage: OFIcon.external.rawValue)
+                }
+                .tint(Color.primary)
+                ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
+                    Label("Share", systemImage: OFIcon.share.rawValue)
+                }
+                .tint(Color.primary)
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            SendToView(item: item, size: 36, iconSize: 17, inSystemToolbar: true)
+        }
+    }
+    #endif
+
     // MARK: Toolbar
 
+    /// macOS / iPad toolbar row (iPhone uses the system bar, see `phoneToolbar`).
     private var toolbar: some View {
-        HStack(spacing: compact ? 8 : 6) {
-            if compact {
-                Button {
-                    if isPresented { dismiss() }
-                    model.select(nil)
-                } label: {
-                    OFIcon.back.image.font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.ofInk)
-                        .frame(width: Metrics.touchTarget, height: Metrics.touchTarget)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, -8)
-                .accessibilityLabel("Back to list")
-            }
-
+        HStack(spacing: 6) {
             HStack(spacing: 8) {
                 SourceBadge(host: item.source.host, title: item.source.title, size: 20)
                 Text(metaLine)
@@ -177,15 +210,11 @@ struct ReaderItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             actions
-                .padding(.trailing, compact ? -10 : 0)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, compact ? 6 : 8)
-        .frame(minHeight: compact ? 56 : Metrics.desktopHeaderHeight)
+        .padding(.vertical, 8)
+        .frame(minHeight: Metrics.desktopHeaderHeight)
         .background(Color.ofSurface.opacity(0.95))
-        .overlay(alignment: .bottom) {
-            if compact { Rectangle().fill(Color.ofHairline).frame(height: 1) }
-        }
     }
 
     private var actions: some View {

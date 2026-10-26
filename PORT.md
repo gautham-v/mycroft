@@ -1,7 +1,7 @@
 # Openfeed native port: shared contract
 
 Openfeed is being ported from the Next.js web app (`src/`, the reference implementation) to a native
-SwiftUI app for macOS 15 and iOS 18. Everything runs locally: there is no server, no auth and no sync.
+SwiftUI app for macOS 15 and iOS 26. Everything runs locally: there is no server, no auth and no sync.
 This file is the contract between the agents doing the port. **Read all of it before writing code.**
 If you add public API, add it in files you own and document it under **Additions** at the bottom
 (append only, never edit earlier sections).
@@ -74,11 +74,11 @@ cd /Users/gautham/Code/personal/openfeed/Core && swift build && swift test
 # App (regenerate the project after adding/removing files; it globs App/Openfeed/**)
 cd /Users/gautham/Code/personal/openfeed/App && xcodegen generate
 xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=macOS' build 2>&1 | grep -E '(error|warning):|BUILD (SUCCEEDED|FAILED)' | sort -u | head -50
-xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.4' build 2>&1 | grep -E '(error|warning):|BUILD (SUCCEEDED|FAILED)' | sort -u | head -50
+xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.3' build 2>&1 | grep -E '(error|warning):|BUILD (SUCCEEDED|FAILED)' | sort -u | head -50
 ```
 
-- Two "iPhone 16 Pro" simulators exist (18.3.1 and 18.4); without `OS=18.4` xcodebuild fails with
-  "Unable to find a device matching the provided destination specifier".
+- The app needs iOS 26, so use an iOS 26.x simulator (pass `OS=` when several runtimes have the same device
+  name, or xcodebuild fails with "Unable to find a device matching the provided destination specifier").
 - Grep with `(error|warning):` (with the colon): plain `error` matches compiler flags in the log.
 - The line `appintentsmetadataprocessor ... warning: Metadata extraction skipped` is expected noise.
 - Other agents build concurrently. If xcodebuild or SwiftPM reports a lock ("database is locked",
@@ -617,13 +617,12 @@ Design (App/Openfeed/Design):
 - `Metrics`: sidebarWidth 230, listWidth 410 (tablet 380), readerMaxWidth 640, reader padding 20/32,
   theaterMaxWidth 960, panelInset 10, panelRadius 6, desktopHeaderHeight 54, desktopIconButton 30,
   touchTarget 44, tabBarItemHeight 52, sidebarRowHeight 32, rowRadius 4, row padding 10×11, rowDividerInset 46,
-  rowBadge 16, thumb 64×42 r3, chipHeight 32. (The web app moved from 240/420 to 230/410; we follow the web.)
-- `OFFont`: ui/mono/serif(size, weight) and named styles: itemTitle 14.5/500, itemMeta 12.5, itemMetaSource,
-  itemSnippet 13, thumbBadge, listHeaderTitle 15/600, listHeaderSubline 13, phoneTitle 28/700, phoneSubline 12,
-  chip 13/500, tabLabel 11/500, sidebarRow 14, sidebarFooter 13.5, sidebarSection, readerToolbarMeta 13,
+  rowBadge 16, thumb 64×42 r3. (The web app moved from 240/420 to 230/410; we follow the web.)
+- `OFFont`: ui/serif(size, weight) and named styles: itemTitle 14.5/500, itemMeta 12.5, itemMetaSource,
+  itemSnippet 13, thumbBadge, listHeaderTitle 15/600, listHeaderSubline 13, tabLabel 11/500, sidebarRow 14, sidebarFooter 13.5, sidebarSection, readerToolbarMeta 13,
   readerByline 14, videoTitle 20/600, videoTitleWide 22/600; `headlineSize(_:wide:)` (26/30/34, wide 32/36/40),
-  `bodySize(_:)` (16/17.5/19.5). Fonts are the system families (SF Pro, SF Mono, New York) exactly as the web
-  app's current CSS uses; no font files are bundled (the SPEC's Inter/IBM Plex Mono are no longer used).
+  `bodySize(_:)` (16/17.5/19.5). Fonts are system families only: SF for all UI and metadata, New York (serif)
+  for article text. No monospace anywhere except `<pre>`/`<code>` inside articles (reader.css); no font files.
 - `OFIcon` (SF Symbol names for every icon in icons.tsx; `.image`), `FeedView.icon`, `FeedMark`/`FeedMarkDot`
   shapes and `FeedMarkIcon(size:color:)` for the logo glyph.
 - `SourceBadge(host:title:size:)` / `SourceBadge(source:size:)` in Views/Shared.
@@ -1041,3 +1040,23 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
 - ItemListView keeps the list at the top when a refresh inserts newer items above a top-scrolled list.
 - ReaderText.contentHasHero also matches the content's leading image by normalized file name (WordPress size/crop
   variants), so the hero isn't shown twice.
+
+### iOS 26 / typography pass — 2026-10-25
+- Deployment targets: **iOS 26.0** (project.yml), macOS stays 15.0. iOS-26-only SwiftUI API is used only inside
+  `#if os(iOS)`; every macOS path still compiles against macOS 15. Build/run on an iOS 26.3 simulator (e.g.
+  iPhone 17 Pro); the iOS 18.x simulators can no longer run the app.
+- No monospace: `OFFont.mono` is gone; metadata is SF (`OFFont.ui`) in the secondary color. reader.css keeps
+  `--font-mono` for `<pre>`/`<code>` only; `--font-serif` leads with `ui-serif, -apple-system-ui-serif`.
+  (`.monospacedDigit()` stays on a few counters/durations: that is SF with tabular figures, not a mono face.)
+- iPhone chrome is the system's (Liquid Glass): `ItemListView` on iPhone is the bare list under the navigation
+  bar (inline, no title text) with `FeedFilterMenu` (content type + hn100/labs/blogs, both single selection,
+  filled symbol when active) and `DefaultToolbarItem(kind: .search)` + `.searchable(...)` +
+  `.searchToolbarBehavior(.minimize)`; `.refreshable` replaces the refresh button. `PhoneListHeader`,
+  `FeedViewChips`, the phone `FeedSearchField` variant, `OFFont.phoneTitle/phoneSubline/chip` and
+  `Metrics.chipHeight` were removed. `FeedRefreshButton()` / `FeedSearchButton(searchFocus:)` /
+  `FeedSearchField(focus:)` are macOS/iPad only.
+- `ItemRowView(item:isSelected:isHovered:isPhone:)` (was `showsSnippet:`): iPhone rows are headline only and add
+  HN points/comments to the meta line. macOS/iPad rows are unchanged.
+- Sources and Settings tabs: no title text; Sources' "+" menu is a toolbar item. The iPhone reader uses the
+  system navigation bar (system back button; Save / Open original / Share / `SendToView(inSystemToolbar: true)`
+  in the bar) and its meta row scrolls with the article. iPad/macOS keep the custom reader toolbar row.

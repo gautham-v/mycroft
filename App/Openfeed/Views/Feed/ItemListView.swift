@@ -6,8 +6,9 @@ import SwiftUI
 ///
 /// - macOS / iPad (regular width): 54pt desktop header, rows without snippets. On macOS the column is an
 ///   inset `ofSurface` panel on `ofGround` (10pt top/bottom, and left when the sidebar is hidden).
-/// - iPhone (compact): large-title header, chips on the Feed tab, 2-line snippets, pull to refresh;
-///   opening a row pushes `ReaderView` onto this tab's NavigationStack.
+/// - iPhone (compact): no header or title; the system navigation bar carries a filter menu (content
+///   type + hn100/labs/blogs) and the `.searchable` search item; headline-only rows; pull to refresh.
+///   Opening a row pushes `ReaderView` onto this tab's NavigationStack.
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
 /// - Scrolls to the top when the view/source/folder/search changes, and keeps the highlighted row
@@ -83,36 +84,66 @@ struct ItemListView: View {
     }
 
     #if os(iOS)
+    /// iPhone: the list alone under the system navigation bar (no title text), so it scrolls under the
+    /// Liquid Glass bars. Toolbar: filter menu + search; pull to refresh.
     private var phoneColumn: some View {
-        VStack(spacing: 0) {
-            PhoneListHeader(searchFocus: $searchFocused, showsChips: showsChips, onBack: backAction)
-            list
-                .refreshable { await model.refresh(force: true) }
-        }
-        .background(Color.ofSurface)
-        .toolbar(.hidden, for: .navigationBar)
-        .onAppear { if homeTab == nil { homeTab = model.phoneTab } }
-        .navigationDestination(isPresented: readerPresented) {
-            ReaderView()
-        }
+        @Bindable var model = model
+        return list
+            .refreshable { await model.refresh(force: true) }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
+            .toolbar {
+                if showsBackButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: backToSources) {
+                            Label("Back to sources", systemImage: OFIcon.back.rawValue)
+                        }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    FeedFilterMenu(showsContentTypes: showsContentTypes)
+                }
+                DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
+            }
+            .searchable(text: $model.searchDraft, isPresented: searchPresented, prompt: Text(model.searchPlaceholder))
+            .searchToolbarBehavior(.minimize)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onSubmit(of: .search) { model.flushSearch() }
+            .onAppear { if homeTab == nil { homeTab = model.phoneTab } }
+            .navigationDestination(isPresented: readerPresented) {
+                ReaderView()
+            }
     }
 
-    /// Feed tab only (not a source/folder feed, not Saved), like the web's `tab === "feed"`.
-    private var showsChips: Bool {
+    /// The content-type section of the filter menu: Feed tab only (not a source/folder feed, not Saved),
+    /// like the web's `tab === "feed"` chips.
+    private var showsContentTypes: Bool {
         !model.isInSourceFeed && model.selectedView != .saved && (homeTab ?? .feed) == .feed
     }
 
-    /// Back chevron in a source or folder feed: pop to the Sources list.
-    private var backAction: (() -> Void)? {
-        guard model.isInSourceFeed else { return nil }
-        return {
-            if model.phoneTab == .sources {
-                dismiss()
-                model.goHome()
-            } else {
-                model.phoneTab = .sources
-            }
+    /// A source/folder feed shown at the root of a tab (opened from Settings) has no system back button.
+    /// Pushed from the Sources tab it does, and SourcesView handles the pop.
+    private var showsBackButton: Bool {
+        model.isInSourceFeed && (homeTab ?? model.phoneTab) != .sources
+    }
+
+    private func backToSources() {
+        if model.phoneTab == .sources {
+            dismiss()
+            model.goHome()
+        } else {
+            model.phoneTab = .sources
         }
+    }
+
+    /// Search presentation for this tab's instance only (TabView keeps every tab's list alive).
+    private var searchPresented: Binding<Bool> {
+        Binding(
+            get: { model.isSearchOpen && (homeTab == nil || homeTab == model.phoneTab) },
+            set: { open in
+                if open { model.openSearch() } else if model.isSearchOpen { model.closeSearch() }
+            })
     }
 
     private var readerPresented: Binding<Bool> {
@@ -177,7 +208,7 @@ struct ItemListView: View {
 
     private func row(_ item: FeedItem, selected: Bool, hovered: Bool, divider: Bool) -> some View {
         Button(action: { model.select(item) }) {
-            ItemRowView(item: item, isSelected: selected, isHovered: hovered, showsSnippet: isPhone)
+            ItemRowView(item: item, isSelected: selected, isHovered: hovered, isPhone: isPhone)
                 .equatable()
         }
         .buttonStyle(.plain)
