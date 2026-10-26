@@ -82,6 +82,8 @@ targets:
         DEVELOPMENT_TEAM: 26TVJ92MLZ
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Openfeed/Openfeed.entitlements
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        # The multiplatform default is iOS's @executable_path/Frameworks; a Mac app keeps Sparkle in Contents/Frameworks.
+        "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "$(inherited) @executable_path/../Frameworks"
         ENABLE_PREVIEWS: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
 schemes:
