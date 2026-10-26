@@ -59,7 +59,7 @@ extension Color {
     /// Control borders.
     static let ofBorder = Color(light: 0xD2D2D7, dark: 0x454545)
     /// Dividers between rows and sections.
-    static let ofHairline = Color(light: 0xE5E5EA, dark: 0x313133)
+    static let ofHairline = Color(light: 0xE5E5EA, dark: 0x373737)
     /// Scroller knob (macOS), Claude desktop's grey.
     static let ofScroller = Color(light: 0xBDBDC2, dark: 0x767676)
     /// Search box on the sidebar (Claude Code's: lighter than the sidebar behind it).

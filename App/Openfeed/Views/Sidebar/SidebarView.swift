@@ -146,8 +146,10 @@ struct SidebarView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 5)
+        // Edge to edge above the footer, like Claude's: the same 1pt hairline as the sidebar divider and top bar.
+        .overlay(alignment: .top) { Rectangle().fill(Color.ofHairline).frame(height: 1).allowsHitTesting(false) }
     }
 
     // MARK: Views

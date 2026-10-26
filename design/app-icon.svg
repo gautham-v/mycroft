@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <!-- OpenDispatch app icon: an ice front with each piece trailing its own color (green dot, orange
-       inner arc, pink outer arc) up-right, on a deep indigo like Firefox Developer Edition's.
+       inner arc, pink outer arc) up-right, on a deep night-sky blue.
        Source for the PNGs in App/Openfeed/Resources/Assets.xcassets; regenerate with scripts/render-icons.sh. -->
   <style>
     use { fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -26,9 +26,9 @@
       <stop offset="1" stop-color="#eadcf7"/>
     </linearGradient>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2a1b4e"/>
-      <stop offset="0.5" stop-color="#1e1339"/>
-      <stop offset="1" stop-color="#140c27"/>
+      <stop offset="0" stop-color="#15234a"/>
+      <stop offset="0.5" stop-color="#0c1533"/>
+      <stop offset="1" stop-color="#060a1c"/>
     </linearGradient>
     <!-- Faint light along the top edge, like other macOS icons. -->
     <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
