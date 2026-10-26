@@ -284,12 +284,6 @@ struct ReaderItemView: View {
             SendToView(item: item, size: buttonSize, iconSize: glyphSize)
 
             if !compact {
-                // Split and full screen act on the window, not the article: set them apart with a hairline.
-                Rectangle()
-                    .fill(Color.ofBorder)
-                    .frame(width: 1, height: 16)
-                    .padding(.horizontal, 6 - Metrics.readerActionSpacing)
-
                 if model.isSplit {
                     Button { model.closePane(pane) } label: { OFIcon.close.image }
                         .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))

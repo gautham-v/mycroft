@@ -65,7 +65,34 @@ enum OFIcon: String, CaseIterable {
     /// The quoted post under a quote post on X (list rows)
     case quoted = "arrow.turn.down.right"
 
-    var image: Image { Image(systemName: rawValue) }
+    /// macOS draws its toolbar and sidebar icons from our own symbols (Resources/Assets.xcassets/Icons):
+    /// thin, rounded 24-unit strokes like the Claude desktop app's, where SF Symbols read heavier. The
+    /// raw value stays the SF Symbol, which iOS and system labels (`systemImage:`) keep using.
+    var image: Image {
+        #if os(macOS)
+        if let name = customSymbol { return Image(name) }
+        #endif
+        return Image(systemName: rawValue)
+    }
+
+    private var customSymbol: String? {
+        switch self {
+        case .sidebar: "of.sidebar"
+        case .split: "of.split"
+        case .search: "of.search"
+        case .refresh: "of.refresh"
+        case .bookmark: "of.bookmark"
+        case .bookmarkFilled: "of.bookmark.fill"
+        case .external: "of.external"
+        case .share: "of.share"
+        case .send: "of.send"
+        case .expand: "of.expand"
+        case .collapse: "of.collapse"
+        case .close: "of.close"
+        case .plus: "of.plus"
+        default: nil
+        }
+    }
 }
 
 /// Icon for each sidebar view row (sidebar.tsx).

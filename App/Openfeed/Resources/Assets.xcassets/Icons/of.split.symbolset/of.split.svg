@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="3300" height="2200">
+ <g id="Notes">
+  <text id="template-version" x="2934" y="1933" style="font-size:13px">Template v.2.0</text>
+ </g>
+ <g id="Guides">
+  <line id="Baseline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="696" y2="696"/>
+  <line id="Capline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="625.541" y2="625.541"/>
+  <line id="Baseline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1556" y2="1556"/>
+  <line id="Capline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1485.54" y2="1485.54"/>
+  <line id="Baseline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1126.0" y2="1126.0"/>
+  <line id="Capline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1055.54" y2="1055.54"/>
+  <line id="left-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="1400.0" x2="1400.0" y1="1030" y2="1150"/>
+  <line id="right-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="1500.0" x2="1500.0" y1="1030" y2="1150"/>
+ </g>
+ <g id="Symbols">
+  <g id="Regular-M">
+   <path d="M1408.854 1111.603L1408.854 1069.937C1408.854 1061.020 1416.083 1053.791 1425.000 1053.791L1475.000 1053.791C1483.917 1053.791 1491.146 1061.020 1491.146 1069.937L1491.146 1111.603C1491.146 1120.520 1483.917 1127.749 1475.000 1127.749L1425.000 1127.749C1416.083 1127.749 1408.854 1120.520 1408.854 1111.603ZM1425.000 1061.082C1420.110 1061.082 1416.146 1065.047 1416.146 1069.937L1416.146 1111.603C1416.146 1116.493 1420.110 1120.457 1425.000 1120.457L1446.354 1120.457L1446.354 1061.083ZM1453.646 1061.083L1453.646 1120.457L1475.000 1120.457C1479.890 1120.457 1483.854 1116.493 1483.854 1111.603L1483.854 1069.937C1483.854 1065.047 1479.890 1061.082 1475.000 1061.082Z"/>
+  </g>
+ </g>
+</svg>
