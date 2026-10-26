@@ -11,6 +11,10 @@ struct RootView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
+    #if os(macOS)
+    /// The detail column's frame in window coordinates; the reader is drawn over it (see `macReader`).
+    @State private var detailFrame: CGRect = .zero
+    #endif
 
     var body: some View {
         @Bindable var model = model
@@ -68,11 +72,7 @@ struct RootView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .windowToolbar)
-            // Full-screen reader: macOS NavigationSplitView doesn't hide the content column for
-            // `.detailOnly`, so the reader covers the window instead (the detail column steps aside).
-            .overlay {
-                if model.isFocused { ReaderView().flushToWindowTop() }
-            }
+            .overlay { macReader }
             // Settings: a panel over the dimmed window (`model.showSettings(_:)`, ⌘,), not a window.
             .overlay {
                 ZStack {
@@ -84,6 +84,23 @@ struct RootView: View {
             .frame(minWidth: 900, minHeight: 560)
         #endif
     }
+
+    #if os(macOS)
+    /// The one reader view, drawn over the detail column, or over the whole window in the full-screen
+    /// reader. macOS NavigationSplitView doesn't hide the content column for `.detailOnly`, and moving
+    /// the reader between the column and a full-window overlay rebuilt it, restarting a playing video;
+    /// resizing the same view keeps it (and its web view) alive.
+    private var macReader: some View {
+        GeometryReader { proxy in
+            let window = proxy.frame(in: .global)
+            let frame = model.isFocused ? window : detailFrame
+            ReaderView()
+                .frame(width: frame.width, height: frame.height)
+                .offset(x: frame.minX - window.minX, y: frame.minY - window.minY)
+        }
+        .ignoresSafeArea()
+    }
+    #endif
 
     private var splitLayout: some View {
         NavigationSplitView(columnVisibility: columnVisibility) {
@@ -102,9 +119,9 @@ struct RootView: View {
         } detail: {
             Group {
                 #if os(macOS)
-                // The full-screen reader shows in an overlay (see `layout`); one reader at a time, so a
-                // video doesn't play twice.
-                if model.isFocused { Color.ofSurface } else { ReaderView() }
+                // The reader itself is drawn over this column (`macReader`); this marks where.
+                Color.ofSurface
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { detailFrame = $0 }
                 #else
                 ReaderView()
                 #endif
