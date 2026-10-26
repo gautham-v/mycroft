@@ -24,7 +24,7 @@ extension WebhookPayload {
             author: nil,
             publishedAt: ISO8601.string(from: now),
             summary: "A sample payload sent from Settings \u{2192} Integrations.",
-            source: SourceInfo(title: "Openfeed", host: "example.com"),
+            source: SourceInfo(title: "OpenDispatch", host: "example.com"),
             test: true
         )
     }

@@ -1024,9 +1024,9 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
 ### Integration — 2026-10-25
 - `AppModel.refresh(force:)` uses the progress API: `.started` sets `lastRefreshAt` (header says "updated just now"
   immediately); on a first launch with an empty list, the first source that adds items triggers `loadItems`.
-- Deep link `openfeed://add?url=<url>`: `CFBundleURLTypes` in project.yml, `RootView.onOpenURL` →
+- Deep link `opendispatch://add?url=<url>`: `CFBundleURLTypes` in project.yml, `RootView.onOpenURL` →
   `AppModel.handleOpenURL(_:)` sets `pendingAddSourceURL` and presents Add source; `AddSourceView` prefills from it.
-  `openfeed://settings?tab=<sources|appearance|playback|integrations|data|about>` calls `showSettings(_:)`.
+  `opendispatch://settings?tab=<sources|appearance|playback|integrations|data|about>` calls `showSettings(_:)`.
   Debug builds also take a launch argument `-OFSettingsTab <tab>` (RootView) to open a pane at launch, for
   driving Settings from the command line (`xcrun simctl launch booted com.gauthamv.openfeed -OFSettingsTab data`).
 - RootView attaches `.openfeedAutoRefresh()`; macOS split view uses `.toolbar(removing: .title)`.

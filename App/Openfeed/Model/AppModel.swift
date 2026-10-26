@@ -60,7 +60,7 @@ final class AppModel {
     // MARK: Presentation flags (sheets / dialogs)
 
     var isAddSourcePresented = false
-    /// URL to prefill in the Add source sheet (deep link `openfeed://add?url=…`); the sheet clears it.
+    /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
     var pendingAddSourceURL: String?
     var isShortcutsPresented = false
     /// iOS/iPad settings sheet (macOS uses the Settings scene). `settingsTab` picks the pane.
@@ -376,8 +376,8 @@ final class AppModel {
         }
     }
 
-    /// Deep links: `openfeed://add?url=<feed or site>` opens Add source prefilled with that URL;
-    /// `openfeed://settings?tab=<sources|appearance|playback|integrations|data|about>` opens Settings on that pane.
+    /// Deep links: `opendispatch://add?url=<feed or site>` opens Add source prefilled with that URL;
+    /// `opendispatch://settings?tab=<sources|appearance|playback|integrations|data|about>` opens Settings on that pane.
     func handleOpenURL(_ url: URL) {
         guard url.scheme?.lowercased() == "openfeed" else { return }
         let action = (url.host ?? url.path).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/"))

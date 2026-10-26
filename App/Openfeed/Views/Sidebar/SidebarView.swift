@@ -86,7 +86,7 @@ struct SidebarView: View {
     private var header: some View {
         HStack(spacing: 8) {
             FeedMarkIcon(size: 20)
-            Text("Openfeed")
+            Text("OpenDispatch")
                 .font(OFFont.serif(17, .semibold))
                 .tracking(-0.17)
                 .foregroundStyle(.ofInk)

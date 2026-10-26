@@ -32,7 +32,7 @@ targets:
     info:
       path: Openfeed/Info.plist
       properties:
-        CFBundleDisplayName: Openfeed
+        CFBundleDisplayName: OpenDispatch
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.news
@@ -49,7 +49,7 @@ targets:
           NSAllowsArbitraryLoads: true
         CFBundleURLTypes:
           - CFBundleURLName: com.gauthamv.openfeed
-            CFBundleURLSchemes: [openfeed]
+            CFBundleURLSchemes: [opendispatch]
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: org.opml.opml
             UTTypeDescription: OPML File
@@ -59,7 +59,7 @@ targets:
               public.mime-type: [text/x-opml]
     settings:
       base:
-        PRODUCT_NAME: Openfeed
+        PRODUCT_NAME: OpenDispatch
         PRODUCT_BUNDLE_IDENTIFIER: com.gauthamv.openfeed
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

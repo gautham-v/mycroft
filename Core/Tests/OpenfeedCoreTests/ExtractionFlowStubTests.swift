@@ -65,7 +65,7 @@ struct ExtractionFlowStubTests {
         #expect(out.rendered == false)
         let reqs = ExtractionStubProtocol.requests().filter { $0.0 == "https://e.com/a" }
         #expect(reqs.count == 2)
-        #expect(reqs[0].1.contains("Openfeed/0.1"))
+        #expect(reqs[0].1.contains("OpenDispatch/1.0"))
         #expect(reqs[1].1.contains("Chrome/"))
     }
 

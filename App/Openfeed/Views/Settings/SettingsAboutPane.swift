@@ -23,7 +23,7 @@ struct SettingsAboutPane: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         FeedMarkIcon(size: 16)
-                        Text("Openfeed")
+                        Text("OpenDispatch")
                             .font(OFFont.ui(17, .semibold))
                             .tracking(-0.17)
                             .foregroundStyle(.ofInk)

@@ -18,7 +18,7 @@ public enum HTTPError: Error, LocalizedError, Equatable {
 
 /// Shared HTTP helpers (port of src/lib/http.ts). Use these everywhere so the UA and timeouts stay consistent.
 public enum HTTP {
-    public static let userAgent = "Mozilla/5.0 (compatible; Openfeed/0.1; +https://github.com/gautham-v/openfeed)"
+    public static let userAgent = "Mozilla/5.0 (compatible; OpenDispatch/1.0; +https://github.com/gautham-v/opendispatch)"
 
     /// Retry headers for pages that refuse bot User-Agents (they override `userAgent`).
     public static let browserHeaders: [String: String] = [

@@ -18,7 +18,7 @@ public struct DefaultOPMLCoder: OPMLCoding {
             #"<?xml version="1.0" encoding="UTF-8"?>"#,
             #"<opml version="2.0" xmlns:openfeed="\#(Self.namespace)">"#,
             "  <head>",
-            "    <title>Openfeed subscriptions</title>",
+            "    <title>OpenDispatch subscriptions</title>",
             "    <dateCreated>\(Self.utcString(now))</dateCreated>",
             "  </head>",
             "  <body>",

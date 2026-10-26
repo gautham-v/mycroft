@@ -1,7 +1,6 @@
-# Openfeed
-
+# OpenDispatch
+Shown as **OpenDispatch** (the App Store name). The Xcode target, the `OpenfeedCore` package and the bundle id `com.gauthamv.openfeed` keep the original name Openfeed.
 A personal AI news reader for macOS and iOS. Pulls RSS/Atom feeds, YouTube channels, podcasts and feedless news pages into one chronological feed, extracts full article text, plays videos and podcasts inline, and sends items to Readwise Reader or a webhook.
-
 Single user, no accounts, no server. Everything runs and is stored on the device. Native SwiftUI app (one multiplatform target) on a local Swift package. MIT licensed.
 
 ## Requirements
@@ -53,7 +52,7 @@ Feeds are fetched when the app opens or comes to the foreground if the last fetc
 
 ## Sources
 
-Add sources from the sidebar (Mac/iPad), the Sources tab (iPhone), or ⌘N: paste a site URL, a feed URL, a YouTube channel URL (`youtube.com/@handle`), or an Apple Podcasts link, and the app finds the feed. `openfeed://add?url=<url>` opens the same sheet prefilled. `openfeed://settings?tab=data` opens Settings on a pane (sources, appearance, playback, integrations, data, about).
+Add sources from the sidebar (Mac/iPad), the Sources tab (iPhone), or ⌘N: paste a site URL, a feed URL, a YouTube channel URL (`youtube.com/@handle`), or an Apple Podcasts link, and the app finds the feed. `opendispatch://add?url=<url>` opens the same sheet prefilled. `opendispatch://settings?tab=data` opens Settings on a pane (sources, appearance, playback, integrations, data, about).
 
 To move subscriptions in or out, use **Import OPML** / **Export OPML** in Settings → Sources. Import takes an OPML file from Feedly, Inoreader, NetNewsWire and the like: outline folders become sidebar folders (matched to existing ones by name), feeds you already have are skipped, and nothing is fetched until the next refresh. Exports include an `openfeed:kind` attribute so scraped pages and podcasts round-trip.
 

@@ -42,7 +42,7 @@ public final class AppDatabase: Sendable {
     public static func defaultDirectory() throws -> URL {
         let fm = FileManager.default
         let base = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let dir = base.appendingPathComponent("Openfeed", isDirectory: true)
+        let dir = base.appendingPathComponent("OpenDispatch", isDirectory: true)
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
