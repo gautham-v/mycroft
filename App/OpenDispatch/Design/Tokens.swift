@@ -170,8 +170,10 @@ enum Metrics {
     static let sidebarToggleX: CGFloat = 80
     /// Leading space that clears the lights (full-screen reader).
     static let trafficLightInset: CGFloat = 84
-    /// Air between the list header row and the first row.
-    static let listHeaderGap: CGFloat = 6
+    /// Air between the list header row and the first row: with the list's own 1pt, the 16pt that
+    /// rows keep from the column's sides (8pt row inset + 8pt from the list), so a selected first row
+    /// sits evenly in its corner.
+    static let listHeaderGap: CGFloat = 15
     /// Item row padding (px-2.5 py-[11px]) and the inset hairline start (10 + 24 + 12).
     static let rowPaddingH: CGFloat = 10
     static let rowPaddingV: CGFloat = 11
