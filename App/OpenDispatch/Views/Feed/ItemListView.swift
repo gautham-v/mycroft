@@ -15,13 +15,15 @@ import AppKit
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
 /// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
-///   in the focused pane. The context menu offers the same two. The selected row is the focused pane's
+///   in the focused pane. The context menu offers the same two, plus Open Original, Save, a Share submenu
+///   and Go to <source>. The selected row is the focused pane's
 ///   item, the other pane's item gets a lighter highlight, and rows open in a background tab show a dot.
 /// - Scrolls to the top when the view/source/folder/search changes, and keeps the highlighted row
 ///   visible when it moves (keyboard).
 /// - Keyboard shortcuts (KeyboardShortcuts.swift) are attached here.
 struct ItemListView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -33,6 +35,8 @@ struct ItemListView: View {
     /// iPhone: the tab this instance lives in, learned on first appearance (TabView keeps every tab
     /// alive, so only the instance of the active tab may push the reader).
     @State private var homeTab: PhoneTab?
+    /// A Send to from the row menu failed: the message, shown in an alert.
+    @State private var sendError: String?
 
     /// Rows within this many of the end trigger the next page (≈ the web's 600px rootMargin).
     private static let prefetchRows = 8
@@ -58,6 +62,11 @@ struct ItemListView: View {
                 } else {
                     searchFocused = false
                 }
+            }
+            .alert("Couldn’t send", isPresented: Binding(get: { sendError != nil }, set: { if !$0 { sendError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(sendError ?? "")
             }
     }
 
@@ -234,6 +243,49 @@ struct ItemListView: View {
         }
     }
 
+    /// Where to open it, Save, Share (the reader's Share menu as a submenu), then the source's feed.
+    @ViewBuilder private func rowMenu(_ item: FeedItem) -> some View {
+        let url = URL(string: item.item.url)
+        Button("Open in New Tab") { model.openInNewTab(item) }
+        Button("Open in Split View") { model.openInSplit(item) }
+        if let url {
+            Button("Open Original") { openURL(url) }
+        }
+        Divider()
+        Button(item.isSaved ? "Remove from Saved" : "Save") { Task { await model.toggleSaved(item) } }
+        if let url {
+            Menu("Share") {
+                ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
+                    Text("Share…")
+                }
+                Button("Copy Link") { ReaderPasteboard.copy(url) }
+                Divider()
+                let targets = model.integrations.configuredTargets
+                if targets.isEmpty {
+                    Button("Set Up Send To…") { model.showSettings(.integrations) }
+                } else {
+                    ForEach(targets) { t in
+                        Button("Send to \(SendToView.menuLabel(t))") { send(item, to: t) }
+                    }
+                }
+            }
+        }
+        if model.selectedSourceID != item.source.id {
+            Divider()
+            Button("Go to \(item.source.title)") { model.navigate(sourceID: item.source.id) }
+        }
+    }
+
+    private func send(_ item: FeedItem, to target: SendTarget) {
+        Task {
+            do {
+                try await model.send(item, to: target)
+            } catch {
+                sendError = HTTP.message(error)
+            }
+        }
+    }
+
     private func row(_ item: FeedItem, selected: Bool, secondary: Bool, openInTab: Bool, hovered: Bool, divider: Bool) -> some View {
         Button(action: { open(item) }) {
             ItemRowView(item: item, isSelected: selected, isSecondary: secondary, isOpenInTab: openInTab,
@@ -241,10 +293,7 @@ struct ItemListView: View {
                 .equatable()
         }
         .buttonStyle(.plain)
-        .rowContextMenu(enabled: !isPhone) {
-            Button("Open in New Tab") { model.openInNewTab(item) }
-            Button("Open in Split View") { model.openInSplit(item) }
-        }
+        .rowContextMenu(enabled: !isPhone) { rowMenu(item) }
         .overlay(alignment: .top) {
             if divider {
                 Rectangle()

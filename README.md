@@ -48,6 +48,7 @@ Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
 | j or ↓ / k or ↑ | Next / previous item |
 | o or Enter | Open the original in the browser |
 | s | Save or unsave |
+| ⇧⌘R | Reload the article (extract it again) |
 | g then a / s / v / p | All / Saved / Video / Podcasts |
 | ⌘-click | Open in a new tab |
 | ⌥-click | Open in split view |

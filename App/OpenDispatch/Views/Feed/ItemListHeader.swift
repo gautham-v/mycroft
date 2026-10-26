@@ -1,8 +1,8 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 44pt on the Mac's top row (54pt on iPad), title 15/600 + "updated X ago" 13 muted on
-/// one baseline, search button (or the search field in place of the title), refresh button.
+/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 44pt on the Mac's top row (54pt on iPad), title + "updated X ago" muted (14.5 regular, as the reader
+/// toolbar's source · time) on one baseline, search button (or the search field in place of the title), refresh button.
 /// A show-sidebar button leads when the sidebar is collapsed.
 struct DesktopListHeader: View {
     @Environment(AppModel.self) private var model
@@ -27,7 +27,6 @@ struct DesktopListHeader: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(model.listTitle)
                         .font(OFFont.listHeaderTitle)
-                        .tracking(-0.15)
                         .foregroundStyle(.ofInk)
                         .lineLimit(1)
                         .layoutPriority(1)

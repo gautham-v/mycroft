@@ -94,6 +94,11 @@ struct OpenDispatchCommands: Commands {
             Button("Show Previous Tab") { model.selectTab(offset: -1) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
                 .disabled(model.panes[model.focusedPane].tabs.count < 2)
+            Divider()
+            // Re-extract the focused reader's article (⌘R is Feed › Refresh).
+            Button("Reload Article") { if let item = model.selectedItem { model.reloadArticle(item) } }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(model.selectedItem == nil || model.selectedItem?.source.kind == .youtube)
         }
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { model.isShortcutsPresented = true }

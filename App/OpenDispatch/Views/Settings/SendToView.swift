@@ -7,8 +7,7 @@ import SwiftUI
 /// 1.8 s; an error shows in a small popover for 5 s.
 ///
 /// Given `share`, it is the desktop reader's Share button instead: the share glyph opens one menu with
-/// Share…, Copy link and the send targets, and the same sending / sent / error feedback. Given `retry` too,
-/// the menu ends with Retry extraction.
+/// Share…, Copy Link and the send targets, and the same sending / sent / error feedback.
 ///
 ///     SendToView(item: item)                       // 30pt desktop button
 ///     SendToView(item: item, size: Metrics.touchTarget)   // phone
@@ -22,8 +21,6 @@ struct SendToView: View {
     var inSystemToolbar = false
     /// The link to share: Share and Send to become one menu under the share glyph.
     var share: URL? = nil
-    /// Re-extracts the article; listed last in the share menu.
-    var retry: (() -> Void)? = nil
 
     /// MENU_LABEL in send-to.tsx.
     static func menuLabel(_ target: SendTarget) -> String {
@@ -130,19 +127,15 @@ struct SendToView: View {
         ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
             Text("Share…")
         }
-        Button("Copy link") { ReaderPasteboard.copy(url) }
+        Button("Copy Link") { ReaderPasteboard.copy(url) }
         Divider()
         if targets.isEmpty {
-            Button("Send to… (set up in Settings)") { openIntegrationsSettings() }
+            Button("Set Up Send To…") { openIntegrationsSettings() }
         } else {
             ForEach(targets) { t in
                 Button("Send to \(Self.menuLabel(t))") { Task { await send(to: t) } }
                     .disabled(status == .sending)
             }
-        }
-        if let retry {
-            Divider()
-            Button("Retry extraction", action: retry)
         }
     }
 

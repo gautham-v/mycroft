@@ -86,16 +86,18 @@ enum ReaderHTML {
 
 /// The article body: a WKWebView sized to its content so it scrolls with the native header inside the
 /// reader's ScrollView. Links open in the system browser; text is selectable; follows dark mode.
+/// On the Mac its right-click menu adds Open Original, Copy Link and Reload Article (`onReload`).
 struct ReaderArticleWebView: View {
     let html: String
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
+    var onReload: (() -> Void)? = nil
 
     @State private var height: CGFloat = 0
 
     var body: some View {
-        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance) { h in
+        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload) { h in
             if abs(h - height) > 0.5 { height = h }
         }
         .frame(height: max(height, 1))
@@ -110,6 +112,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     var loadedKey: String?
     var appearance: ReaderHTML.Appearance?
     var documentURL: URL?
+    var onReload: (() -> Void)?
 
     init(onHeight: @escaping (CGFloat) -> Void) { self.onHeight = onHeight }
 
@@ -150,6 +153,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         webView.allowsBackForwardNavigationGestures = false
         #if os(macOS)
         webView.allowsMagnification = false
+        webView.extraMenuItems = { [weak self] in self?.menuItems() ?? [] }
         #else
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
@@ -160,6 +164,24 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         ReaderWebSupport.makeTransparent(webView)
         return webView
     }
+
+    #if os(macOS)
+    /// The article's own actions for the right-click menu (the headline's context menu has the same).
+    private func menuItems() -> [NSMenuItem] {
+        var items: [NSMenuItem] = []
+        if let url = documentURL {
+            items.append(ReaderMenuItem("Open Original") { ReaderWebSupport.openExternally(url) })
+            items.append(ReaderMenuItem("Copy Link") { ReaderPasteboard.copy(url) })
+        }
+        if let onReload {
+            let reload = ReaderMenuItem("Reload Article", action: onReload)
+            reload.keyEquivalent = "r"
+            reload.keyEquivalentModifierMask = [.command, .shift]
+            items.append(reload)
+        }
+        return items
+    }
+    #endif
 
     func update(_ webView: WKWebView, html: String, hero: String?, baseURL: URL?, appearance: ReaderHTML.Appearance) {
         let key = "\(baseURL?.absoluteString ?? "")\n\(hero ?? "")\n\(html.count)\n\(html.hashValue)"
@@ -182,6 +204,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
+    let onReload: (() -> Void)?
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
@@ -190,6 +213,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
+        context.coordinator.onReload = onReload
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
 
@@ -205,6 +229,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
+    let onReload: (() -> Void)?
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
@@ -213,6 +238,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
 
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
+        context.coordinator.onReload = onReload
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
 

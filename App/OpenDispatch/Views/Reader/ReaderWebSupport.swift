@@ -92,6 +92,30 @@ final class ReaderWeakScriptHandler: NSObject, WKScriptMessageHandler {
 /// tables) stay with the page.
 final class ReaderFittedWebView: WKWebView {
     var forwardsVerticalScroll = true
+    /// The article's actions, added to WebKit's right-click menu above Inspect Element.
+    var extraMenuItems: (() -> [NSMenuItem])?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        var extra = extraMenuItems?() ?? []
+        guard !extra.isEmpty else { return }
+        // WebKit's Reload would only reload the extracted HTML; Reload Article re-extracts.
+        menu.items.removeAll { $0.identifier?.rawValue == "WKMenuItemIdentifierReload" }
+        // On a link WebKit already offers Open Link and Copy Link; keep only Reload Article.
+        if menu.items.contains(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierCopyLink" }) {
+            extra = extra.filter { $0.title == "Reload Article" }
+        }
+        var at = menu.items.firstIndex { $0.identifier?.rawValue == "WKMenuItemIdentifierInspectElement" } ?? menu.items.count
+        if at > 0, !menu.items[at - 1].isSeparatorItem {
+            menu.insertItem(.separator(), at: at)
+            at += 1
+        }
+        for item in extra {
+            menu.insertItem(item, at: at)
+            at += 1
+        }
+        if at < menu.items.count, !menu.items[at].isSeparatorItem { menu.insertItem(.separator(), at: at) }
+    }
 
     override func scrollWheel(with event: NSEvent) {
         if forwardsVerticalScroll, abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) {
@@ -110,6 +134,21 @@ final class ReaderFittedWebView: WKWebView {
         }
         super.keyDown(with: event)
     }
+}
+
+/// A menu item that runs a closure (the web view's right-click additions).
+final class ReaderMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, action handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    @objc private func run() { handler() }
 }
 
 /// Keyboard scrolling of the reader's (native) ScrollView, shared by the fitted article web view and

@@ -23,9 +23,10 @@ enum OFFont {
     static let thumbBadge = ui(10, .medium).monospacedDigit()
 
     // Headers (openfeed-app.tsx)
-    /// Desktop list header title 15 / 600, tracking -0.01em; subline 13 muted.
-    static let listHeaderTitle = ui(15, .semibold)
-    static let listHeaderSubline = ui(13)
+    /// Desktop list header: title ink, "updated 5m ago" muted, both regular at the sidebar's row size
+    /// like the reader toolbar's source · time beside it.
+    static let listHeaderTitle = ui(14.5)
+    static let listHeaderSubline = ui(14.5)
     /// Bottom tab labels 11 / 500.
     static let tabLabel = ui(11, .medium)
 

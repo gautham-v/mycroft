@@ -26,6 +26,7 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["k", "↑"], label: "Previous item", separator: "or"),
             ShortcutEntry(keys: ["o", "Enter"], label: "Open original in the browser", separator: "or"),
             ShortcutEntry(keys: ["s"], label: "Save or unsave"),
+            ShortcutEntry(keys: ["⇧", "⌘", "R"], label: "Reload the article"),
         ]),
         ShortcutGroup(title: "Views", items: [
             ShortcutEntry(keys: ["g", "a"], label: "All", separator: "then"),

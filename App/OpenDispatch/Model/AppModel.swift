@@ -115,6 +115,8 @@ final class AppModel {
     private(set) var isRefreshing = false
     private(set) var lastRefreshResult: RefreshResult?
     private(set) var integrations = IntegrationsState()
+    /// Bumped per item by Reload Article; the reader showing that item re-extracts when it changes.
+    private(set) var articleReloads: [Int64: Int] = [:]
 
     /// Reader settings, theme, playback. Persisted on change.
     var settings: AppSettings {
@@ -436,6 +438,20 @@ final class AppModel {
         } catch {
             await loadStats()
         }
+    }
+
+    /// Fetch one source (sidebar "Refresh Source"), then reload what changed.
+    func refreshSource(id: Int64) async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        _ = try? await services.refresh.refreshSource(id: id)
+        await reloadAll()
+    }
+
+    /// Re-extract an item's article in whichever reader shows it (Reload Article, ⇧⌘R).
+    func reloadArticle(_ item: FeedItem) {
+        articleReloads[item.id, default: 0] += 1
     }
 
     /// Live refresh progress: "updated just now" as soon as a refresh starts, and on a first launch

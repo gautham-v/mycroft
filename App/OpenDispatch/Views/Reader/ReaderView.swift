@@ -168,6 +168,8 @@ struct ReaderItemView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .task { await load(refresh: false) }
+        // Reload Article (⇧⌘R, or the article's right-click menu).
+        .onChange(of: model.articleReloads[item.id]) { _, _ in Task { await load(refresh: true) } }
     }
 
     /// Source badge + source · time, as in the item's list row.
@@ -273,9 +275,8 @@ struct ReaderItemView: View {
                     .help("Open original")
                     .accessibilityLabel("Open original")
 
-                // Share…, Copy link, Send to and Retry extraction in one menu.
-                SendToView(item: item, size: buttonSize, iconSize: glyphSize, share: url,
-                           retry: isVideo ? nil : { Task { await load(refresh: true) } })
+                // Share…, Copy Link and Send to in one menu.
+                SendToView(item: item, size: buttonSize, iconSize: glyphSize, share: url)
             } else {
                 SendToView(item: item, size: buttonSize, iconSize: glyphSize)
             }
@@ -323,7 +324,8 @@ struct ReaderItemView: View {
         Group {
             switch content {
             case .ok:
-                ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance)
+                ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
+                                     onReload: { model.reloadArticle(item) })
             case .loading:
                 VStack(alignment: .leading, spacing: 0) {
                     heroImage
@@ -407,12 +409,14 @@ struct ReaderItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The same items the article body's right-click menu adds (ReaderFittedWebView).
     @ViewBuilder private var headlineMenu: some View {
         if let url = itemURL {
-            Button("Open original") { openURL(url) }
-            Button("Copy link") { ReaderPasteboard.copy(url) }
+            Button("Open Original") { openURL(url) }
+            Button("Copy Link") { ReaderPasteboard.copy(url) }
+            Divider()
         }
-        Button("Retry extraction") { Task { await load(refresh: true) } }
+        Button("Reload Article") { model.reloadArticle(item) }
             .disabled(content == .loading)
     }
 

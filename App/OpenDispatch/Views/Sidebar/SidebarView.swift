@@ -365,32 +365,39 @@ struct SidebarView: View {
     @ViewBuilder
     private func folderMenu(_ folder: Folder) -> some View {
         Button("Rename") { editing = .renameFolder(folder.id) }
-        Button("New folder") { editing = .newFolder(withSource: nil) }
+        Button("New Folder") { editing = .newFolder(withSource: nil) }
         Divider()
-        Button(model.allSources(inFolder: folder.id).isEmpty ? "Delete folder" : "Delete folder (keep sources)", role: .destructive) {
+        Button(model.allSources(inFolder: folder.id).isEmpty ? "Delete Folder" : "Delete Folder (Keep Sources)", role: .destructive) {
             deleteFolder(folder.id)
         }
     }
 
+    /// Source actions first, then sidebar placement, then the folder submenu, then Remove.
     @ViewBuilder
     private func sourceMenu(_ source: Source) -> some View {
-        Button(source.isPinned ? "Unpin" : "Pin to sidebar") { setPinned(source, !source.isPinned) }
-        Button(source.isHidden ? "Unhide" : "Hide from sidebar") { setHidden(source, !source.isHidden) }
+        Button("Refresh Source") { Task { await model.refreshSource(id: source.id) } }
+            .disabled(model.isRefreshing)
+        if let url = URL(string: source.url), url.scheme != nil {
+            Button("Open Site") { openURL(url) }
+        }
+        if let feed = URL(string: source.feedUrl) {
+            Button("Copy Feed URL") { ReaderPasteboard.copy(feed) }
+        }
         Divider()
-        Section("Move to") {
+        Button(source.isPinned ? "Unpin" : "Pin to Sidebar") { setPinned(source, !source.isPinned) }
+        Button(source.isHidden ? "Unhide" : "Hide from Sidebar") { setHidden(source, !source.isHidden) }
+        Divider()
+        Button("Rename") { editing = .renameSource(source.id) }
+        Menu("Move to") {
             ForEach(model.orderedFolders) { folder in
                 Toggle(folder.title, isOn: moveBinding(source, to: folder.id))
             }
             Toggle("Unfiled", isOn: moveBinding(source, to: nil))
+            Divider()
+            Button("New Folder…") { editing = .newFolder(withSource: source.id) }
         }
         Divider()
-        Button("New folder with this") { editing = .newFolder(withSource: source.id) }
-        Button("Rename") { editing = .renameSource(source.id) }
-        if let url = URL(string: source.url), url.scheme != nil {
-            Button("Open site") { openURL(url) }
-        }
-        Divider()
-        Button("Remove source…", role: .destructive) { pendingDelete = source }
+        Button("Remove Source…", role: .destructive) { pendingDelete = source }
     }
 
     /// Checked when the source is in that folder; checking it moves the source there.
