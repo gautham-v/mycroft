@@ -7,7 +7,7 @@
      </body>
    </html>
 
-   data-font / data-size come from AppSettings (readerFont / textSize). Default is 17.5px serif.
+   data-font / data-size come from AppSettings (readerFont / textSize). Default is 17.5px sans.
    data-wide="1|0" (set by ReaderView) picks the 32px / 20px side padding so the body lines up with the
    native header column; without it the media query below decides. The reader web view is fitted to the
    article's height, so the page itself never scrolls vertically. */
@@ -81,7 +81,7 @@ body {
   max-width: 640px;
   margin: 0 auto;
   padding: 0 20px 32px;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 17.5px;
   line-height: 1.6;
   color: var(--ink);
@@ -94,7 +94,7 @@ body {
 .prose-openfeed[data-wide="0"] { padding-left: 20px; padding-right: 20px; }
 body { overflow-y: hidden; }
 ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
-.prose-openfeed[data-font="sans"] { font-family: var(--font-sans); }
+.prose-openfeed[data-font="serif"] { font-family: var(--font-serif); }
 .prose-openfeed[data-size="s"] { font-size: 16px; }
 .prose-openfeed[data-size="l"] { font-size: 19.5px; }
 

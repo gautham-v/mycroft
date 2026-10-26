@@ -42,7 +42,7 @@ enum TextSizeSetting: String, Codable, CaseIterable, Identifiable, Sendable {
 
 struct AppSettings: Codable, Equatable, Sendable {
     var theme: ThemeSetting = .system
-    var readerFont: ReaderFontSetting = .serif
+    var readerFont: ReaderFontSetting = .sans
     var textSize: TextSizeSetting = .m
     /// Start playing when you open a video.
     var autoplay: Bool = true
@@ -51,12 +51,14 @@ struct AppSettings: Codable, Equatable, Sendable {
 
     static let defaults = AppSettings()
     static let storageKey = "openfeed.settings"
+    /// Set once the reader font default moved to Sans (1.0.6); settings saved before then carry Serif.
+    private static let sansDefaultKey = "openfeed.settings.sans-default"
 
     /// Unknown keys and invalid values fall back to defaults (sanitize in use-settings.ts).
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = (try? c.decode(ThemeSetting.self, forKey: .theme)) ?? .system
-        readerFont = (try? c.decode(ReaderFontSetting.self, forKey: .readerFont)) ?? .serif
+        readerFont = (try? c.decode(ReaderFontSetting.self, forKey: .readerFont)) ?? .sans
         textSize = (try? c.decode(TextSizeSetting.self, forKey: .textSize)) ?? .m
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
@@ -66,7 +68,13 @@ struct AppSettings: Codable, Equatable, Sendable {
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         guard let data = defaults.data(forKey: storageKey),
-              let s = try? JSONDecoder().decode(AppSettings.self, from: data) else { return AppSettings() }
+              var s = try? JSONDecoder().decode(AppSettings.self, from: data) else { return AppSettings() }
+        // Saved settings hold the old Serif default whether or not it was picked: switch them to Sans once.
+        if !defaults.bool(forKey: sansDefaultKey) {
+            defaults.set(true, forKey: sansDefaultKey)
+            s.readerFont = .sans
+            s.save(to: defaults)
+        }
         return s
     }
 
