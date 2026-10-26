@@ -141,25 +141,26 @@ struct ReaderItemView: View {
     // MARK: Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !compact { toolbar }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if compact {
-                        metaRow
-                            .readerColumn(wide: false)
-                            .padding(.top, 8)
-                    }
-                    if isVideo {
-                        ReaderVideoBody(item: item, autoplay: settings.autoplay, theater: settings.theater, wide: wide)
-                    } else {
-                        article
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if compact {
+                    metaRow
+                        .readerColumn(wide: false)
+                        .padding(.top, 8)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                if isVideo {
+                    ReaderVideoBody(item: item, autoplay: settings.autoplay, theater: settings.theater, wide: wide)
+                } else {
+                    article
+                }
             }
-            .scrollContentBackground(.hidden)
-            .overlayScrollers()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollContentBackground(.hidden)
+        .overlayScrollers()
+        // The article scrolls under the toolbar, which is frosted.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !compact { toolbar }
         }
         .background(Color.ofSurface)
         #if os(iOS)
@@ -239,7 +240,7 @@ struct ReaderItemView: View {
         .overlay(alignment: .bottom) {
             if isFocusedPane { Rectangle().fill(Color.ofAccent).frame(height: 2) }
         }
-        .background(Color.ofSurface.opacity(0.95))
+        .frostedBar()
     }
 
     /// macOS full-screen reader: the traffic lights sit over the toolbar's leading edge (the left pane's).

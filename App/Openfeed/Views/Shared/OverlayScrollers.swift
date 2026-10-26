@@ -218,7 +218,7 @@ final class TrafficLightsView: NSView {
 /// owns the split view, so its class is swapped in place (this subclass adds no storage). The
 /// list | reader divider takes the hairline color the rows and reader bar use. The sidebar divider
 /// is a CoreUI image plus a 1pt strip of sidebar material, neither of which takes a color, so both
-/// are hidden and a HairlineStrip draws the same 1pt hairline in their place.
+/// are hidden and a HairlineStrip draws a 1pt hairline tint in their place.
 final class HairlineSplitView: NSSplitView {
     override var dividerColor: NSColor { NSColor(.ofHairline) }
 
@@ -314,11 +314,11 @@ final class HairlineSplitView: NSSplitView {
         }
     }
 }
-/// A 1pt line in the hairline color (the sidebar divider, see HairlineSplitView).
+/// A 1pt line in the sidebar's hairline tint (the sidebar divider, see HairlineSplitView).
 final class HairlineStrip: NSView {
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(.ofHairline).setFill()
-        bounds.fill()
+        NSColor(.ofNavHairline).setFill()
+        bounds.fill(using: .sourceOver)
     }
 
     override func viewDidChangeEffectiveAppearance() {

@@ -82,7 +82,7 @@ struct SidebarFilterField: View {
         .background(Color.ofField, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(focused ? Color.ofBorder : Color.ofHairline, lineWidth: 1)
+                .strokeBorder(focused ? Color.ofBorder : Color.ofNavHairline, lineWidth: 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }

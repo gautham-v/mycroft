@@ -14,15 +14,15 @@ import AppKit
 
 extension Color {
     /// A color that resolves per light/dark appearance (follows `.preferredColorScheme`).
-    init(light: UInt32, dark: UInt32) {
+    init(light: UInt32, lightAlpha: CGFloat = 1, dark: UInt32, darkAlpha: CGFloat = 1) {
         #if canImport(UIKit)
         self.init(uiColor: UIColor { traits in
-            UIColor(rgb: traits.userInterfaceStyle == .dark ? dark : light)
+            traits.userInterfaceStyle == .dark ? UIColor(rgb: dark, alpha: darkAlpha) : UIColor(rgb: light, alpha: lightAlpha)
         })
         #else
         self.init(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return NSColor(rgb: isDark ? dark : light)
+            return isDark ? NSColor(rgb: dark, alpha: darkAlpha) : NSColor(rgb: light, alpha: lightAlpha)
         })
         #endif
     }
@@ -45,9 +45,13 @@ extension Color {
     static let ofSelection = Color(light: 0xE8E8EC, dark: 0x383839)
     /// Hovered list row / button.
     static let ofHover = Color(light: 0xF4F4F6, dark: 0x2C2C2D)
-    /// Sidebar rows sit on ground, so they need their own hover/selection.
-    static let ofNavHover = Color(light: 0xE9E9ED, dark: 0x353537)
-    static let ofNavSelection = Color(light: 0xE1E1E6, dark: 0x3F3F42)
+    /// Sidebar rows sit on ground, so they need their own hover/selection. Tints, not solids, so the
+    /// translucent macOS sidebar shows through them; on opaque ground they match E9E9ED/353537 and
+    /// E1E1E6/3F3F42.
+    static let ofNavHover = Color(light: 0x000000, lightAlpha: 0.04, dark: 0xFFFFFF, darkAlpha: 0.05)
+    static let ofNavSelection = Color(light: 0x000000, lightAlpha: 0.07, dark: 0xFFFFFF, darkAlpha: 0.10)
+    /// Dividers on the sidebar (its edge, above the footer, the search box): ofHairline as a tint.
+    static let ofNavHairline = Color(light: 0x000000, lightAlpha: 0.06, dark: 0xFFFFFF, darkAlpha: 0.06)
     /// Titles, primary text.
     static let ofInk = Color(light: 0x1D1D1F, dark: 0xF5F5F7)
     /// Body text.
@@ -62,8 +66,13 @@ extension Color {
     static let ofHairline = Color(light: 0xE5E5EA, dark: 0x373737)
     /// Scroller knob (macOS), Claude desktop's grey.
     static let ofScroller = Color(light: 0xBDBDC2, dark: 0x767676)
-    /// Search box on the sidebar (Claude Code's: lighter than the sidebar behind it).
+    /// Search box on the sidebar (Claude Code's: lighter than the sidebar behind it). Translucent on
+    /// macOS, where the sidebar is.
+    #if os(macOS)
+    static let ofField = Color(light: 0xFFFFFF, lightAlpha: 0.6, dark: 0xFFFFFF, darkAlpha: 0.05)
+    #else
     static let ofField = Color(light: 0xFFFFFF, dark: 0x343436)
+    #endif
     /// Code background, chips, skeletons, thumbnail placeholders.
     static let ofCode = Color(light: 0xF0F0F3, dark: 0x2E2E30)
     /// The one accent: links, active tab, saved state, focus ring.
@@ -81,6 +90,7 @@ extension ShapeStyle where Self == Color {
     static var ofHover: Color { Color.ofHover }
     static var ofNavHover: Color { Color.ofNavHover }
     static var ofNavSelection: Color { Color.ofNavSelection }
+    static var ofNavHairline: Color { Color.ofNavHairline }
     static var ofInk: Color { Color.ofInk }
     static var ofBody: Color { Color.ofBody }
     static var ofMuted: Color { Color.ofMuted }
@@ -96,16 +106,25 @@ extension ShapeStyle where Self == Color {
     static var ofOK: Color { Color.ofOK }
 }
 
+extension View {
+    /// A bar that content scrolls under (the list header, the reader toolbar): ofSurface at 70% over
+    /// a blur of the rows or article passing beneath.
+    func frostedBar() -> some View {
+        background(Color.ofSurface.opacity(0.7))
+            .background(.ultraThinMaterial)
+    }
+}
+
 #if canImport(UIKit)
 extension UIColor {
-    convenience init(rgb: UInt32) {
-        self.init(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    convenience init(rgb: UInt32, alpha: CGFloat = 1) {
+        self.init(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: alpha)
     }
 }
 #else
 extension NSColor {
-    convenience init(rgb: UInt32) {
-        self.init(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    convenience init(rgb: UInt32, alpha: CGFloat = 1) {
+        self.init(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: alpha)
     }
 }
 #endif

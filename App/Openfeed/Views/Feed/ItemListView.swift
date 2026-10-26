@@ -75,12 +75,25 @@ struct ItemListView: View {
         #endif
     }
 
+    /// The rows scroll under the header, which is frosted. An overlay plus content margins rather than
+    /// a safe-area inset: List clips its rows to the safe area on macOS.
     private var desktopColumn: some View {
-        VStack(spacing: 0) {
-            DesktopListHeader(searchFocus: $searchFocused)
-            list
-        }
-        .background(Color.ofSurface)
+        list
+            .contentMargins(.top, Self.headerHeight, for: .scrollContent)
+            .contentMargins(.top, Self.headerHeight, for: .scrollIndicators)
+            .overlay(alignment: .top) {
+                DesktopListHeader(searchFocus: $searchFocused)
+            }
+            .background(Color.ofSurface)
+    }
+
+    /// DesktopListHeader's height, the gap under it included.
+    private static var headerHeight: CGFloat {
+        #if os(macOS)
+        Metrics.topBarHeight + Metrics.listHeaderGap
+        #else
+        Metrics.desktopHeaderHeight
+        #endif
     }
 
     #if os(iOS)

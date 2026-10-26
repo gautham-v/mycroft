@@ -76,7 +76,7 @@ struct SidebarView: View {
             footer
         }
         #if os(macOS)
-        .background(Color.ofGround.opacity(0.86))
+        .background(Color.ofGround.opacity(0.7))
         .background(SidebarMaterial())
         #else
         .background(Color.ofGround)
@@ -149,7 +149,7 @@ struct SidebarView: View {
         .padding(.top, 6)
         .padding(.bottom, 5)
         // Edge to edge above the footer, like Claude's: the same 1pt hairline as the sidebar divider and top bar.
-        .overlay(alignment: .top) { Rectangle().fill(Color.ofHairline).frame(height: 1).allowsHitTesting(false) }
+        .overlay(alignment: .top) { Rectangle().fill(Color.ofNavHairline).frame(height: 1).allowsHitTesting(false) }
     }
 
     // MARK: Views

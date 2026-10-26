@@ -48,10 +48,15 @@ struct DesktopListHeader: View {
         #endif
         .padding(.trailing, 12)
         #if os(macOS)
+        // The top row shared with the reader bar, with the same hairline under it. The gap below
+        // stays clear: rows show through it unblurred.
         .frame(height: Metrics.topBarHeight)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
+        .frostedBar()
         .padding(.bottom, Metrics.listHeaderGap)
         #else
         .frame(height: Metrics.desktopHeaderHeight)
+        .frostedBar()
         #endif
     }
 }
