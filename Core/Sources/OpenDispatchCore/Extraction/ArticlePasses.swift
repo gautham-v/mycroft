@@ -494,6 +494,8 @@ enum ArticlePasses {
         P("^share(?: this)?(?: (?:article|story|post|page))?:?$", caseInsensitive: true),
         P("^\\[email ?protected\\]$", caseInsensitive: true),
     ]
+    private static let followLine = P("^follow (?:the )?(?:topics?|authors?)\\b.{0,160}$", caseInsensitive: true)
+    static let maxFollowItem = 60
     private static let relatedLine = P("^(?:related|recommended) (?:articles?|stories|posts|reading|content):?$", caseInsensitive: true)
     private static let affiliate = P("\\bwhen you (?:buy|purchase|shop|click)\\b.{0,80}\\b(?:we|us|our)\\b.{0,40}\\b(?:commission|earn|compensat)|\\b(?:links?|purchases?|buy|shop)\\b.{0,80}\\bwe (?:may |might |could )?(?:earn|receive|get) (?:a |an )?(?:small |affiliate )?(?:commission|share of (?:the )?(?:sales?|revenue))\\b|\\bwe (?:may |might |could )?(?:earn|receive|get) (?:a |an )?(?:small |affiliate )?(?:commission|share of (?:the )?(?:sales?|revenue))\\b.{0,80}\\b(?:links?|purchases?|buy|shop)|\\b(?:this|our) (?:post|article|page|site|story|newsletter) (?:may )?(?:contains?|includes?|uses?) affiliate links\\b", caseInsensitive: true)
     private static let quotation = P("[\"“”«»]")
@@ -563,6 +565,17 @@ enum ArticlePasses {
             guard DOM.isConnected(el) else { continue }
             let t = DOM.text(el)
             if !t.isEmpty, boilerplateLines.contains(where: { $0.test(t) }) { DOM.remove(lineBlock(el, root: root)) }
+        }
+        // "Follow topics and authors from this story…" (The Verge), and the list of follow buttons after it.
+        for el in DOM.select(root, "p, div, section, aside, span, strong, b") {
+            guard DOM.isConnected(el), followLine.test(DOM.text(el)) else { continue }
+            let block = lineBlock(el, root: root)
+            if let next = nextContent(block, root: root) as? Element,
+               let list = DOM.isTag(next, ["ul", "ol"]) ? next : DOM.closest(next, "ul, ol"),
+               DOM.select(list, "li").allSatisfy({ DOM.text($0).count <= maxFollowItem }) {
+                DOM.remove(list)
+            }
+            DOM.remove(block)
         }
         for el in DOM.select(root, "p, li, div, section, aside, span, strong, b, h2, h3, h4, h5, h6") {
             guard DOM.isConnected(el), relatedLine.test(DOM.text(el)) else { continue }

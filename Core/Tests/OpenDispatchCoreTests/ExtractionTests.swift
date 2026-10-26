@@ -338,6 +338,20 @@ struct ExtractionCleanTests {
         #expect(out.contains("OpenDispatch reads"))
     }
 
+    @Test func followTopicsFooterRemoved() {
+        let p = "<p>\(ExtractFixture.para)</p>"
+        let html = """
+        \(p)<p><em>This is a developing story...</em></p>
+        <div><p><strong>Follow topics and authors</strong> from this story to see more like this in your personalized homepage feed and to receive email updates.</p>
+        <ul><li>Robert Hart</li><li></li><li></li><li>AI</li></ul></div>
+        """
+        let out = ArticlePasses.cleanArticle(html, base: nil)
+        #expect(!out.contains("Follow topics"))
+        #expect(!out.contains("Robert Hart"))
+        #expect(!out.contains("<li"))
+        #expect(out.contains("developing story"))
+    }
+
     @Test func emptySectionLabelsDropped() {
         let p = "<p>\(ExtractFixture.para)</p>"
         let out = ArticlePasses.cleanArticle("<h2>Intro</h2>\(p)<h2>Empty</h2><h2>Next</h2>\(p)<p><strong>Links:</strong></p>", base: nil)
