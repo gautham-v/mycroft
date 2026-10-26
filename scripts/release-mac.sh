@@ -2,8 +2,10 @@
 # Build a release of the Mac app for direct download: archive, sign with Developer ID, notarize and
 # staple the app, package it as a DMG (signed, notarized, stapled), and write the Sparkle appcast.
 #
-#   scripts/release-mac.sh
+#   scripts/release-mac.sh [ref]      (default HEAD)
 #
+# Builds from a clean, temporary worktree of the commit, so uncommitted edits in this checkout never
+# end up in a release.
 # The version is MARKETING_VERSION / CURRENT_PROJECT_VERSION in App/project.yml; bump
 # CURRENT_PROJECT_VERSION for every release (Sparkle compares it). Output in App/build/release/:
 # OpenDispatch-<version>.dmg and appcast.xml, both attached to the GitHub release v<version>
@@ -22,10 +24,14 @@ AUTH=(-authenticationKeyPath "$ASC_KEY" -authenticationKeyID "$ASC_KEY_ID" -auth
 NOTARY=(--key "$ASC_KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER")
 IDENTITY="Developer ID Application"
 
-cd $APP_DIR
+REF=${1:-HEAD}
+SRC=$(mktemp -d)/opendispatch
+git -C $ROOT worktree add --detach --quiet $SRC $REF
+trap 'git -C $ROOT worktree remove --force $SRC' EXIT
+cd $SRC/App
 VERSION=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"/\1/p' project.yml)
 BUILD=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: "\(.*\)"/\1/p' project.yml)
-echo "== OpenDispatch $VERSION ($BUILD)"
+echo "== OpenDispatch $VERSION ($BUILD) from $(git -C $SRC log -1 --format='%h %s')"
 rm -rf $OUT && mkdir -p $OUT/updates
 
 xcodegen generate --quiet
@@ -56,7 +62,12 @@ xcrun stapler staple $APP
 echo "== Building the DMG"
 DMG=$OUT/updates/OpenDispatch-$VERSION.dmg
 mkdir -p $OUT/dmg && ditto $APP $OUT/dmg/OpenDispatch.app && ln -s /Applications $OUT/dmg/Applications
-hdiutil create -volname OpenDispatch -srcfolder $OUT/dmg -ov -format UDZO $DMG -quiet
+# hdiutil now and then fails with "Resource busy" right after the folder is written: retry.
+for attempt in 1 2 3; do
+  hdiutil create -volname OpenDispatch -srcfolder $OUT/dmg -ov -format UDZO $DMG -quiet && break
+  [[ $attempt == 3 ]] && exit 1
+  sleep 5
+done
 codesign --sign "$IDENTITY" --timestamp $DMG
 xcrun notarytool submit $DMG $NOTARY --wait
 xcrun stapler staple $DMG
