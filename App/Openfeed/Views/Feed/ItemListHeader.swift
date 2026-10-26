@@ -40,9 +40,18 @@ struct DesktopListHeader: View {
             }
             FeedRefreshButton()
         }
+        #if os(macOS)
+        .padding(.leading, model.sidebarCollapsed ? Metrics.trafficLightInset : 18)
+        #else
         .padding(.leading, model.sidebarCollapsed ? 12 : 18)
+        #endif
         .padding(.trailing, 12)
+        #if os(macOS)
+        .frame(height: Metrics.titleStripHeight)
+        .padding(.bottom, Metrics.titleStripGap)
+        #else
         .frame(height: Metrics.desktopHeaderHeight)
+        #endif
     }
 }
 

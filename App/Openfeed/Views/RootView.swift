@@ -69,6 +69,7 @@ struct RootView: View {
         #else
         splitLayout
             .toolbar(removing: .title)
+            .background(FlushWindowChrome())
             .frame(minWidth: 900, minHeight: 560)
         #endif
     }
@@ -77,11 +78,14 @@ struct RootView: View {
         NavigationSplitView(columnVisibility: columnVisibility) {
             SidebarView()
                 .navigationSplitViewColumnWidth(Metrics.sidebarWidth)
+                .flushToWindowTop()
         } content: {
             ItemListView()
                 .navigationSplitViewColumnWidth(min: 320, ideal: Metrics.listWidth, max: 520)
+                .flushToWindowTop()
         } detail: {
             ReaderView()
+                .flushToWindowTop()
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear { model.prefersDefaultSelection = true }
@@ -138,4 +142,16 @@ struct RootView: View {
 
 #Preview {
     RootView().environment(AppModel.preview())
+}
+
+private extension View {
+    /// macOS: the title bar is hidden and the columns draw their own room for the traffic lights,
+    /// so drop the safe-area inset the hidden bar would otherwise add.
+    @ViewBuilder func flushToWindowTop() -> some View {
+        #if os(macOS)
+        ignoresSafeArea(.container, edges: .top)
+        #else
+        self
+        #endif
+    }
 }

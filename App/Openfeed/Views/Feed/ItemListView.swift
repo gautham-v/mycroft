@@ -77,7 +77,7 @@ struct ItemListView: View {
         .background(Color.ofSurface)
         #if os(macOS)
         .clipShape(RoundedRectangle(cornerRadius: Metrics.panelRadius, style: .continuous))
-        .padding(.vertical, Metrics.panelInset)
+        .padding(.bottom, Metrics.panelInset)
         .padding(.leading, model.sidebarCollapsed ? Metrics.panelInset : 0)
         .background(Color.ofGround)
         #endif
@@ -186,6 +186,7 @@ struct ItemListView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .scrollIndicators(.hidden)
+            .overlayScrollers()
             .background(Color.ofSurface)
             .environment(\.defaultMinListRowHeight, 1)
             .onChange(of: model.currentQuery) { _, _ in

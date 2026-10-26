@@ -31,7 +31,7 @@ enum OFFont {
     static let tabLabel = ui(11, .medium)
 
     // Sidebar (sidebar.tsx)
-    static let sidebarRow = ui(14)
+    static let sidebarRow = ui(14.5)
     static let sidebarFooter = ui(13.5)
     static let sidebarSection = ui(12, .semibold)
 

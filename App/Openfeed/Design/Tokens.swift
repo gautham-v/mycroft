@@ -38,16 +38,16 @@ extension Color {
     }
 
     /// Window background; sidebar background on desktop.
-    static let ofGround = Color(light: 0xF2F2F4, dark: 0x000000)
+    static let ofGround = Color(light: 0xF2F2F4, dark: 0x2A2A2C)
     /// List and reader panels, sheets, cards.
-    static let ofSurface = Color(light: 0xFFFFFF, dark: 0x161618)
+    static let ofSurface = Color(light: 0xFFFFFF, dark: 0x212121)
     /// Selected list row.
-    static let ofSelection = Color(light: 0xE8E8EC, dark: 0x3A3A3D)
+    static let ofSelection = Color(light: 0xE8E8EC, dark: 0x383839)
     /// Hovered list row / button.
-    static let ofHover = Color(light: 0xF4F4F6, dark: 0x1C1C1F)
-    /// Sidebar rows sit on ground, so they need darker hover/selection than panel rows.
-    static let ofNavHover = Color(light: 0xE9E9ED, dark: 0x1C1C1F)
-    static let ofNavSelection = Color(light: 0xE1E1E6, dark: 0x3A3A3D)
+    static let ofHover = Color(light: 0xF4F4F6, dark: 0x2C2C2D)
+    /// Sidebar rows sit on ground, so they need their own hover/selection.
+    static let ofNavHover = Color(light: 0xE9E9ED, dark: 0x353537)
+    static let ofNavSelection = Color(light: 0xE1E1E6, dark: 0x3F3F42)
     /// Titles, primary text.
     static let ofInk = Color(light: 0x1D1D1F, dark: 0xF5F5F7)
     /// Body text.
@@ -57,11 +57,11 @@ extension Color {
     /// Tertiary text, placeholder icons.
     static let ofFaint = Color(light: 0xAEAEB2, dark: 0x636366)
     /// Control borders.
-    static let ofBorder = Color(light: 0xD2D2D7, dark: 0x2C2C2E)
+    static let ofBorder = Color(light: 0xD2D2D7, dark: 0x454545)
     /// Dividers between rows and sections.
-    static let ofHairline = Color(light: 0xE5E5EA, dark: 0x232326)
+    static let ofHairline = Color(light: 0xE5E5EA, dark: 0x313133)
     /// Code background, chips, skeletons, thumbnail placeholders.
-    static let ofCode = Color(light: 0xF0F0F3, dark: 0x242427)
+    static let ofCode = Color(light: 0xF0F0F3, dark: 0x2E2E30)
     /// The one accent: links, active tab, saved state, focus ring.
     static let ofAccent = Color(light: 0x007AFF, dark: 0x0A84FF)
     /// Logo teal (app icon, feed mark).
@@ -128,8 +128,18 @@ enum Metrics {
     /// Phone tab bar item min height.
     static let tabBarItemHeight: CGFloat = 52
     /// Sidebar row height and corner radius.
-    static let sidebarRowHeight: CGFloat = 32
-    static let rowRadius: CGFloat = 4
+    static let sidebarRowHeight: CGFloat = 34
+    static let rowRadius: CGFloat = 6
+    /// macOS: the window title bar is hidden, so the traffic lights sit over the content. Leading
+    /// space that keeps the first row of controls clear of them.
+    static let trafficLightInset: CGFloat = 88
+    /// How far right of AppKit's default the lights are moved (Claude's lights start ~16pt in).
+    static let trafficLightShift: CGFloat = 9
+    /// Height of the row that holds the traffic lights (hidden title bar). FlushWindowChrome moves the
+    /// lights down so they sit on this row's centre line, like the Claude desktop app.
+    static let titleStripHeight: CGFloat = 44
+    /// Air between that row and the content below it.
+    static let titleStripGap: CGFloat = 6
     /// Item row padding (px-2.5 py-[11px]) and the inset hairline start (10 + 24 + 12).
     static let rowPaddingH: CGFloat = 10
     static let rowPaddingV: CGFloat = 11

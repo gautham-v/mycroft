@@ -144,6 +144,7 @@ struct ReaderItemView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
+            .overlayScrollers()
         }
         .background(Color.ofSurface)
         #if os(iOS)
@@ -211,10 +212,25 @@ struct ReaderItemView: View {
 
             actions
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, focusInset)
+        .padding(.trailing, 16)
+        #if os(macOS)
+        .frame(height: Metrics.titleStripHeight)
+        .padding(.bottom, Metrics.titleStripGap)
+        #else
         .padding(.vertical, 8)
         .frame(minHeight: Metrics.desktopHeaderHeight)
+        #endif
         .background(Color.ofSurface.opacity(0.95))
+    }
+
+    /// macOS full-screen reader: the traffic lights sit over the toolbar's leading edge.
+    private var focusInset: CGFloat {
+        #if os(macOS)
+        model.isFocused ? Metrics.trafficLightInset : 16
+        #else
+        16
+        #endif
     }
 
     private var actions: some View {

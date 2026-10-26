@@ -44,10 +44,11 @@ struct SidebarView: View {
                         folderSection(nil)
                         newFolderArea.id(Self.newFolderAnchor)
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 12)
                     .padding(.bottom, 16)
                 }
-                .scrollIndicators(.automatic)
+                .scrollIndicators(.hidden)
+                .overlayScrollers()
                 .onChange(of: editing) { _, value in
                     if case .newFolder = value {
                         withAnimation { proxy.scrollTo(Self.newFolderAnchor, anchor: .bottom) }
@@ -56,8 +57,11 @@ struct SidebarView: View {
             }
             footer
         }
+        #if os(macOS)
+        .background(Color.ofGround.opacity(0.72))
+        .background(SidebarMaterial())
+        #else
         .background(Color.ofGround)
-        #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .confirmationDialog(
@@ -83,28 +87,30 @@ struct SidebarView: View {
 
     // MARK: Header and footer
 
+    /// No logo or wordmark (like the Claude desktop app): just the sidebar toggle. On macOS the window
+    /// title bar is hidden, so the strip leaves the traffic lights their room.
     private var header: some View {
-        HStack(spacing: 8) {
-            FeedMarkIcon(size: 20)
-            Text("OpenDispatch")
-                .font(OFFont.serif(17, .semibold))
-                .tracking(-0.17)
-                .foregroundStyle(.ofInk)
-                .lineLimit(1)
+        HStack(spacing: 0) {
+            #if os(macOS)
+            Spacer().frame(width: Metrics.trafficLightInset)
+            SidebarIconButton(icon: .sidebar, label: "Hide sidebar (⌘\\)", size: 28, iconSize: 15) {
+                model.toggleSidebar()
+            }
             Spacer(minLength: 0)
-            #if os(iOS)
+            #else
+            Spacer(minLength: 0)
             SidebarIconButton(icon: .sidebar, label: "Hide sidebar", size: Metrics.desktopIconButton, iconSize: 16) {
                 model.toggleSidebar()
             }
             #endif
         }
-        .padding(.leading, 18)
-        .padding(.trailing, 10)
-        #if os(iOS)
+        #if os(macOS)
+        .frame(height: Metrics.titleStripHeight)
+        .padding(.bottom, Metrics.titleStripGap)
+        #else
+        .padding(.horizontal, 10)
         .frame(height: Metrics.desktopHeaderHeight)
         .padding(.top, 10)
-        #else
-        .frame(height: 40)
         #endif
     }
 
@@ -122,7 +128,7 @@ struct SidebarView: View {
                 #endif
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.top, 4)
         .padding(.bottom, 12)
     }
@@ -137,7 +143,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .padding(.top, 4)
+        .padding(.top, 2)
     }
 
     private func isActive(_ view: FeedView) -> Bool {
@@ -522,3 +528,17 @@ private struct SidebarNewFolderButton: View {
         .environment(AppModel.preview())
         .frame(width: Metrics.sidebarWidth, height: 700)
 }
+
+#if os(macOS)
+/// Window-behind blur under the sidebar (the Claude desktop app's translucent sidebar).
+private struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .sidebar
+        v.blendingMode = .behindWindow
+        v.state = .active
+        return v
+    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+#endif

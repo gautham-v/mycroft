@@ -34,32 +34,32 @@
 /* Dark tokens for the OS preference unless forced light, or when forced dark. Keep both blocks identical. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #000000;
-    --surface: #161618;
-    --hover: #1c1c1f;
+    --ground: #2a2a2c;
+    --surface: #212121;
+    --hover: #2c2c2d;
     --ink: #f5f5f7;
     --body: #d1d1d6;
     --muted: #98989d;
     --faint: #636366;
-    --border: #2c2c2e;
-    --hairline: #232326;
-    --code: #242427;
+    --border: #454545;
+    --hairline: #313133;
+    --code: #2e2e30;
     --accent: #0a84ff;
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --ground: #000000;
-  --surface: #161618;
-  --hover: #1c1c1f;
+  --ground: #2a2a2c;
+  --surface: #212121;
+  --hover: #2c2c2d;
   --ink: #f5f5f7;
   --body: #d1d1d6;
   --muted: #98989d;
   --faint: #636366;
-  --border: #2c2c2e;
-  --hairline: #232326;
-  --code: #242427;
+  --border: #454545;
+  --hairline: #313133;
+  --code: #2e2e30;
   --accent: #0a84ff;
   color-scheme: dark;
 }

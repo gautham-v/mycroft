@@ -12,6 +12,7 @@ struct OpenfeedApp: App {
                 .environment(model)
         }
         #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 820)
         .windowResizability(.contentMinSize)
         .commands { OpenfeedCommands(model: model) }
