@@ -111,6 +111,11 @@ struct ItemListView: View {
                             Label("Back to sources", systemImage: OFIcon.back.rawValue)
                         }
                     }
+                } else if showsBrand {
+                    ToolbarItem(placement: .topBarLeading) {
+                        FeedBrand()
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     FeedFilterMenu(showsContentTypes: showsContentTypes)
@@ -132,6 +137,11 @@ struct ItemListView: View {
     /// like the web's `tab === "feed"` chips.
     private var showsContentTypes: Bool {
         !model.isInSourceFeed && model.selectedView != .saved && (homeTab ?? .feed) == .feed
+    }
+
+    /// The Feed tab's home list leads with the app's logo and name.
+    private var showsBrand: Bool {
+        (homeTab ?? .feed) == .feed && !model.isInSourceFeed
     }
 
     /// A source/folder feed shown at the root of a tab (opened from Settings) has no system back button.
@@ -337,6 +347,29 @@ struct ItemListView: View {
             .onAppear { Task { await model.loadMore() } }
     }
 }
+
+#if os(iOS)
+/// The app's logo and name at the top of the iPhone Feed tab.
+private struct FeedBrand: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image("AppLogo")
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Text("OpenDispatch")
+                .font(OFFont.ui(20, .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(.ofInk)
+                .fixedSize()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("OpenDispatch")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+#endif
 
 private extension View {
     /// A context menu on the desktop layouts only (the iPhone row has none).
