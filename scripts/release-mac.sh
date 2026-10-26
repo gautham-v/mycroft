@@ -29,6 +29,15 @@ SRC=$(mktemp -d)/opendispatch
 git -C $ROOT worktree add --detach --quiet $SRC $REF
 trap 'git -C $ROOT worktree remove --force $SRC' EXIT
 cd $SRC/App
+
+# Run a step up to three times (stapler and hdiutil fail now and then on a dropped connection or a busy file).
+retry() {
+  for attempt in 1 2 3; do
+    "$@" && return 0
+    [[ $attempt == 3 ]] && return 1
+    sleep 5
+  done
+}
 VERSION=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"/\1/p' project.yml)
 BUILD=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: "\(.*\)"/\1/p' project.yml)
 echo "== OpenDispatch $VERSION ($BUILD) from $(git -C $SRC log -1 --format='%h %s')"
@@ -57,20 +66,15 @@ codesign --verify --deep --strict $APP
 echo "== Notarizing the app"
 ditto -c -k --keepParent $APP $OUT/OpenDispatch.zip
 xcrun notarytool submit $OUT/OpenDispatch.zip $NOTARY --wait
-xcrun stapler staple $APP
+retry xcrun stapler staple $APP
 
 echo "== Building the DMG"
 DMG=$OUT/updates/OpenDispatch-$VERSION.dmg
 mkdir -p $OUT/dmg && ditto $APP $OUT/dmg/OpenDispatch.app && ln -s /Applications $OUT/dmg/Applications
-# hdiutil now and then fails with "Resource busy" right after the folder is written: retry.
-for attempt in 1 2 3; do
-  hdiutil create -volname OpenDispatch -srcfolder $OUT/dmg -ov -format UDZO $DMG -quiet && break
-  [[ $attempt == 3 ]] && exit 1
-  sleep 5
-done
+retry hdiutil create -volname OpenDispatch -srcfolder $OUT/dmg -ov -format UDZO $DMG -quiet
 codesign --sign "$IDENTITY" --timestamp $DMG
 xcrun notarytool submit $DMG $NOTARY --wait
-xcrun stapler staple $DMG
+retry xcrun stapler staple $DMG
 spctl --assess --type open --context context:primary-signature -v $DMG
 
 echo "== Writing the appcast"
