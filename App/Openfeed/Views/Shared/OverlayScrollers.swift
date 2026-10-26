@@ -12,6 +12,18 @@ extension View {
         self
         #endif
     }
+
+    /// Room at the top of a scroll view for a bar its content scrolls under (`contentMargins`). On macOS
+    /// the margin reaches AppKit as an automatic content inset, which AppKit recomputes to zero when
+    /// the window resigns key, so the rows jumped by the bar's height on every click into another
+    /// window; the inset is pinned there too (TopInsetFinder).
+    func topContentInset(_ inset: CGFloat) -> some View {
+        contentMargins(.top, inset, for: .scrollContent)
+            .contentMargins(.top, inset, for: .scrollIndicators)
+            #if os(macOS)
+            .background(TopInsetFinder(inset: inset))
+            #endif
+    }
 }
 
 #if os(macOS)
@@ -29,17 +41,7 @@ private struct OverlayScrollerFinder: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         func apply() {
-            // `.background` places this view beside the scroll view, not inside it: look up a few
-            // levels, then down for the nearest NSScrollView.
-            var container: NSView? = superview
-            var found: NSScrollView?
-            var hops = 0
-            while let c = container, found == nil, hops < 4 {
-                found = Self.firstScrollView(in: c)
-                container = c.superview
-                hops += 1
-            }
-            guard let scrollView = found else { return }
+            guard let scrollView = nearestScrollView(from: self) else { return }
             scrollView.scrollerStyle = .overlay
             scrollView.autohidesScrollers = true
             if !(scrollView.verticalScroller is ThinScroller) {
@@ -48,20 +50,71 @@ private struct OverlayScrollerFinder: NSViewRepresentable {
                 scroller.track(scrollView)
             }
         }
+    }
+}
 
-        private static func firstScrollView(in root: NSView) -> NSScrollView? {
-            var queue: [NSView] = [root]
-            var depth = 0
-            while !queue.isEmpty, depth < 8 {
-                var next: [NSView] = []
-                for v in queue {
-                    if let sv = v as? NSScrollView { return sv }
-                    next.append(contentsOf: v.subviews)
-                }
-                queue = next
-                depth += 1
+/// `.background` places a probe view beside the scroll view, not inside it: look up a few levels,
+/// then down for the nearest NSScrollView.
+private func nearestScrollView(from probe: NSView) -> NSScrollView? {
+    var container: NSView? = probe.superview
+    var hops = 0
+    while let c = container, hops < 4 {
+        if let found = firstScrollView(in: c) { return found }
+        container = c.superview
+        hops += 1
+    }
+    return nil
+}
+
+private func firstScrollView(in root: NSView) -> NSScrollView? {
+    var queue: [NSView] = [root]
+    var depth = 0
+    while !queue.isEmpty, depth < 8 {
+        var next: [NSView] = []
+        for v in queue {
+            if let sv = v as? NSScrollView { return sv }
+            next.append(contentsOf: v.subviews)
+        }
+        queue = next
+        depth += 1
+    }
+    return nil
+}
+
+private struct TopInsetFinder: NSViewRepresentable {
+    let inset: CGFloat
+
+    func makeNSView(context: Context) -> FinderView { FinderView() }
+    func updateNSView(_ nsView: FinderView, context: Context) {
+        nsView.inset = inset
+        nsView.apply()
+    }
+
+    final class FinderView: NSView {
+        var inset: CGFloat = 0
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        /// Fixed insets: AppKit stops deriving them from the window, so key changes leave them alone.
+        func apply() {
+            guard let scrollView = nearestScrollView(from: self) else { return }
+            let insets = NSEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
+            if scrollView.automaticallyAdjustsContentInsets { scrollView.automaticallyAdjustsContentInsets = false }
+            if scrollView.contentInsets.top != inset {
+                // At the top, stay at the top; otherwise keep the rows where they are on screen.
+                let old = scrollView.contentInsets.top
+                let current = scrollView.contentView.bounds.origin.y
+                let y = current <= -old + 1 ? -inset : current
+                scrollView.contentInsets = insets
+                scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
+                scrollView.reflectScrolledClipView(scrollView.contentView)
             }
-            return nil
         }
     }
 }

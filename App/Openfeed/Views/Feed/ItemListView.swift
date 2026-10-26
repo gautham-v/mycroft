@@ -75,12 +75,11 @@ struct ItemListView: View {
         #endif
     }
 
-    /// The rows scroll under the header, which is frosted. An overlay plus content margins rather than
-    /// a safe-area inset: List clips its rows to the safe area on macOS.
+    /// The rows scroll under the header, which is frosted. An overlay plus a top content inset rather
+    /// than a safe-area inset: List clips its rows to the safe area on macOS.
     private var desktopColumn: some View {
         list
-            .contentMargins(.top, Self.headerHeight, for: .scrollContent)
-            .contentMargins(.top, Self.headerHeight, for: .scrollIndicators)
+            .topContentInset(Self.headerHeight)
             .overlay(alignment: .top) {
                 DesktopListHeader(searchFocus: $searchFocused)
             }
