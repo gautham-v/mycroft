@@ -62,7 +62,6 @@ struct SupportTests {
         #expect(TextFormat.duration(65) == "1:05")
         #expect(TextFormat.duration(3725) == "1:02:05")
         #expect(TextFormat.stripHTML("<p>Hi &amp; <b>there</b></p><script>x()</script>") == "Hi & there")
-        #expect(TextFormat.readMinutes("word") == 1)
         #expect(TextFormat.isXPost("https://x.com/a/status/123"))
         #expect(!TextFormat.isXPost("https://x.com/a"))
         let h = TextFormat.splitHandle("Kun Chen (@kunchenguid)")

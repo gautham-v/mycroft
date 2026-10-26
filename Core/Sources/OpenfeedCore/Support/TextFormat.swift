@@ -18,12 +18,6 @@ public enum TextFormat {
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Reading time at 230 wpm, at least 1.
-    public static func readMinutes(_ text: String) -> Int {
-        let words = text.split(whereSeparator: { $0.isWhitespace }).count
-        return max(1, Int((Double(words) / 230).rounded()))
-    }
-
     /// "1:02:03" or "4:05"; nil for nil/0.
     public static func duration(_ sec: Int?) -> String? {
         guard let sec, sec > 0 else { return nil }

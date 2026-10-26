@@ -95,12 +95,6 @@ struct RootView: View {
         } content: {
             ItemListView()
                 .navigationSplitViewColumnWidth(min: 320, ideal: Metrics.listWidth, max: 520)
-                #if os(macOS)
-                // Stands in for the sidebar divider, which HairlineSplitView hides.
-                .overlay(alignment: .leading) {
-                    if !model.sidebarCollapsed { Rectangle().fill(.ofHairline).frame(width: 1) }
-                }
-                #endif
                 .flushToWindowTop()
         } detail: {
             ReaderView()

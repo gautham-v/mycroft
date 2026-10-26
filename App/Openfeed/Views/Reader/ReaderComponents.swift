@@ -177,10 +177,6 @@ enum ReaderText {
         guard name.count >= 4 else { return nil }
         return host.lowercased() + path[..<slash].lowercased() + "/" + name
     }
-
-    static func readTime(_ html: String) -> String {
-        "\(TextFormat.readMinutes(TextFormat.stripHTML(html))) min read"
-    }
 }
 
 @MainActor

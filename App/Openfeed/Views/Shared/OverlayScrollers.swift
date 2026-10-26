@@ -215,8 +215,8 @@ final class TrafficLightsView: NSView {
 /// The column dividers of NavigationSplitView's NSSplitView, which AppKit draws near-black. SwiftUI
 /// owns the split view, so its class is swapped in place (this subclass adds no storage). The
 /// list | reader divider takes the hairline color the rows and reader bar use. The sidebar divider
-/// is a CoreUI image that ignores colors, so it is hidden and the list column draws that hairline
-/// itself (RootView).
+/// is a CoreUI image plus a 1pt strip of sidebar material, neither of which takes a color, so both
+/// are hidden and a HairlineStrip draws the same 1pt hairline in their place.
 final class HairlineSplitView: NSSplitView {
     override var dividerColor: NSColor { NSColor(.ofHairline) }
 
@@ -243,10 +243,30 @@ final class HairlineSplitView: NSSplitView {
             let setter = Selector(("setBackgroundColor:"))
             if divider.responds(to: setter) { divider.perform(setter, with: dividerColor) }
         case "NSVibrantSplitDividerView":
-            for v in divider.subviews where NSStringFromClass(type(of: v)) == "NSSplitDividerView" { v.isHidden = true }
+            for v in divider.subviews where !(v is HairlineStrip) { v.isHidden = true }
+            if !divider.subviews.contains(where: { $0 is HairlineStrip }) {
+                // The divider overlaps the sidebar's last 3pt; only its trailing point shows.
+                let strip = HairlineStrip(frame: NSRect(x: divider.bounds.width - 1, y: 0, width: 1, height: divider.bounds.height))
+                strip.autoresizingMask = [.minXMargin, .height]
+                divider.addSubview(strip)
+            }
         default:
             break
         }
     }
+}
+/// A 1pt line in the hairline color (the sidebar divider, see HairlineSplitView).
+final class HairlineStrip: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor(.ofHairline).setFill()
+        bounds.fill()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 #endif

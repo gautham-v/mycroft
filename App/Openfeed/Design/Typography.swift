@@ -36,8 +36,8 @@ enum OFFont {
     static let sidebarSection = ui(12, .semibold)
 
     // Reader (reader.tsx)
-    /// Toolbar meta (host · date · read time) 13 muted.
-    static let readerToolbarMeta = ui(13)
+    /// Toolbar title (source · time), at the sidebar's row size like Claude's thread title.
+    static let readerToolbarTitle = ui(14.5)
     /// Byline row under the headline: 14 muted, source name ink/500.
     static let readerByline = ui(14)
     /// Video title 20 (phone) / 22 (md+) / 600.

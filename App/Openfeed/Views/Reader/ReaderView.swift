@@ -2,13 +2,13 @@ import OpenfeedCore
 import SwiftUI
 
 /// Reading pane (port of src/components/reader.tsx): sticky toolbar (back on phones, source badge,
-/// host · date · read time, Save, Open original, Share, Send to, full screen on desktop), headline,
+/// source · time, Save, Open original, Share, Send to, full screen on desktop), headline,
 /// byline, article HTML in a height-fitted WKWebView styled by Resources/reader.css, a YouTube player
 /// for videos and a native audio player for podcasts. Shows the empty state when nothing is selected.
 ///
 /// On iPhone it is pushed in the list's NavigationStack and uses the system navigation bar (Liquid
 /// Glass): the system back button pops (ItemListView's binding then calls `model.select(nil)`), the
-/// actions sit in the bar, and the meta row (badge, host · date · read time) scrolls with the article.
+/// actions sit in the bar, and the meta row (badge, source · time) scrolls with the article.
 struct ReaderView: View {
     @Environment(AppModel.self) private var model
 
@@ -76,10 +76,6 @@ struct ReaderItemView: View {
     private var isPodcast: Bool { item.source.kind == .podcast && item.item.audioUrl != nil }
     /// Posts on X have no headline: the extracted markup carries the author row, text and cards.
     private var isPost: Bool { TextFormat.isXPost(item.item.url) && content != .failed }
-    private var host: String {
-        let h = URLHost.host(of: item.item.url)
-        return h.isEmpty ? item.source.host : h
-    }
     private var itemURL: URL? { URL(string: item.item.url) }
 
     private var contentHTML: String? {
@@ -111,10 +107,20 @@ struct ReaderItemView: View {
         return hero
     }
 
-    private var metaLine: String {
-        var parts = [host, TextFormat.date(item.item.publishedAt)]
-        if !isVideo, let html = contentHTML { parts.append(ReaderText.readTime(html)) }
-        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    /// The toolbar title, as the item's list row reads: source (or a post's author and handle) in
+    /// ink, then " · 31m" muted, both at the sidebar's row size. Re-rendered every minute.
+    private var titleLine: some View {
+        let (author, handle) = TextFormat.isXPost(item.item.url) ? TextFormat.splitHandle(item.item.author) : ("", nil)
+        let name = author.isEmpty ? item.source.title : author
+        return TimelineView(.periodic(from: .now, by: 60)) { context in
+            let lead = Text(verbatim: name).foregroundStyle(Color.ofInk)
+            let tail = Text(verbatim: (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt, now: context.date))
+                .foregroundStyle(Color.ofMuted)
+            Text("\(lead)\(tail)")
+                .font(OFFont.readerToolbarTitle)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
     }
 
     private var appearance: ReaderHTML.Appearance {
@@ -155,15 +161,11 @@ struct ReaderItemView: View {
         .task { await load(refresh: false) }
     }
 
-    /// Source badge + host · date · read time.
+    /// Source badge + source · time, as in the item's list row.
     private var metaRow: some View {
         HStack(spacing: 8) {
             SourceBadge(host: item.source.host, title: item.source.title, size: 20)
-            Text(metaLine)
-                .font(OFFont.readerToolbarMeta)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            titleLine
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -203,11 +205,7 @@ struct ReaderItemView: View {
         HStack(spacing: 6) {
             HStack(spacing: 8) {
                 SourceBadge(host: item.source.host, title: item.source.title, size: 20)
-                Text(metaLine)
-                    .font(OFFont.readerToolbarMeta)
-                    .foregroundStyle(.ofMuted)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                titleLine
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

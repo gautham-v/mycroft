@@ -6,6 +6,16 @@ struct OpenfeedApp: App {
     /// The single app model (owns AppDatabase via OpenfeedServices). Injected with `.environment(model)`.
     @State private var model = AppModel.live()
 
+    #if os(macOS)
+    init() {
+        // Overlay scrollers for this app even with a mouse attached (System Settings' "Automatically"
+        // then means always-visible scroll bars). Otherwise SwiftUI reserves a 15pt scroll-bar gutter on
+        // the right of every scroll view, so rows stop short of the right edge. overlayScrollers() then
+        // shows each scroller only while the pointer is over its pane.
+        UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+    }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             RootView()
