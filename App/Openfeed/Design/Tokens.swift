@@ -60,6 +60,8 @@ extension Color {
     static let ofBorder = Color(light: 0xD2D2D7, dark: 0x454545)
     /// Dividers between rows and sections.
     static let ofHairline = Color(light: 0xE5E5EA, dark: 0x313133)
+    /// Scroller knob (macOS), Claude desktop's grey.
+    static let ofScroller = Color(light: 0xBDBDC2, dark: 0x767676)
     /// Code background, chips, skeletons, thumbnail placeholders.
     static let ofCode = Color(light: 0xF0F0F3, dark: 0x2E2E30)
     /// The one accent: links, active tab, saved state, focus ring.
@@ -83,6 +85,7 @@ extension ShapeStyle where Self == Color {
     static var ofFaint: Color { Color.ofFaint }
     static var ofBorder: Color { Color.ofBorder }
     static var ofHairline: Color { Color.ofHairline }
+    static var ofScroller: Color { Color.ofScroller }
     static var ofCode: Color { Color.ofCode }
     static var ofAccent: Color { Color.ofAccent }
     static var ofLogo: Color { Color.ofLogo }

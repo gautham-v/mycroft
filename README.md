@@ -25,6 +25,8 @@ xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=m
 xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build   # any iOS 26 simulator
 ```
 
+To keep `/Applications/OpenDispatch.app` current, run `scripts/install-hooks.sh` once per clone. It adds a post-commit hook: every commit on `main` that touches `App/` or `Core/` builds Release in the background, quits the app, replaces it in `/Applications` and relaunches it (log in `App/build/install.log`, a notification if the build fails). `scripts/install-mac.sh` does the same by hand.
+
 Run `xcodegen generate` again after adding or removing files under `App/Openfeed/`. Both platforms use automatic signing with team `26TVJ92MLZ` (`DEVELOPMENT_TEAM` in `project.yml`); the Mac build signs with the Apple Development certificate in the keychain. To run on a real iPhone, sign in to that team's Apple ID in Xcode → Settings → Accounts, connect the phone, pick it as the destination and Run; Xcode creates the provisioning profile for `com.gauthamv.openfeed`. From the command line, once Xcode is signed in: `xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'generic/platform=iOS' -allowProvisioningUpdates build`.
 
 Core logic tests (feed parsing, detection, OPML, scraping, extraction, refresh, integrations, database):
