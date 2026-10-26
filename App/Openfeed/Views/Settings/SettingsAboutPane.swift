@@ -45,7 +45,6 @@ struct SettingsAboutPane: View {
                 credit("Readability.js", "Article extraction. Mozilla, Apache License 2.0.", "https://github.com/mozilla/readability")
                 credit("GRDB.swift", "SQLite toolkit. MIT License.", "https://github.com/groue/GRDB.swift")
                 credit("SwiftSoup", "HTML parsing. MIT License.", "https://github.com/scinfu/SwiftSoup")
-                credit("FeedKit", "Feed models. MIT License.", "https://github.com/nmdias/FeedKit")
             }
             .padding(.top, 12)
             .overlay(alignment: .top) { SettingsHairline() }

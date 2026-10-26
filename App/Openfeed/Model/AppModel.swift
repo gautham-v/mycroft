@@ -376,13 +376,19 @@ final class AppModel {
         }
     }
 
-    /// Deep link: `openfeed://add?url=<feed or site>` opens Add source prefilled with that URL.
+    /// Deep links: `openfeed://add?url=<feed or site>` opens Add source prefilled with that URL;
+    /// `openfeed://settings?tab=<sources|appearance|playback|integrations|data|about>` opens Settings on that pane.
     func handleOpenURL(_ url: URL) {
         guard url.scheme?.lowercased() == "openfeed" else { return }
         let action = (url.host ?? url.path).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        if action == "settings" {
+            let tab = query?.first { $0.name == "tab" }?.value.flatMap { SettingsTab(rawValue: $0.lowercased()) }
+            showSettings(tab ?? .sources)
+            return
+        }
         guard action == "add" else { return }
-        let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?.first { $0.name == "url" }?.value
+        let target = query?.first { $0.name == "url" }?.value
         pendingAddSourceURL = target
         isAddSourcePresented = true
     }
@@ -599,15 +605,16 @@ final class AppModel {
     /// Full-screen reader is in effect only while an item is shown.
     var isFocused: Bool { focusMode && selectedItem != nil }
 
+    /// Opens Settings on `tab`: the sheet on iOS/iPad; on macOS RootView turns the flag into `openSettings()`.
     func showSettings(_ tab: SettingsTab = .sources) {
         settingsTab = tab
         isSettingsPresented = true
     }
 }
 
-/// Settings panes (settings-dialog.tsx).
+/// Settings panes: the web's four (settings-dialog.tsx) plus the native Data and About panes.
 enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case sources, appearance, playback, integrations
+    case sources, appearance, playback, integrations, data, about
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -615,6 +622,8 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .appearance: "Appearance"
         case .playback: "Playback"
         case .integrations: "Integrations"
+        case .data: "Data"
+        case .about: "About"
         }
     }
 }

@@ -69,7 +69,7 @@ public struct DefaultFeedParser: FeedParser {
         guard let url else { return nil }
         let guid = raw.guid ?? raw.id ?? url
         let title = S.nonEmpty(raw.title) ?? "(untitled)"
-        let author = S.nonEmpty(raw.creator) ?? S.nonEmpty(raw.author)
+        let author = S.nonEmpty(raw.creator) ?? S.displayAuthor(raw.author, fallback: raw.itunesAuthor)
         let publishedAt = S.date(from: raw.pubDate) ?? now
 
         if kind == .youtube {

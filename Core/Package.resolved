@@ -1,15 +1,6 @@
 {
-  "originHash" : "775d8e8106b3e77e4cbb251b42734c8a7459be444b2a186804930dfd40a737c5",
+  "originHash" : "0a2ca925ab234ed7075184cce68542e4c7b9c2332ab16fa0cb4574a182e39925",
   "pins" : [
-    {
-      "identity" : "feedkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/nmdias/FeedKit.git",
-      "state" : {
-        "revision" : "0ffb248b5c3df0a05e724544900d3ceb1a1f9e6d",
-        "version" : "10.10.1"
-      }
-    },
     {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",

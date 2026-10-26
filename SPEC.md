@@ -4,7 +4,7 @@ Single-user RSS/YouTube/podcast reader, native for macOS 15+ and iOS/iPadOS 18+.
 
 ## Architecture
 
-- **Core (`Core/Sources/OpenfeedCore`)**, Swift 6 toolchain in Swift 5 language mode with strict concurrency. Dependencies: GRDB.swift (SQLite), SwiftSoup (HTML parsing/sanitizing); FeedKit is declared but the parser uses Foundation's `XMLParser`. WebKit runs the bundled Readability.js.
+- **Core (`Core/Sources/OpenfeedCore`)**, Swift 6 toolchain in Swift 5 language mode with strict concurrency. Dependencies: GRDB.swift (SQLite), SwiftSoup (HTML parsing/sanitizing); feeds are parsed with Foundation's `XMLParser`. WebKit runs the bundled Readability.js.
   - `Models/`, `Database/` (schema migrations, queries, seed + default folders, `meta`), `Support/` (HTTP with the `Openfeed/0.1` UA, time/text/URL helpers).
   - Services behind protocols, wired once in `OpenfeedServices.live(database:)`: `FeedParser` (RSS/Atom/RDF, YouTube, HN, podcasts), `FeedDetector` + `OPMLCoding`, `PageScraper` (feedless listing pages), `ContentExtractor` (article text), `RefreshService` (refresh pipeline), `IntegrationService` (Readwise/webhook), `ContentService` (cached reader content).
 - **App (`App/Openfeed`)**: `AppModel` (`@MainActor @Observable`, the single source of UI state, calls the services with `await`), `AppSettings` (UserDefaults JSON), design tokens in `Design/`, views in `Views/` (Sidebar, Feed, Reader, Sources, Settings, Shared).

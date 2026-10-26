@@ -501,7 +501,7 @@ struct FeedParserRealFeedTests {
         #expect(e.guid == "e002eb18-11e7-4058-8ee9-68c6ed866929")
         #expect(e.title == "Tricks, Treats and Trends")
         #expect(e.url == "https://www.nytimes.com/the-daily")
-        #expect(e.author == "thedaily@nytimes.com (The New York Times)")
+        #expect(e.author == "The New York Times")
         #expect(e.durationSec == 1781)
         #expect(e.audioUrl == "https://dts.podtrac.com/redirect.mp3/pdst.fm/e/pfx.vpixl.com/6qj4J/pscrb.fm/rss/p/tracking.swap.fm/track/4jdbJYYRKqK96EGqOzQb/nyt.simplecastaudio.com/03d8b493-87fc-4bd1-931f-8a8e9b945d8a/episodes/c139c515-24f7-449e-a672-ae828726f1b2/audio/128/default.mp3?aid=rss_feed&awCollectionId=03d8b493-87fc-4bd1-931f-8a8e9b945d8a&awEpisodeId=c139c515-24f7-449e-a672-ae828726f1b2&feed=54nAGcIl")
         #expect(e.thumbnailUrl == "https://image.simplecastcdn.com/images/34e5431c-f7f7-4edd-9b5d-0277e197a71b/ac55fb54-26bb-4ea6-84ef-dc62cd89d764/nyt-podcast-thedaily-ytthumbnail-20-28.jpg")

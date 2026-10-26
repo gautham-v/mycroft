@@ -19,6 +19,25 @@ struct SettingsSourcesPane: View {
     @State private var opmlStatus: SettingsOPMLStatus?
 
     var body: some View {
+        ScrollViewReader { proxy in
+            content
+                // The result line lands below the buttons at the end of a long list, often under the
+                // tab bar or window edge: bring it into view when it appears.
+                .onChange(of: opmlStatus) { _, status in
+                    guard status != nil else { return }
+                    withAnimation { proxy.scrollTo(Self.statusID, anchor: .bottom) }
+                }
+        }
+        .alert("Rename source", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Title", text: $renameDraft)
+            Button("Cancel", role: .cancel) { renaming = nil }
+            Button("Rename") { commitRename() }
+        }
+    }
+
+    private static let statusID = "opml-status"
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(title: "Sources", hint: "Pick a folder to move a source. Removing a source also removes its items.")
             TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -35,12 +54,10 @@ struct SettingsSourcesPane: View {
                     .foregroundStyle(opmlStatus.error ? Color.ofDanger : Color.ofMuted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
+                    // Margin below so the scrolled-to line clears the tab bar.
+                    .padding(.bottom, 12)
+                    .id(Self.statusID)
             }
-        }
-        .alert("Rename source", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Title", text: $renameDraft)
-            Button("Cancel", role: .cancel) { renaming = nil }
-            Button("Rename") { commitRename() }
         }
     }
 
@@ -323,11 +340,16 @@ struct SettingsOPMLButtons: View {
         }
     }
 
-    /// "Added 3, skipped 1, 2 new folders, 1 failed. New sources load on the next refresh."
+    /// "Added 3, skipped 1, 2 new folders, 1 failed. New sources load on the next refresh.", then the
+    /// first few failures ("Title: Invalid URL") one per line so a bad entry can be found and fixed.
     static func summary(_ r: OPMLImportResult) -> String {
         var parts = ["Added \(r.added)", "skipped \(r.skipped)"]
         if r.foldersCreated > 0 { parts.append("\(r.foldersCreated) new folder\(r.foldersCreated == 1 ? "" : "s")") }
         if !r.errors.isEmpty { parts.append("\(r.errors.count) failed") }
-        return parts.joined(separator: ", ") + "." + (r.added > 0 ? " New sources load on the next refresh." : "")
+        var lines = [parts.joined(separator: ", ") + "." + (r.added > 0 ? " New sources load on the next refresh." : "")]
+        let shown = 3
+        lines += r.errors.prefix(shown)
+        if r.errors.count > shown { lines.append("and \(r.errors.count - shown) more") }
+        return lines.joined(separator: "\n")
     }
 }

@@ -43,6 +43,7 @@ extension FeedParsingSupport {
         var itunesDuration: String?
         var itunesImage: String?
         var itunesSummary: String?
+        var itunesAuthor: String?
     }
 
     static func rawFeed(_ root: XMLElementNode) throws -> RawFeed {
@@ -146,6 +147,7 @@ extension FeedParsingSupport {
         let image = e.child("itunes:image")
         item.itunesImage = nonEmpty(image?.attributes["href"]) ?? image?.trimmedText
         item.itunesSummary = e.child("itunes:summary")?.trimmedText
+        item.itunesAuthor = e.child("itunes:author")?.trimmedText
     }
 
     /// rss-parser getLink: the first link with this rel (a link without rel counts as "alternate"), else the first link.

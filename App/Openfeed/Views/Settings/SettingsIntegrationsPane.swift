@@ -69,6 +69,10 @@ struct SettingsIntegrationsPane: View {
             .focused($focus, equals: .token)
             .settingsFieldChrome(focused: focus == .token)
             .textContentType(.password)
+            .autocorrectionDisabled()
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
             .onSubmit { Task { await save() } }
             .padding(.top, 6)
             .accessibilityLabel("Readwise Reader access token")
@@ -89,13 +93,19 @@ struct SettingsIntegrationsPane: View {
 
             TextField("https://example.com/hooks/openfeed", text: Binding(
                 get: { webhook },
-                set: { webhookDraft = $0 }
+                set: { value in
+                    // A result for the saved URL no longer describes what the field shows.
+                    if value != webhook { tests[.webhook] = nil }
+                    webhookDraft = value
+                }
             ))
             .focused($focus, equals: .webhook)
             .settingsFieldChrome(focused: focus == .webhook)
             .textContentType(.URL)
+            .autocorrectionDisabled()
             #if os(iOS)
             .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
             #endif
             .onSubmit { Task { await save() } }
             .padding(.top, 6)

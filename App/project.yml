@@ -67,8 +67,7 @@ targets:
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: ""
-        "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
+        DEVELOPMENT_TEAM: 26TVJ92MLZ
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Openfeed/Openfeed.entitlements
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         ENABLE_PREVIEWS: YES

@@ -8,7 +8,7 @@ Single user, no accounts, no server. Everything runs and is stored on the device
 
 - macOS 15 or later to run the Mac app; iOS/iPadOS 18 or later for iPhone and iPad.
 - Xcode 16 or later (built and tested with Xcode 26.3) and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
-- Swift packages are fetched by Xcode/SwiftPM on first build: GRDB.swift (SQLite), SwiftSoup (HTML), FeedKit (resolved but not used by the parser).
+- Swift packages are fetched by Xcode/SwiftPM on first build: GRDB.swift (SQLite) and SwiftSoup (HTML). Feeds are parsed with Foundation's `XMLParser`.
 
 ## Build and run
 
@@ -26,7 +26,7 @@ xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=m
 xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
 ```
 
-Run `xcodegen generate` again after adding or removing files under `App/Openfeed/`. The Mac build is ad-hoc signed; to install on a physical iPhone, set your team under Signing & Capabilities (or `DEVELOPMENT_TEAM` in `project.yml`).
+Run `xcodegen generate` again after adding or removing files under `App/Openfeed/`. Both platforms use automatic signing with team `26TVJ92MLZ` (`DEVELOPMENT_TEAM` in `project.yml`); the Mac build signs with the Apple Development certificate in the keychain. To run on a real iPhone, sign in to that team's Apple ID in Xcode → Settings → Accounts, connect the phone, pick it as the destination and Run; Xcode creates the provisioning profile for `com.gauthamv.openfeed`. From the command line, once Xcode is signed in: `xcodebuild -project Openfeed.xcodeproj -scheme Openfeed -destination 'generic/platform=iOS' -allowProvisioningUpdates build`.
 
 Core logic tests (feed parsing, detection, OPML, scraping, extraction, refresh, integrations, database):
 
@@ -53,7 +53,7 @@ Feeds are fetched when the app opens or comes to the foreground if the last fetc
 
 ## Sources
 
-Add sources from the sidebar (Mac/iPad), the Sources tab (iPhone), or ⌘N: paste a site URL, a feed URL, a YouTube channel URL (`youtube.com/@handle`), or an Apple Podcasts link, and the app finds the feed. `openfeed://add?url=<url>` opens the same sheet prefilled.
+Add sources from the sidebar (Mac/iPad), the Sources tab (iPhone), or ⌘N: paste a site URL, a feed URL, a YouTube channel URL (`youtube.com/@handle`), or an Apple Podcasts link, and the app finds the feed. `openfeed://add?url=<url>` opens the same sheet prefilled. `openfeed://settings?tab=data` opens Settings on a pane (sources, appearance, playback, integrations, data, about).
 
 To move subscriptions in or out, use **Import OPML** / **Export OPML** in Settings → Sources. Import takes an OPML file from Feedly, Inoreader, NetNewsWire and the like: outline folders become sidebar folders (matched to existing ones by name), feeds you already have are skipped, and nothing is fetched until the next refresh. Exports include an `openfeed:kind` attribute so scraped pages and podcasts round-trip.
 

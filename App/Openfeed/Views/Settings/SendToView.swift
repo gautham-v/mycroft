@@ -18,6 +18,14 @@ struct SendToView: View {
         target == .readwise ? "Readwise Reader" : "Webhook"
     }
 
+    /// macOS opens the error popover below the button. On iOS 18 `.bottom` makes the popover need room
+    /// above this top-of-screen button, so it was silently never presented; `.top` shows it below.
+    #if os(macOS)
+    private static let errorArrowEdge: Edge = .bottom
+    #else
+    private static let errorArrowEdge: Edge = .top
+    #endif
+
     private enum Status: Equatable {
         case idle, sending
         case sent(SendTarget)
@@ -72,7 +80,7 @@ struct SendToView: View {
         .help(label)
         .accessibilityLabel(label)
         .onHover { hovering = $0 }
-        .popover(isPresented: errorShown, arrowEdge: .bottom) {
+        .popover(isPresented: errorShown, arrowEdge: Self.errorArrowEdge) {
             if case .error(let message) = status {
                 Text(message)
                     .font(OFFont.ui(12.5))

@@ -43,9 +43,14 @@ public struct DefaultOPMLCoder: OPMLCoding {
         return #"\#(indent)<outline type="rss" text="\#(t)" title="\#(t)" xmlUrl="\#(escape(s.feedUrl))" htmlUrl="\#(escape(s.url))" openfeed:kind="\#(s.kind.rawValue)"/>"#
     }
 
-    /// Attribute escaping; runs of CR/LF/tab become one space.
+    /// Attribute escaping; runs of CR/LF/tab become one space, and characters XML 1.0 forbids (other
+    /// C0 controls, U+FFFE/U+FFFF), which feed titles occasionally carry, are dropped so the export
+    /// stays well-formed for strict readers.
     static func escape(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
+        String(String.UnicodeScalarView(s.unicodeScalars.filter { c in
+            c.value >= 0x20 ? (c.value != 0xFFFE && c.value != 0xFFFF) : (c == "\t" || c == "\n" || c == "\r")
+        }))
+            .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")

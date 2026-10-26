@@ -112,10 +112,29 @@ struct SidebarDropDelegate: DropDelegate {
         if over == target { over = nil }
     }
 
+    /// Applies the drop only when the dropped text is the payload of the drag this sidebar started.
+    /// SwiftUI has no drag-ended callback, so `dragging` outlives a drag cancelled outside the sidebar;
+    /// without this check a later drop of unrelated text (a link from another app) would move that stale source.
     func performDrop(info: DropInfo) -> Bool {
         over = nil
-        guard accepts, let dragging else { return false }
-        perform(dragging, target)
+        guard accepts, let dragging,
+              let provider = info.itemProviders(for: [UTType.plainText]).first
+        else { return false }
+        let expected = dragging.payload
+        let target = target
+        // The completion runs off the main actor; the action is only ever called back on it.
+        let action = MainActorAction(perform)
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? NSString, text as String == expected else { return }
+            Task { @MainActor in action.run(dragging, target) }
+        }
         return true
     }
+}
+
+/// Carries the drop action across the item provider's background completion back to the main actor.
+private struct MainActorAction: @unchecked Sendable {
+    let perform: (SidebarDrag, SidebarDrop) -> Void
+    init(_ perform: @escaping (SidebarDrag, SidebarDrop) -> Void) { self.perform = perform }
+    @MainActor func run(_ drag: SidebarDrag, _ target: SidebarDrop) { perform(drag, target) }
 }

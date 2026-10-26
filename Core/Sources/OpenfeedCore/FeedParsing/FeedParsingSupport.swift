@@ -48,6 +48,16 @@ public enum FeedParsingSupport {
         return Int(secs.rounded())
     }
 
+    /// RSS 2.0 `<author>` is "email (Name)": show the name. A bare email gives way to `fallback`
+    /// (itunes:author) when there is one. parse.ts showed the raw element.
+    public static func displayAuthor(_ author: String?, fallback: String?) -> String? {
+        let fallback = nonEmpty(fallback)
+        guard let a = nonEmpty(author) else { return fallback }
+        if let m = a.firstMatch(of: #/^[^\s@()]+@[^\s@()]+\s*\((.+)\)$/#), let name = nonEmpty(String(m.1)) { return name }
+        if a.wholeMatch(of: #/(?:mailto:)?[^\s@()]+@[^\s@()]+/#) != nil { return fallback ?? a }
+        return a
+    }
+
     /// feedLooksLikePodcast: some audio, and either most items have it or the channel has iTunes tags
     /// and at least a quarter do. A blog that links the odd MP3 stays a blog.
     public static func feedLooksLikePodcast(hasItunesTags: Bool, itemCount: Int, audioCount: Int) -> Bool {

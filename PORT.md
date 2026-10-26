@@ -17,7 +17,7 @@ seeding its database. All Default* services are placeholders except where noted.
 ```
 Core/                                Swift package "OpenfeedCore" (swift-tools 6.0, Swift 5 language mode
 │                                    + StrictConcurrency upcoming feature: concurrency issues are warnings)
-├── Package.swift                    deps: GRDB 7.11.1, FeedKit 10.10.1, SwiftSoup 2.14.3 (Package.resolved)
+├── Package.swift                    deps: GRDB 7.11.1, SwiftSoup 2.14.3 (Package.resolved)
 ├── Sources/OpenfeedCore/
 │   ├── Models/          FOUNDATION  Folder, Source, Item, FeedItem, SourceKind/SourceType/PostSource/SourceGroup,
 │   │                                FeedView, FeedFilter, ItemQuery/ItemCursor/ItemPage/ItemCounts/SourceOrderEntry,
@@ -288,7 +288,7 @@ public protocol FeedParser: Sendable {
     func itemHTML(in data: Data, guid: String, url: String) -> String?          // findFeedItemHtml
 }
 public enum FeedParserError: Error, LocalizedError, Equatable { case invalidFeed(String) }
-public struct DefaultFeedParser: FeedParser { public init() }                   // replace (FeedKit available)
+public struct DefaultFeedParser: FeedParser { public init() }
 ```
 Must port: YouTube (`yt:videoId`, `media:group/media:thumbnail|description`, thumbnail
 `https://i.ytimg.com/vi/<id>/hqdefault.jpg`), HN (`Points: N`, `# Comments: N` in description, `<comments>`),
@@ -593,14 +593,14 @@ func openSearch(); func clearSearch(); func closeSearch(); func flushSearch()   
 var sidebarCollapsed: Bool (persisted "openfeed.sidebar-collapsed"); func toggleSidebar()
 var focusMode: Bool; var isFocused: Bool; func toggleFocusMode(); func escape()   // Esc: close search, else leave focus mode
 var isAddSourcePresented, isShortcutsPresented, isSettingsPresented: Bool; var settingsTab: SettingsTab
-func showSettings(_ tab: SettingsTab = .sources)  // iOS sheet; on macOS open the Settings scene with @Environment(\.openSettings)
+func showSettings(_ tab: SettingsTab = .sources)  // iOS sheet; macOS: RootView observes isSettingsPresented and calls openSettings()
 var settings: AppSettings                         // persisted JSON "openfeed.settings"; assign to save
 ```
 
 Supporting app types:
 ```swift
 enum PhoneTab: String, Hashable, CaseIterable { case feed, sources, saved, settings }
-enum SettingsTab: String, CaseIterable, Identifiable { case sources, appearance, playback, integrations; var label: String }
+enum SettingsTab: String, CaseIterable, Identifiable { case sources, appearance, playback, integrations, data, about; var label: String }
 struct AppSettings: Codable, Equatable { var theme: ThemeSetting = .system; readerFont: ReaderFontSetting = .serif;
     textSize: TextSizeSetting = .m; autoplay = true; theater = true; static func load(); func save() }
 enum ThemeSetting { case system, light, dark; var label; var colorScheme: ColorScheme? }
@@ -795,9 +795,9 @@ Note: Extraction ported its own RSC/payload helpers as `ExtractionPayload`; `RSC
 ### Feed parsing — 2026-10-25
 All in `Core/Sources/OpenfeedCore/FeedParsing/`. `DefaultFeedParser` is the full port of parse.ts
 (payload-videos.ts is NOT here: Scraping owns `PayloadVideos`, Extraction has `ExtractionPayload`).
-XML is read with Foundation `XMLParser` into a qualified-name element tree (rss-parser/xml2js shape), not
-FeedKit's Codable models: FeedKit fails a whole feed on one malformed numeric field (`<ttl>`, image width,
-itunes:season), sniffs the type from the first 256 bytes, and has no access to arbitrary elements. A feed
+XML is read with Foundation `XMLParser` into a qualified-name element tree (rss-parser/xml2js shape), so
+one malformed numeric field (`<ttl>`, image width, itunes:season) never fails a whole feed and arbitrary
+namespaced elements stay reachable (no third-party feed library is used). A feed
 that fails strict parsing is retried once after repair (HTML named entities → numeric, bare `&` escaped,
 control chars removed, BOM/whitespace before the prolog dropped, declared charset re-encoded as UTF-8).
 ```swift
@@ -937,8 +937,8 @@ All in `App/Openfeed/Views/Settings/` (type names claimed; do not redeclare).
   `navigationDestination`. Follows `model.settingsTab` (on appear and on change); a sheet opened with
   `model.showSettings(.integrations)` pushes that pane on iPhone. Presents ShortcutsView and AddSourceView as its
   own sheets (not via the model flags, which would stack a sheet on RootView while Settings is a sheet).
-- `enum SettingsPane { sources, appearance, playback, integrations, data, about }` — the four web tabs
-  (`init(_ tab: SettingsTab)`, `var tab: SettingsTab?`) plus native Data and About.
+- `typealias SettingsPane = SettingsTab` (+ `symbol`): the four web tabs plus native Data and About, so
+  `model.showSettings(.data)` / `.about` open those panes too; picking a pane writes `model.settingsTab`.
 - Panes: `SettingsSourcesPane(onAdd:onOpen:)`, `SettingsAppearancePane(onShowShortcuts:)`, `SettingsPlaybackPane`,
   `SettingsIntegrationsPane`, `SettingsDataPane`, `SettingsAboutPane`.
 - Controls (SettingsControls.swift): `SettingsPaneHeading`, `SettingsSectionLabel`, `SettingsRow`, `SettingsHairline`,
@@ -1027,6 +1027,9 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
   immediately); on a first launch with an empty list, the first source that adds items triggers `loadItems`.
 - Deep link `openfeed://add?url=<url>`: `CFBundleURLTypes` in project.yml, `RootView.onOpenURL` →
   `AppModel.handleOpenURL(_:)` sets `pendingAddSourceURL` and presents Add source; `AddSourceView` prefills from it.
+  `openfeed://settings?tab=<sources|appearance|playback|integrations|data|about>` calls `showSettings(_:)`.
+  Debug builds also take a launch argument `-OFSettingsTab <tab>` (RootView) to open a pane at launch, for
+  driving Settings from the command line (`xcrun simctl launch booted com.gauthamv.openfeed -OFSettingsTab data`).
 - RootView attaches `.openfeedAutoRefresh()`; macOS split view uses `.toolbar(removing: .title)`.
 - project.yml: `NSAppTransportSecurity.NSAllowsArbitraryLoads` (plain-http feeds, images, audio) and
   `UIBackgroundModes: [fetch, audio]`.

@@ -1,44 +1,10 @@
 import OpenfeedCore
 import SwiftUI
 
-/// Settings panes. The first four are the web app's tabs (SettingsTab, owned by AppModel so the reader
-/// can open Integrations); Data and About are native additions.
-enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case sources, appearance, playback, integrations, data, about
+/// The pane list is AppModel's SettingsTab (so `model.showSettings(_:)` can open any pane).
+typealias SettingsPane = SettingsTab
 
-    var id: String { rawValue }
-
-    init(_ tab: SettingsTab) {
-        switch tab {
-        case .sources: self = .sources
-        case .appearance: self = .appearance
-        case .playback: self = .playback
-        case .integrations: self = .integrations
-        }
-    }
-
-    /// The matching AppModel tab, nil for the native-only panes.
-    var tab: SettingsTab? {
-        switch self {
-        case .sources: .sources
-        case .appearance: .appearance
-        case .playback: .playback
-        case .integrations: .integrations
-        case .data, .about: nil
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .sources: "Sources"
-        case .appearance: "Appearance"
-        case .playback: "Playback"
-        case .integrations: "Integrations"
-        case .data: "Data"
-        case .about: "About"
-        }
-    }
-
+extension SettingsTab {
     var symbol: String {
         switch self {
         case .sources: OFIcon.folder.rawValue
@@ -85,11 +51,11 @@ struct SettingsView: View {
         }
         .environment(\.settingsCompact, compact)
         .onAppear {
-            pane = SettingsPane(model.settingsTab)
+            pane = model.settingsTab
             if compact, model.isSettingsPresented, pushed == nil { pushed = pane }
         }
         .onChange(of: model.settingsTab) { _, tab in
-            pane = SettingsPane(tab)
+            pane = tab
             if compact, model.isSettingsPresented { pushed = pane }
         }
         .task { await model.loadIntegrations() }
@@ -103,7 +69,7 @@ struct SettingsView: View {
 
     private func select(_ p: SettingsPane) {
         pane = p
-        if let tab = p.tab, model.settingsTab != tab { model.settingsTab = tab }
+        if model.settingsTab != p { model.settingsTab = p }
     }
 
     // MARK: Regular width

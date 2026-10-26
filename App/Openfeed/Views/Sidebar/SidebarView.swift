@@ -5,7 +5,8 @@ import SwiftUI
 /// (AppModel.orderedFolders / sources(inFolder:)).
 ///
 /// Top to bottom: logo + "Openfeed", the six views, each folder (header opens the folder feed, chevron
-/// collapses it, persisted per device) with its sources, Unfiled (only when it has sources), "New folder",
+/// collapses it, persisted per device) with its sources, Unfiled (when it has sources, or while a source is
+/// dragged), "New folder",
 /// and a footer with "Add source" and Settings. Sources drag to reorder and between folders; folder
 /// headers drag to reorder folders. Context menus and the hover "..." button offer the same actions.
 struct SidebarView: View {
@@ -149,7 +150,8 @@ struct SidebarView: View {
     private func folderSection(_ folder: Folder?) -> some View {
         let id = folder?.id
         let list = model.sources(inFolder: id)
-        if folder != nil || !list.isEmpty {
+        // An empty Unfiled appears while a source is dragged so it can be dropped there.
+        if folder != nil || !list.isEmpty || isDraggingSource {
             let open = !model.isFolderCollapsed(id)
             VStack(alignment: .leading, spacing: 0) {
                 folderHeader(folder, count: list.count, open: open)
@@ -310,6 +312,10 @@ struct SidebarView: View {
     }
 
     // MARK: Drag and drop
+
+    private var isDraggingSource: Bool {
+        if case .source = dragging { true } else { false }
+    }
 
     private func dropDelegate(_ target: SidebarDrop) -> SidebarDropDelegate {
         SidebarDropDelegate(target: target, dragging: dragging, over: $over) { drag, target in
