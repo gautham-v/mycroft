@@ -114,6 +114,9 @@ extension NSColor {
 enum Metrics {
     /// Desktop sidebar width (`w-[230px]`).
     static let sidebarWidth: CGFloat = 230
+    /// Desktop sidebar drag limits.
+    static let sidebarMinWidth: CGFloat = 200
+    static let sidebarMaxWidth: CGFloat = 340
     /// Item list column: 410 on desktop (lg), 380 on tablet (md).
     static let listWidth: CGFloat = 410
     /// Desktop list column drag limits.

@@ -232,36 +232,58 @@ final class HairlineSplitView: NSSplitView {
         root.subviews.forEach(adopt(in:))
     }
 
-    /// The sidebar is fixed at `Metrics.sidebarWidth`, but SwiftUI leaves its split-view item
-    /// resizable (140pt minimum, no maximum) whatever `navigationSplitViewColumnWidth` says, and AppKit
-    /// restores whatever width was saved. Put it back.
+    /// SwiftUI leaves the sidebar's split-view item at a 140pt minimum and no maximum whatever
+    /// `navigationSplitViewColumnWidth` says, and AppKit restores whatever width was saved: bring a
+    /// saved width outside the sidebar's limits back inside them.
     func restoreSidebarWidth() {
-        guard isVertical, let sidebar = arrangedSubviews.first, !isSubviewCollapsed(sidebar), !sidebar.isHidden,
-              abs(sidebar.frame.width - Metrics.sidebarWidth) > 0.5 else { return }
-        setPosition(Metrics.sidebarWidth, ofDividerAt: 0)
+        guard isVertical, let sidebar = arrangedSubviews.first, !isSubviewCollapsed(sidebar), !sidebar.isHidden else { return }
+        let width = min(max(sidebar.frame.width, Metrics.sidebarMinWidth), Metrics.sidebarMaxWidth)
+        if abs(width - sidebar.frame.width) > 0.5 { setPosition(width, ofDividerAt: 0) }
     }
 
-    /// Divider drags, handled here so the columns stay independent. AppKit's own tracking lets the
-    /// sidebar's divider move (the sidebar is meant to be fixed) and, once the list reaches its
-    /// minimum, keeps going by shrinking the sidebar. Here the sidebar's divider doesn't move and the
-    /// list's divider stops at the list's minimum and maximum widths.
+    /// Divider drags, handled here so the columns resize independently. AppKit's own tracking moves
+    /// only the two columns beside a divider and, once the list reaches its minimum, keeps going by
+    /// shrinking the sidebar. Here each column keeps to its limits and the reader takes up the
+    /// difference: the sidebar's divider resizes the sidebar and carries the list along unchanged,
+    /// the list's divider resizes the list.
     override func mouseDown(with event: NSEvent) {
         let views = arrangedSubviews
         let point = convert(event.locationInWindow, from: nil)
         guard isVertical, views.count == 3, let window,
               let index = (0..<2).first(where: { i in
-                  !isSubviewCollapsed(views[i + 1]) && abs(point.x - (views[i].frame.maxX + dividerThickness / 2)) <= 4
+                  !isSubviewCollapsed(views[i]) && !isSubviewCollapsed(views[i + 1])
+                      && abs(point.x - (views[i].frame.maxX + dividerThickness / 2)) <= 4
               })
         else { return super.mouseDown(with: event) }
-        guard index == 1, !isSubviewCollapsed(views[1]) else { return }  // the sidebar's divider stays put
 
-        let list = views[1]
-        let grab = point.x - list.frame.maxX
-        let range = (list.frame.minX + Metrics.listMinWidth)...(list.frame.minX + Metrics.listMaxWidth)
+        let column = views[index]
+        let grab = point.x - column.frame.maxX
+        let listWidth = views[1].frame.width
+        // Leave the reader at least this much.
+        let readerMin: CGFloat = 360
+        let range: ClosedRange<CGFloat>
+        if index == 0 {
+            let most = max(Metrics.sidebarMinWidth, min(Metrics.sidebarMaxWidth, bounds.width - 2 * dividerThickness - listWidth - readerMin))
+            range = Metrics.sidebarMinWidth...most
+        } else {
+            range = (column.frame.minX + Metrics.listMinWidth)...(column.frame.minX + Metrics.listMaxWidth)
+        }
         window.trackEvents(matching: [.leftMouseDragged, .leftMouseUp], timeout: .infinity, mode: .eventTracking) { ev, stop in
             guard let ev else { return }
-            let x = self.convert(ev.locationInWindow, from: nil).x - grab
-            self.setPosition(min(max(x, range.lowerBound), range.upperBound), ofDividerAt: 1)
+            let x = min(max(self.convert(ev.locationInWindow, from: nil).x - grab, range.lowerBound), range.upperBound)
+            if index == 0 {
+                // Move the far divider first when growing so the list never gets squeezed in between.
+                let listEdge = x + self.dividerThickness + listWidth
+                if x > column.frame.maxX {
+                    self.setPosition(listEdge, ofDividerAt: 1)
+                    self.setPosition(x, ofDividerAt: 0)
+                } else {
+                    self.setPosition(x, ofDividerAt: 0)
+                    self.setPosition(listEdge, ofDividerAt: 1)
+                }
+            } else {
+                self.setPosition(x, ofDividerAt: 1)
+            }
             if ev.type == .leftMouseUp { stop.pointee = true }
         }
     }

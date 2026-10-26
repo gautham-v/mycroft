@@ -75,7 +75,7 @@ struct ItemRowView: View, Equatable {
         }
     }
 
-    /// Badge, then the source (or author) in ink/500 and the rest muted, truncated on one line.
+    /// Badge, then the source (or author) and the rest, all muted, truncated on one line.
     private func metaLine(name: String, handle: String?) -> some View {
         HStack(spacing: 6) {
             SourceBadge(host: item.source.host, title: item.source.title, size: Metrics.rowBadge)
@@ -86,15 +86,12 @@ struct ItemRowView: View, Equatable {
     }
 
     private func metaText(name: String, handle: String?) -> Text {
-        let lead = Text(verbatim: name).font(OFFont.itemMetaSource).foregroundStyle(Color.ofInk)
-        var tail = (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt)
+        var line = name + (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt)
         if isPhone {
-            if let points = item.item.hnPoints { tail += " · \(points) points" }
-            if let comments = item.item.hnComments { tail += " · \(comments) comments" }
+            if let points = item.item.hnPoints { line += " · \(points) points" }
+            if let comments = item.item.hnComments { line += " · \(comments) comments" }
         }
-        let rest = Text(verbatim: tail)
-            .font(OFFont.itemMeta).foregroundStyle(Color.ofMuted)
-        return Text("\(lead)\(rest)")
+        return Text(verbatim: line).font(OFFont.itemMeta).foregroundStyle(Color.ofMuted)
     }
 
     private var snippet: String? {

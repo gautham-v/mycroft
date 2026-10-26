@@ -13,11 +13,10 @@ enum OFFont {
     }
 
     // Item list (item-row.tsx)
-    /// Title: 14.5 / 500, leading 1.3, tracking -0.005em.
-    static let itemTitle = ui(14.5, .medium)
-    /// Meta line: 12.5, source name in ink/500, rest muted.
-    static let itemMeta = ui(12.5)
-    static let itemMetaSource = ui(12.5, .medium)
+    /// Title: 14.5 regular, the sidebar's row style; leading 1.3, tracking -0.005em.
+    static let itemTitle = ui(14.5)
+    /// Meta line (source · time): 13 regular muted, the sidebar's section-label style.
+    static let itemMeta = ui(13)
     /// X-post snippet: 13 muted, one line (macOS / iPad rows).
     static let itemSnippet = ui(13)
     /// Duration badge on thumbnails: 10 / 500, tabular.
