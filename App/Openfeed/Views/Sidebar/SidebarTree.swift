@@ -17,11 +17,14 @@ enum SidebarDrag: Equatable {
 }
 
 /// Where a drop would land (sidebar.tsx `Over`): before a source row, at the end of a folder
-/// (nil = Unfiled), or on a folder header (first in that folder for sources; before it for folders).
+/// (nil = Unfiled; for a folder drag, after that folder), on a folder header (first in that folder for
+/// sources; before it for folders), or in the gap between the last folder and the unfiled list (last
+/// for folders; first unfiled for sources).
 enum SidebarDrop: Equatable {
     case row(Int64)
     case end(Int64?)
     case folder(Int64)
+    case afterFolders
 }
 
 /// Pure reorder rules ported from sidebar.tsx `dropSource` / `dropFolder`. No state, no UI.
@@ -65,19 +68,45 @@ enum SidebarTree {
             guard let i = laneEnd(fid, header: true) else { return nil }
             at = i
             folderId = fid
+        case .afterFolders:
+            guard let i = laneEnd(nil, header: true) else { return nil }
+            at = i
+            folderId = nil
         }
         list.insert(Entry(id: id, folderId: folderId), at: at)
         return list == original ? nil : list
     }
 
-    /// New folder order after dropping folder `id` on folder header `target` (it lands before the target),
-    /// or nil when nothing changes. Folders only drop on folder headers.
+    /// New folder order after dropping folder `id` at `target`, or nil when nothing changes (or the target
+    /// is invalid). A folder header puts it before that folder, a folder's end strip after it, and the gap
+    /// above the unfiled list last. Source rows and the unfiled end don't take folders.
     static func dropFolder(id: Int64, at target: SidebarDrop, order: [Int64]) -> [Int64]? {
-        guard case .folder(let targetId) = target, targetId != id, order.contains(id) else { return nil }
+        guard order.contains(id) else { return nil }
         var ids = order.filter { $0 != id }
-        guard let i = ids.firstIndex(of: targetId) else { return nil }
-        ids.insert(id, at: i)
+        let at: Int
+        switch target {
+        case .folder(let targetId):
+            guard targetId != id, let i = ids.firstIndex(of: targetId) else { return nil }
+            at = i
+        case .end(let targetId?):
+            guard targetId != id, let i = ids.firstIndex(of: targetId) else { return nil }
+            at = i + 1
+        case .afterFolders:
+            at = ids.count
+        case .row, .end(nil):
+            return nil
+        }
+        ids.insert(id, at: at)
         return ids == order ? nil : ids
+    }
+
+    /// Whether a drag can drop on a target at all (drives hover feedback and validation).
+    static func accepts(_ drag: SidebarDrag, at target: SidebarDrop) -> Bool {
+        switch (drag, target) {
+        case (.source, _): true
+        case (.folder, .folder), (.folder, .end(.some(_))), (.folder, .afterFolders): true
+        case (.folder, .row), (.folder, .end(.none)): false
+        }
     }
 }
 
@@ -90,10 +119,7 @@ struct SidebarDropDelegate: DropDelegate {
     let perform: (SidebarDrag, SidebarDrop) -> Void
 
     private var accepts: Bool {
-        guard let dragging else { return false }
-        if case .folder = dragging, case .folder = target { return true }
-        if case .folder = dragging { return false }
-        return true
+        dragging.map { SidebarTree.accepts($0, at: target) } ?? false
     }
 
     func validateDrop(info: DropInfo) -> Bool {

@@ -4,11 +4,11 @@ import SwiftUI
 /// Desktop (macOS, iPad) sidebar. Port of src/components/sidebar.tsx and the ordering in source-tree.ts
 /// (AppModel.orderedFolders / sources(inFolder:)).
 ///
-/// Top to bottom: logo + "Openfeed", the six views, each folder (header opens the folder feed, chevron
-/// collapses it, persisted per device) with its sources, Unfiled (when it has sources, or while a source is
-/// dragged), "New folder",
-/// and a footer with "Add source" and Settings. Sources drag to reorder and between folders; folder
-/// headers drag to reorder folders. Context menus and the hover "..." button offer the same actions.
+/// Top to bottom: the sidebar toggle, the search box, the six views, each folder (header opens the folder
+/// feed, chevron collapses it, persisted per device) with its sources, then the sources in no folder as a
+/// flat list with no header (new sources land at its end), "New folder", and a footer with "Add source" and
+/// Settings. Sources drag to reorder, between folders and in or out of the flat list; folder headers drag
+/// to reorder folders. Context menus and the hover "..." button offer the same actions.
 /// Pinned sources list in a "Pinned" group under the views (not in their folder); hidden ones in a
 /// collapsed "Hidden (N)" group at the end. Both are not drag targets. The filter field (⌘K) swaps the
 /// tree for a flat list of matches.
@@ -53,7 +53,7 @@ struct SidebarView: View {
                             ForEach(model.orderedFolders) { folder in
                                 folderSection(folder)
                             }
-                            folderSection(nil)
+                            unfiledSection
                             hiddenSection
                             newFolderArea.id(Self.newFolderAnchor)
                         }
@@ -172,74 +172,78 @@ struct SidebarView: View {
     // MARK: Folders
 
     @ViewBuilder
-    private func folderSection(_ folder: Folder?) -> some View {
-        let id = folder?.id
-        let list = model.sources(inFolder: id)
-        // An empty Unfiled appears while a source is dragged so it can be dropped there.
-        if folder != nil || !list.isEmpty || isDraggingSource {
-            let open = !model.isFolderCollapsed(id)
-            VStack(alignment: .leading, spacing: 0) {
-                folderHeader(folder, count: list.count, open: open)
-                if open {
-                    ForEach(list) { source in
-                        sourceRow(source)
-                    }
-                    endZone(folderId: id, empty: list.isEmpty)
+    private func folderSection(_ folder: Folder) -> some View {
+        let list = model.sources(inFolder: folder.id)
+        let open = !model.isFolderCollapsed(folder.id)
+        VStack(alignment: .leading, spacing: 0) {
+            folderHeader(folder, count: list.count, open: open)
+            if open {
+                ForEach(list) { source in
+                    sourceRow(source)
                 }
+                endZone(folderId: folder.id, empty: list.isEmpty)
             }
-            .padding(.top, 12)
+        }
+        .padding(.top, 12)
+    }
+
+    /// Sources in no folder (new sources land here): a flat list under the folders, no header. The gap
+    /// above it takes folder drops (after the last folder); while a source is dragged and the list is
+    /// empty, a "Drop here for no folder" zone stands in for it.
+    @ViewBuilder
+    private var unfiledSection: some View {
+        let list = model.sources(inFolder: nil)
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear
+                .frame(height: 12)
+                .contentShape(Rectangle())
+                .modifier(SidebarDropIndicator(visible: over == .afterFolders))
+                .onDrop(of: [.plainText], delegate: dropDelegate(.afterFolders))
+            ForEach(list) { source in
+                sourceRow(source)
+            }
+            if !list.isEmpty || isDraggingSource {
+                endZone(folderId: nil, empty: list.isEmpty)
+            }
         }
     }
 
-    @ViewBuilder
-    private func folderHeader(_ folder: Folder?, count: Int, open: Bool) -> some View {
-        let title = folder?.title ?? "Unfiled"
-        let active = folder != nil && model.selectedFolderID == folder?.id
-        let isEditing = folder.map { editing == .renameFolder($0.id) } ?? false
-        let base = SidebarFolderHeader(
-            title: title,
+    private func folderHeader(_ folder: Folder, count: Int, open: Bool) -> some View {
+        let active = model.selectedFolderID == folder.id
+        return SidebarFolderHeader(
+            title: folder.title,
             count: count,
             open: open,
             active: active,
-            hasMenu: folder != nil,
-            isEditing: isEditing,
+            hasMenu: true,
+            isEditing: editing == .renameFolder(folder.id),
             onTitle: {
-                if let folder {
-                    if active { model.goHome() } else { model.navigate(folderID: folder.id) }
-                } else {
-                    model.toggleFolderCollapsed(nil)
-                }
+                if active { model.goHome() } else { model.navigate(folderID: folder.id) }
             },
-            onToggle: { model.toggleFolderCollapsed(folder?.id) },
+            onToggle: { model.toggleFolderCollapsed(folder.id) },
             onRename: { newTitle in
                 editing = nil
-                if let folder { renameFolder(folder.id, newTitle) }
+                renameFolder(folder.id, newTitle)
             },
             onCancelRename: { editing = nil },
-            menu: { if let folder { folderMenu(folder) } }
+            menu: { folderMenu(folder) }
         )
-        if let folder {
-            base
-                .modifier(SidebarDropIndicator(visible: over == .folder(folder.id)))
-                .contextMenu { folderMenu(folder) }
-                .onDrag {
-                    dragging = .folder(folder.id)
-                    return NSItemProvider(object: SidebarDrag.folder(folder.id).payload as NSString)
-                }
-                .onDrop(of: [.plainText], delegate: dropDelegate(.folder(folder.id)))
-        } else {
-            // Unfiled has no menu and isn't draggable; a drop on it lands at its end.
-            base
-                .onDrop(of: [.plainText], delegate: dropDelegate(.end(nil)))
+        .modifier(SidebarDropIndicator(visible: over == .folder(folder.id)))
+        .contextMenu { folderMenu(folder) }
+        .onDrag {
+            dragging = .folder(folder.id)
+            return NSItemProvider(object: SidebarDrag.folder(folder.id).payload as NSString)
         }
+        .onDrop(of: [.plainText], delegate: dropDelegate(.folder(folder.id)))
     }
 
-    /// The strip after a folder's last source (or "Drop sources here" when empty): drops land at the end.
+    /// The strip after a folder's (or the unfiled list's) last source, or "Drop sources here" when empty:
+    /// source drops land at the end; a folder dropped on a folder's strip lands after that folder.
     @ViewBuilder
     private func endZone(folderId: Int64?, empty: Bool) -> some View {
         Group {
             if empty {
-                Text("Drop sources here")
+                Text(folderId == nil ? "Drop here for no folder" : "Drop sources here")
                     .font(OFFont.ui(12))
                     .foregroundStyle(.ofFaint)
                     .padding(.horizontal, SidebarStyle.rowPadding)
@@ -301,7 +305,7 @@ struct SidebarView: View {
         }
     }
 
-    /// Collapsed "Hidden (N)" group after Unfiled: hidden sources stay reachable here and through the filter.
+    /// Collapsed "Hidden (N)" group after the unfiled sources: hidden sources stay reachable here and through the filter.
     @ViewBuilder
     private var hiddenSection: some View {
         let list = model.hiddenSources
@@ -494,17 +498,18 @@ private struct SidebarSourceRow<MenuContent: View>: View {
             if isEditing {
                 SidebarNameField(initial: source.title, placeholder: "Source name", onCommit: onRename, onCancel: onCancelRename)
             } else {
-                Button(action: onOpen) {
-                    Text(source.title)
-                        .font(OFFont.sidebarRow)
-                        .foregroundStyle(.ofInk)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(source.lastError.map { "Last refresh failed: \($0)" } ?? source.title)
+                // A tap gesture, not a Button: on macOS a Button keeps the mouse-down, so the row's .onDrag never starts.
+                Text(source.title)
+                    .font(OFFont.sidebarRow)
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onOpen)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { onOpen() }
+                    .help(source.lastError.map { "Last refresh failed: \($0)" } ?? source.title)
                 Menu {
                     menu()
                 } label: {
@@ -527,7 +532,7 @@ private struct SidebarSourceRow<MenuContent: View>: View {
     }
 }
 
-/// A folder (or Unfiled) header: 26pt, 13pt muted text (Claude's "Recents"); title opens the folder feed,
+/// A folder (or Pinned / Hidden group) header: 26pt, 13pt muted text (Claude's "Recents"); title opens the folder feed,
 /// count shows while collapsed, "..." on hover, chevron toggles.
 private struct SidebarFolderHeader<MenuContent: View>: View {
     let title: String
@@ -550,14 +555,15 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
             if isEditing {
                 SidebarNameField(initial: title, placeholder: "Folder name", onCommit: onRename, onCancel: onCancelRename)
             } else {
-                Button(action: onTitle) {
-                    Text(title)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(hasMenu ? "Show everything in \(title)" : "")
+                // A tap gesture, not a Button, so the header's .onDrag can start (see SidebarSourceRow).
+                Text(title)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onTitle)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { onTitle() }
+                    .help(hasMenu ? "Show everything in \(title)" : "")
                 if !open && showsCount {
                     Text("\(count)").monospacedDigit()
                 }
