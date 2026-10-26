@@ -88,12 +88,14 @@ struct SidebarView: View {
     // MARK: Header and footer
 
     /// No logo or wordmark (like the Claude desktop app): just the sidebar toggle. On macOS the window
-    /// title bar is hidden, so the strip leaves the traffic lights their room.
+    /// title bar is hidden: the toggle follows the traffic lights on the top row.
     private var header: some View {
         HStack(spacing: 0) {
             #if os(macOS)
-            // The window's own (transparent) toolbar carries the traffic lights and the native
-            // sidebar toggle; this strip only reserves their row.
+            SidebarIconButton(icon: .sidebar, label: "Hide sidebar", size: Metrics.desktopIconButton, iconSize: 16) {
+                model.toggleSidebar()
+            }
+            .padding(.leading, Metrics.sidebarToggleX)
             Spacer(minLength: 0)
             #else
             Spacer(minLength: 0)
@@ -103,8 +105,7 @@ struct SidebarView: View {
             #endif
         }
         #if os(macOS)
-        .frame(height: Metrics.titleStripHeight)
-        .padding(.bottom, Metrics.titleStripGap)
+        .frame(height: Metrics.topBarHeight)
         #else
         .padding(.horizontal, 10)
         .frame(height: Metrics.desktopHeaderHeight)
@@ -428,7 +429,7 @@ private struct SidebarSourceRow<MenuContent: View>: View {
     }
 }
 
-/// A folder (or Unfiled) header: 26pt, 11pt semibold faint text; title opens the folder feed,
+/// A folder (or Unfiled) header: 26pt, 13pt muted text (Claude's "Recents"); title opens the folder feed,
 /// count shows while collapsed, "..." on hover, chevron toggles.
 private struct SidebarFolderHeader<MenuContent: View>: View {
     let title: String
@@ -483,7 +484,7 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
         }
         .font(SidebarStyle.sectionFont)
         .tracking(SidebarStyle.sectionTracking)
-        .foregroundStyle(active ? Color.ofInk : hovered ? Color.ofMuted : Color.ofFaint)
+        .foregroundStyle(active || hovered ? Color.ofInk : Color.ofMuted)
         .padding(.leading, SidebarStyle.rowPadding)
         .padding(.trailing, 4)
         .frame(height: SidebarStyle.headerHeight)
@@ -511,7 +512,7 @@ private struct SidebarNewFolderButton: View {
             }
             .font(SidebarStyle.sectionFont)
             .tracking(SidebarStyle.sectionTracking)
-            .foregroundStyle(hovered ? Color.ofMuted : Color.ofFaint)
+            .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
             .padding(.horizontal, SidebarStyle.rowPadding)
             .frame(height: SidebarStyle.headerHeight)
             .contentShape(Rectangle())

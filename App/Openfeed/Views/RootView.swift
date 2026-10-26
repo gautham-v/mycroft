@@ -69,7 +69,14 @@ struct RootView: View {
         #else
         splitLayout
             .toolbar(removing: .title)
-            .toolbar(removing: .sidebarToggle)
+            // An empty, invisible item keeps the window toolbar (and the 38pt title bar it brings) in
+            // place when the sidebar hides. Without one SwiftUI drops the toolbar, and the bare title
+            // bar then takes clicks meant for the list header's top row.
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Color.clear.frame(width: 1, height: 1).allowsHitTesting(false).accessibilityHidden(true)
+                }
+            }
             .toolbarBackground(.hidden, for: .windowToolbar)
             .background(FlushWindowChrome())
             .frame(minWidth: 900, minHeight: 560)
@@ -80,6 +87,10 @@ struct RootView: View {
         NavigationSplitView(columnVisibility: columnVisibility) {
             SidebarView()
                 .navigationSplitViewColumnWidth(Metrics.sidebarWidth)
+                #if os(macOS)
+                // The sidebar header and list header draw their own toggle (white, like Claude's).
+                .toolbar(removing: .sidebarToggle)
+                #endif
                 .flushToWindowTop()
         } content: {
             ItemListView()

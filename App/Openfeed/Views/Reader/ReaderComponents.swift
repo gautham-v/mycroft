@@ -7,7 +7,7 @@ import AppKit
 #endif
 
 /// Toolbar icon button (ActionButton in reader.tsx): 30pt on desktop, 44pt touch target on phones,
-/// muted icon that turns ink on hover, 8pt rounded hover background.
+/// ink icon (like Claude's bar), 7pt rounded hover background.
 struct ReaderIconButtonStyle: ButtonStyle {
     var size: CGFloat
     var glyph: CGFloat = 17
@@ -27,7 +27,7 @@ private struct ReaderIconButtonBody: View {
     var body: some View {
         configuration.label
             .font(.system(size: glyph, weight: .regular))
-            .foregroundStyle(hovering || configuration.isPressed ? Color.ofInk : Color.ofMuted)
+            .foregroundStyle(Color.ofInk)
             .frame(width: size, height: size)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)

@@ -52,8 +52,8 @@ extension Color {
     static let ofInk = Color(light: 0x1D1D1F, dark: 0xF5F5F7)
     /// Body text.
     static let ofBody = Color(light: 0x3A3A3C, dark: 0xD1D1D6)
-    /// Secondary text, meta lines, icons.
-    static let ofMuted = Color(light: 0x6E6E73, dark: 0x98989D)
+    /// Secondary text, meta lines, section labels (Claude desktop's grey, brighter than Apple's).
+    static let ofMuted = Color(light: 0x5E5E63, dark: 0xB4B4B4)
     /// Tertiary text, placeholder icons.
     static let ofFaint = Color(light: 0xAEAEB2, dark: 0x636366)
     /// Control borders.
@@ -134,15 +134,16 @@ enum Metrics {
     /// Sidebar row height and corner radius.
     static let sidebarRowHeight: CGFloat = 34
     static let rowRadius: CGFloat = 6
-    /// macOS: the window title bar is hidden, so the traffic lights sit over the content. Leading
-    /// space that keeps the first row of controls clear of them.
-    /// (Window toolbar: lights end at ~65pt, the native sidebar toggle at ~106pt.)
-    static let trafficLightInset: CGFloat = 114
-    /// Height of the row that holds the traffic lights (hidden title bar). FlushWindowChrome moves the
-    /// lights down so they sit on this row's centre line, like the Claude desktop app.
-    static let titleStripHeight: CGFloat = 38
-    /// Air between that row and the content below it.
-    static let titleStripGap: CGFloat = 8
+    /// macOS: the title bar is hidden, so the traffic lights sit over the content on the top row.
+    /// Like the Claude desktop app the row is 44pt and the lights are centred 22pt from the top and
+    /// left edges (TrafficLights), ending at ~69pt; the sidebar toggle follows at `sidebarToggleX`.
+    static let topBarHeight: CGFloat = 44
+    static let trafficLightCenter: CGFloat = 22
+    static let sidebarToggleX: CGFloat = 80
+    /// Leading space that clears the lights (full-screen reader).
+    static let trafficLightInset: CGFloat = 84
+    /// Air between the list header row and the first row.
+    static let listHeaderGap: CGFloat = 6
     /// Item row padding (px-2.5 py-[11px]) and the inset hairline start (10 + 24 + 12).
     static let rowPaddingH: CGFloat = 10
     static let rowPaddingV: CGFloat = 11

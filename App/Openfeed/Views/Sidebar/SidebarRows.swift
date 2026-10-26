@@ -3,9 +3,9 @@ import SwiftUI
 
 /// Small building blocks of the desktop sidebar (sidebar.tsx ViewRow, FooterRow, InlineInput, ICON_BTN).
 enum SidebarStyle {
-    /// Folder header / "New folder" label: 11pt semibold, tracking 0.01em.
-    static let sectionFont = OFFont.ui(11, .semibold)
-    static let sectionTracking: CGFloat = 0.11
+    /// Folder header / "New folder" label: 13pt regular, like Claude's "Recents".
+    static let sectionFont = OFFont.ui(13)
+    static let sectionTracking: CGFloat = 0
     static let headerHeight: CGFloat = 26
     /// Row horizontal padding (px-2) and icon column width (w-[20px]).
     static let rowPadding: CGFloat = 8
@@ -51,7 +51,7 @@ struct SidebarViewRow: View {
             HStack(spacing: 10) {
                 view.icon.image
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(.ofMuted)
+                    .foregroundStyle(.ofInk)
                     .frame(width: SidebarStyle.iconColumn)
                 Text(view.title)
                     .font(OFFont.sidebarRow)
@@ -70,7 +70,7 @@ struct SidebarViewRow: View {
     }
 }
 
-/// Footer "Add source" row (13.5pt, muted, ink on hover).
+/// Footer "Add source" row (13.5pt, ink).
 struct SidebarFooterRow: View {
     let icon: OFIcon
     let label: String
@@ -86,7 +86,7 @@ struct SidebarFooterRow: View {
                 Text(label).font(OFFont.sidebarFooter).lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
+            .foregroundStyle(Color.ofInk)
             .padding(.horizontal, SidebarStyle.rowPadding)
             .frame(height: Metrics.sidebarRowHeight)
             .contentShape(Rectangle())
@@ -97,7 +97,7 @@ struct SidebarFooterRow: View {
     }
 }
 
-/// Square icon button (header hide-sidebar, footer Settings): muted, nav hover background.
+/// Square icon button (header hide-sidebar, footer Settings): ink, nav hover background.
 struct SidebarIconButton: View {
     let icon: OFIcon
     let label: String
@@ -110,7 +110,7 @@ struct SidebarIconButton: View {
         Button(action: action) {
             icon.image
                 .font(.system(size: iconSize, weight: .regular))
-                .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
+                .foregroundStyle(Color.ofInk)
                 .frame(width: size, height: size)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -125,7 +125,7 @@ struct SidebarIconButton: View {
     }
 }
 
-/// The small faint icon button shown on hover inside rows and headers (MoreIcon, ChevronIcon).
+/// The small muted icon button shown on hover inside rows and headers (MoreIcon, ChevronIcon).
 struct SidebarMiniButtonLabel: View {
     let icon: OFIcon
     var size: CGFloat = 20
@@ -137,7 +137,7 @@ struct SidebarMiniButtonLabel: View {
         icon.image
             .font(.system(size: iconSize, weight: .semibold))
             .rotationEffect(rotation)
-            .foregroundStyle(hovered ? Color.ofInk : Color.ofFaint)
+            .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
             .frame(width: size, height: size)
             .background(
                 RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)

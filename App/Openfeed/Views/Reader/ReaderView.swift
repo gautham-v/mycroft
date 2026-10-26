@@ -216,8 +216,8 @@ struct ReaderItemView: View {
         .padding(.leading, focusInset)
         .padding(.trailing, 16)
         #if os(macOS)
-        // Same total height as the list header (strip + gap), with a hairline under it like Claude's bar.
-        .frame(height: Metrics.titleStripHeight + Metrics.titleStripGap)
+        // The top row shared with the list header and traffic lights, hairline under it like Claude's bar.
+        .frame(height: Metrics.topBarHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
         #else
         .padding(.vertical, 8)

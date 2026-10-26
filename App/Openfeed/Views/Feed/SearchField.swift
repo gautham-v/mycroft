@@ -43,7 +43,7 @@ struct FeedSearchField: View {
                     .frame(width: Metrics.desktopIconButton, height: Metrics.desktopIconButton)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(FeedHoverIconButtonStyle(inkOnHover: true, hoverBackground: false))
+            .buttonStyle(FeedHoverIconButtonStyle(inkOnHover: true, hoverBackground: false, baseColor: .ofMuted))
             .accessibilityLabel(isEmpty ? "Close search" : "Clear search")
         }
         .padding(.leading, 8)
@@ -66,12 +66,12 @@ struct FeedSearchField: View {
     }
 }
 
-/// Plain icon button for the list headers: muted icon that turns ink on hover (desktop), with an
-/// optional rounded hover background (`hover:bg-[var(--hover)]`).
+/// Plain icon button for the list headers: ink icon (like Claude's bar) with an optional rounded hover
+/// background (`hover:bg-[var(--hover)]`); a muted `baseColor` turns ink on hover.
 struct FeedHoverIconButtonStyle: ButtonStyle {
     var inkOnHover = true
     var hoverBackground = true
-    var baseColor: Color = .ofMuted
+    var baseColor: Color = .ofInk
 
     func makeBody(configuration: Configuration) -> some View {
         FeedHoverIconLabel(configuration: configuration, inkOnHover: inkOnHover,

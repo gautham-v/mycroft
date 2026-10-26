@@ -10,3 +10,6 @@
 xcuserdata/
 *.xcuserstate
 .swiftpm/
+
+# Claude Code agent worktrees
+/.claude/worktrees/

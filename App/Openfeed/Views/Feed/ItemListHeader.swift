@@ -1,7 +1,7 @@
 import OpenfeedCore
 import SwiftUI
 
-/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 54pt, title 15/600 + "updated X ago" 13 muted on
+/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 44pt on the Mac's top row (54pt on iPad), title 15/600 + "updated X ago" 13 muted on
 /// one baseline, search button (or the search field in place of the title), refresh button.
 /// A show-sidebar button leads when the sidebar is collapsed.
 struct DesktopListHeader: View {
@@ -10,7 +10,6 @@ struct DesktopListHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            #if os(iOS)
             if model.sidebarCollapsed {
                 Button(action: { model.toggleSidebar() }) {
                     OFIcon.sidebar.image
@@ -22,7 +21,6 @@ struct DesktopListHeader: View {
                 .help("Show sidebar (⌘\\)")
                 .accessibilityLabel("Show sidebar")
             }
-            #endif
             if model.isSearchOpen {
                 FeedSearchField(focus: searchFocus)
             } else {
@@ -43,14 +41,15 @@ struct DesktopListHeader: View {
             FeedRefreshButton()
         }
         #if os(macOS)
-        .padding(.leading, model.sidebarCollapsed ? Metrics.trafficLightInset : 18)
+        // Collapsed: the toggle sits where the sidebar header had it, after the traffic lights.
+        .padding(.leading, model.sidebarCollapsed ? Metrics.sidebarToggleX : 18)
         #else
         .padding(.leading, model.sidebarCollapsed ? 12 : 18)
         #endif
         .padding(.trailing, 12)
         #if os(macOS)
-        .frame(height: Metrics.titleStripHeight)
-        .padding(.bottom, Metrics.titleStripGap)
+        .frame(height: Metrics.topBarHeight)
+        .padding(.bottom, Metrics.listHeaderGap)
         #else
         .frame(height: Metrics.desktopHeaderHeight)
         #endif

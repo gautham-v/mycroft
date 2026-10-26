@@ -105,7 +105,81 @@ struct FlushWindowChrome: NSViewRepresentable {
         window.toolbarStyle = .unifiedCompact
         window.toolbar?.isVisible = true
         window.toolbar?.showsBaselineSeparator = false
+        TrafficLightsView.install(in: window)
         if let content = window.contentView { HairlineSplitView.adopt(in: content) }
+    }
+}
+
+/// The close / minimize / zoom buttons where the Claude desktop app has them: centred
+/// `Metrics.trafficLightCenter` from the window's top and left edges, 20pt apart. AppKit pins its own
+/// buttons to the compact toolbar row (3pt higher and to the left) and re-applies that through Auto
+/// Layout whenever the title bar re-lays out (e.g. a column is toggled), so moving them flickers or
+/// snaps back. Instead this view holds a second set of standard buttons at the Claude spot, above the
+/// title bar, and AppKit's own are made transparent (they keep working underneath, at nearly the
+/// same spot). In full screen AppKit's buttons come back and these hide.
+final class TrafficLightsView: NSView {
+    private static let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+    private var buttons: [NSButton] = []
+    private var hovering = false
+    private var observers: [NSObjectProtocol] = []
+
+    static func install(in window: NSWindow) {
+        guard let frameView = window.contentView?.superview else { return }
+        let lights = frameView.subviews.compactMap { $0 as? TrafficLightsView }.first ?? {
+            let v = TrafficLightsView(window: window)
+            frameView.addSubview(v, positioned: .above, relativeTo: nil)
+            return v
+        }()
+        lights.sync()
+    }
+
+    private init(window: NSWindow) {
+        let side = Metrics.trafficLightCenter * 2
+        super.init(frame: NSRect(x: 0, y: window.frame.height - side, width: side + 40, height: side))
+        autoresizingMask = [.maxXMargin, .minYMargin]
+        for (i, kind) in Self.kinds.enumerated() {
+            guard let b = NSWindow.standardWindowButton(kind, for: window.styleMask) else { continue }
+            b.setFrameOrigin(NSPoint(x: Metrics.trafficLightCenter + CGFloat(i) * 20 - b.frame.width / 2,
+                                     y: Metrics.trafficLightCenter - b.frame.height / 2))
+            addSubview(b)
+            buttons.append(b)
+        }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+        let names: [Notification.Name] = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+                                          NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
+                                          NSWindow.willEnterFullScreenNotification]
+        observers = names.map {
+            NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in self?.sync() }
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Shows this set or AppKit's (full screen), and redraws for the window's key state.
+    func sync() {
+        guard let window else { return }
+        let fullScreen = window.styleMask.contains(.fullScreen) || !window.styleMask.contains(.titled)
+        isHidden = fullScreen
+        for kind in Self.kinds { window.standardWindowButton(kind)?.alphaValue = fullScreen ? 1 : 0 }
+        buttons.forEach { $0.needsDisplay = true }
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovering(true) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
+
+    private func setHovering(_ value: Bool) {
+        hovering = value
+        buttons.forEach { $0.needsDisplay = true }
+    }
+
+    /// Asked by the standard buttons: show their x / – / + glyphs while the pointer is over the group.
+    @objc func _mouseInGroup(_ button: NSButton) -> Bool { hovering }
+
+    /// Only the buttons take clicks; the rest of the strip passes through to the content below.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
     }
 }
 
