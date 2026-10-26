@@ -32,7 +32,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - The webhook gets a JSON POST with `id`, `url`, `title`, `author`, `published_at`, `summary` and `source { title, host }`. Each target has a test button: the webhook gets a sample payload marked `"test": true`, and the Readwise token is only checked.
 
 **Settings**
-- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size), Playback (autoplay, theater layout for videos), Integrations, Data (refresh interval, database location and size, clear cached article text) and About.
+- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay, theater layout for videos), Integrations, Data (refresh interval, database location and size, clear cached article text) and About.
 - iPhone uses Liquid Glass system bars and a Feed / Sources / Saved / Settings tab bar.
 
 **Links**

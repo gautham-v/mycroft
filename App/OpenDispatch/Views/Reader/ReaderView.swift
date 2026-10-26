@@ -132,7 +132,8 @@ struct ReaderItemView: View {
     }
 
     private var appearance: ReaderHTML.Appearance {
-        ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, theme: settings.theme, wide: wide)
+        ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, theme: settings.theme, wide: wide,
+                              columnWidth: settings.readerColumnWidth)
     }
 
     private var buttonSize: CGFloat { compact ? Metrics.touchTarget : Metrics.readerActionButton }

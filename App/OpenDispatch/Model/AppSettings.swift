@@ -40,10 +40,34 @@ enum TextSizeSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Reader column cap (Settings → Appearance → Reader width).
+enum ReaderWidthSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    case narrow, medium, wide
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .narrow: "Narrow"
+        case .medium: "Medium"
+        case .wide: "Wide"
+        }
+    }
+    /// Text column width; the side padding sits outside it. Medium is the original 640.
+    var points: CGFloat {
+        switch self {
+        case .narrow: 560
+        case .medium: 640
+        case .wide: 800
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable, Sendable {
     var theme: ThemeSetting = .system
     var readerFont: ReaderFontSetting = .sans
     var textSize: TextSizeSetting = .m
+    var readerWidth: ReaderWidthSetting = .medium
+    /// The article column uses the whole reader pane, ignoring `readerWidth`.
+    var fillWindow: Bool = false
     /// Start playing when you open a video.
     var autoplay: Bool = true
     /// Full-width player above the title.
@@ -61,11 +85,16 @@ struct AppSettings: Codable, Equatable, Sendable {
         theme = (try? c.decode(ThemeSetting.self, forKey: .theme)) ?? .system
         readerFont = (try? c.decode(ReaderFontSetting.self, forKey: .readerFont)) ?? .sans
         textSize = (try? c.decode(TextSizeSetting.self, forKey: .textSize)) ?? .m
+        readerWidth = (try? c.decode(ReaderWidthSetting.self, forKey: .readerWidth)) ?? .medium
+        fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
     }
 
     init() {}
+
+    /// The reader's text column cap; nil with Fill window (the pane's width minus its side padding).
+    var readerColumnWidth: CGFloat? { fillWindow ? nil : readerWidth.points }
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         guard let data = defaults.data(forKey: storageKey),

@@ -75,10 +75,11 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Reading body: 640px column (padding 20px on phones, 32px wider), centered. */
+/* Reading body: a --column wide column (the Reader width setting, 640px by default; none with Fill
+   window), padding 20px on phones and 32px wider, centered. */
 .prose-opendispatch {
   box-sizing: content-box;
-  max-width: 640px;
+  max-width: var(--column, 640px);
   margin: 0 auto;
   padding: 0 20px 32px;
   font-family: var(--font-sans);

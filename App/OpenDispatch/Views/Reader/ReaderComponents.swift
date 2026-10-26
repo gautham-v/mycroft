@@ -88,13 +88,15 @@ struct ReaderFlowLayout: Layout {
     }
 }
 
-/// The 640pt reading column with 20pt (phone) / 32pt (wider) side padding outside it.
+/// The reading column (Settings → Appearance → Reader width, 640pt by default, or the whole pane with
+/// Fill window) with 20pt (phone) / 32pt (wider) side padding outside it.
 struct ReaderColumn: ViewModifier {
     var wide: Bool
+    @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
         content
-            .frame(maxWidth: Metrics.readerMaxWidth, alignment: .leading)
+            .frame(maxWidth: model.settings.readerColumnWidth ?? .infinity, alignment: .leading)
             .padding(.horizontal, wide ? Metrics.readerPaddingWide : Metrics.readerPaddingPhone)
             .frame(maxWidth: .infinity)
     }

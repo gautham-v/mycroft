@@ -142,8 +142,8 @@ enum Metrics {
     static let listMinWidth: CGFloat = 320
     static let listMaxWidth: CGFloat = 520
     static let listWidthTablet: CGFloat = 380
-    /// Reading column max width (`max-w-[640px]`), with 20pt (phone) / 32pt (md+) side padding.
-    static let readerMaxWidth: CGFloat = 640
+    /// Reading column side padding, 20pt (phone) / 32pt (md+). The column's width is a setting
+    /// (`AppSettings.readerColumnWidth`, 640 by default).
     static let readerPaddingPhone: CGFloat = 20
     static let readerPaddingWide: CGFloat = 32
     /// Video player max width in theater layout.

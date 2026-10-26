@@ -1,7 +1,8 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Appearance pane (AppearancePane): theme, reader font, text size, keyboard shortcuts.
+/// Appearance pane (AppearancePane): theme, reader font, text size, reader width (not on phones, where
+/// the screen is narrower than any width), keyboard shortcuts.
 /// Values live in `model.settings` (AppSettings, JSON in UserDefaults "openfeed.settings"), which
 /// RootView (theme) and the reader (font, size) already read.
 struct SettingsAppearancePane: View {
@@ -29,6 +30,23 @@ struct SettingsAppearancePane: View {
                 ])
             }
             SettingsTextSizePreview(font: model.settings.readerFont, size: model.settings.textSize)
+            if !compact {
+                SettingsRow(label: "Reader width", hint: "Width of the article column") {
+                    SettingsSegmented(label: "Reader width", selection: $model.settings.readerWidth, options: [
+                        (.narrow, "Narrow"), (.medium, "Medium"), (.wide, "Wide"),
+                    ])
+                    .disabled(model.settings.fillWindow)
+                }
+                SettingsRow(label: "Fill window", hint: "Use the whole reader pane") {
+                    Toggle("Fill window", isOn: $model.settings.fillWindow)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(.ofOK)
+                        #if os(macOS)
+                        .controlSize(.small)
+                        #endif
+                }
+            }
             // Shortcuts need a hardware keyboard and the side-by-side layout, so not on phones.
             if !compact {
                 SettingsRow(label: "Keyboard shortcuts", hint: "Or press ? anywhere") {

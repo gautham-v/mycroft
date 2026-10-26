@@ -11,6 +11,11 @@ enum ReaderHTML {
         var theme: ThemeSetting
         /// 32pt side padding (md+ in the web) instead of 20pt.
         var wide: Bool
+        /// Text column cap in points; nil fills the view (Fill window).
+        var columnWidth: CGFloat?
+
+        /// The `--column` value reader.css caps the article at.
+        var columnCSS: String { columnWidth.map { "\(Int($0))px" } ?? "none" }
     }
 
     /// reader.css from the app bundle, read once.
@@ -38,7 +43,7 @@ enum ReaderHTML {
         <style>\(stylesheet)</style>
         </head>
         <body>
-        <article class="prose-opendispatch" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
+        <article class="prose-opendispatch" style="--column: \(a.columnCSS)" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
         </body>
         </html>
         """
@@ -79,6 +84,7 @@ enum ReaderHTML {
           a.setAttribute('data-font', '\(a.font.rawValue)');
           a.setAttribute('data-size', '\(a.size.rawValue)');
           a.setAttribute('data-wide', '\(a.wide ? "1" : "0")');
+          a.style.setProperty('--column', '\(a.columnCSS)');
         })();
         """
     }
