@@ -90,10 +90,23 @@ struct FlushWindowChrome: NSViewRepresentable {
             }
             // Toggling a split-view column re-lays out the title bar and puts the buttons back at
             // AppKit's default spot without a window resize. Re-apply once that layout has settled.
-            observers.append(NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification, object: nil, queue: .main) { [weak window] note in
-                guard let window, (note.object as? NSView)?.window === window else { return }
-                DispatchQueue.main.async { FlushWindowChrome.centerTrafficLights(window) }
-            })
+            // Correct synchronously, inside the frame change, so the default position never draws
+            // (an async re-apply flickers). `centerTrafficLights` only moves buttons that are at
+            // AppKit's default spot, so the nested change it triggers is a no-op.
+            var watched: [NSView] = []
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                if let b = window.standardWindowButton(kind) {
+                    watched.append(b)
+                    if let sup = b.superview, !watched.contains(sup) { watched.append(sup) }
+                }
+            }
+            for view in watched {
+                view.postsFrameChangedNotifications = true
+                observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: nil) { [weak window] _ in
+                    guard let window else { return }
+                    FlushWindowChrome.centerTrafficLights(window)
+                })
+            }
             FlushWindowChrome.apply(to: window)
         }
 
