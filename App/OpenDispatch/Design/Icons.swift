@@ -54,6 +54,8 @@ enum OFIcon: String, CaseIterable {
     case grip = "line.3.horizontal"
     /// MoreIcon (row options)
     case more = "ellipsis"
+    /// The reader's More menu
+    case moreMenu = "ellipsis.circle"
     /// FolderIcon (Sources tab, folders)
     case folder = "folder"
     /// SearchIcon
@@ -98,6 +100,7 @@ enum OFIcon: String, CaseIterable {
         case .plus: "of.plus"
         case .headphones: "of.headphones"
         case .highlighter: "of.highlighter"
+        case .moreMenu: "of.more"
         default: nil
         }
     }

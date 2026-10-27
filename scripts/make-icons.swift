@@ -89,6 +89,10 @@ icon("highlighter") { p in
     poly(p, [P(8.5, 10.5), P(5, 18), P(13.5, 15.5)])
     poly(p, [P(3.5, 21), P(13, 21)])
 }
+// Three dots in a ring (the reader's More menu).
+icon("more", fill: { p in for x in [8, 12, 16] as [CGFloat] { p.addEllipse(in: CGRect(x: x - 1.25, y: 10.75, width: 2.5, height: 2.5)) } }) { p in
+    p.addEllipse(in: CGRect(x: 3.5, y: 3.5, width: 17, height: 17))
+}
 
 // Template geometry (SF Symbols template, point size 100): cap height 70.459 above the baseline.
 /// 24 units span 1.2× the point size: at the 15pt toolbar size the 24-unit box is 18pt, like the Claude app.

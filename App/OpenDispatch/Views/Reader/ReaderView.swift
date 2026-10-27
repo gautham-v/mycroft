@@ -284,17 +284,8 @@ struct ReaderItemView: View {
                 HighlightsToolbarButton(item: item, pane: pane, compact: compact, size: buttonSize, glyph: glyphSize)
             }
 
-            if let url = itemURL {
-                Button { openURL(url) } label: { OFIcon.external.image }
-                    .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                    .help("Open original")
-                    .accessibilityLabel("Open original")
-
-                // Share…, Copy Link and Send to in one menu.
-                SendToView(item: item, size: buttonSize, iconSize: glyphSize, share: url)
-            } else {
-                SendToView(item: item, size: buttonSize, iconSize: glyphSize)
-            }
+            // Open Original, Share…, Copy, Send to and Reload Article in one menu.
+            SendToView(item: item, size: buttonSize, iconSize: glyphSize, more: true, link: itemURL)
 
             if !compact {
                 // Article actions on the left, window controls on the right.

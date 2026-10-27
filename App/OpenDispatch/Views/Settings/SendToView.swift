@@ -6,12 +6,13 @@ import SwiftUI
 /// Integrations pane. While sending the icon pulses; on success it turns into an accent check for
 /// 1.8 s; an error shows in a small popover for 5 s.
 ///
-/// Given `share`, it is the desktop reader's Share button instead: the share glyph opens one menu with
-/// Share…, Copy Link, Copy as Markdown and the send targets, and the same sending / sent / error feedback.
+/// Given `more`, it is the desktop reader's More button instead: the ellipsis opens one menu with Open
+/// Original, Share…, Copy (Link, Markdown), Send To and Reload Article, the items of the article's
+/// right-click menu, and the same sending / sent / error feedback.
 ///
 ///     SendToView(item: item)                       // 30pt desktop button
 ///     SendToView(item: item, size: Metrics.touchTarget)   // phone
-///     SendToView(item: item, share: url)           // desktop reader: Share and Send in one menu
+///     SendToView(item: item, more: true, link: url)       // desktop reader: the More menu
 struct SendToView: View {
     let item: FeedItem
     var size: CGFloat = Metrics.desktopIconButton
@@ -19,8 +20,10 @@ struct SendToView: View {
     /// In a system toolbar (iPhone reader): primary-colored glyph, no hover background; the bar draws
     /// the Liquid Glass chrome.
     var inSystemToolbar = false
-    /// The link to share: Share and Send to become one menu under the share glyph.
-    var share: URL? = nil
+    /// The desktop reader's More menu, with Send to among its items.
+    var more = false
+    /// The item's link, for the More menu's Open Original, Share… and Copy Link; nil leaves them out.
+    var link: URL? = nil
 
     /// MENU_LABEL in send-to.tsx.
     static func menuLabel(_ target: SendTarget) -> String {
@@ -42,6 +45,7 @@ struct SendToView: View {
     }
 
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     @State private var status: Status = .idle
     @State private var timer: Task<Void, Never>?
     @State private var hovering = false
@@ -61,9 +65,9 @@ struct SendToView: View {
 
     var body: some View {
         Group {
-            if let share {
+            if more {
                 Menu {
-                    shareItems(share)
+                    moreItems
                 } label: {
                     icon
                 }
@@ -92,8 +96,8 @@ struct SendToView: View {
             }
         }
         .fixedSize()
-        .help(share == nil ? label : shareLabel)
-        .accessibilityLabel(share == nil ? label : shareLabel)
+        .help(more ? moreLabel : label)
+        .accessibilityLabel(more ? moreLabel : label)
         .onHover { hovering = $0 }
         .popover(isPresented: errorShown, arrowEdge: Self.errorArrowEdge) {
             if case .error(let message) = status {
@@ -116,27 +120,45 @@ struct SendToView: View {
         .onDisappear { timer?.cancel() }
     }
 
-    private var shareLabel: String {
+    private var moreLabel: String {
         switch status {
         case .sent, .sending: label
-        default: "Share"
+        default: "More"
         }
     }
 
-    @ViewBuilder private func shareItems(_ url: URL) -> some View {
-        ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
-            Text("Share…")
+    /// Sections draw their own separators (and headers on macOS), so there are no Dividers here.
+    @ViewBuilder private var moreItems: some View {
+        if let link {
+            Section {
+                Button("Open Original") { openURL(link) }
+                ShareLink(item: link, subject: Text(item.item.title), message: Text(item.item.title)) {
+                    Text("Share…")
+                }
+            }
         }
-        Button("Copy Link") { ReaderPasteboard.copy(url) }
-        Button("Copy as Markdown") { model.copyMarkdown(item: item) }
-            .keyboardShortcut("c", modifiers: [.command, .shift])
-        Divider()
-        if targets.isEmpty {
-            Button("Set Up Send To…") { openIntegrationsSettings() }
-        } else {
-            ForEach(targets) { t in
-                Button("Send to \(Self.menuLabel(t))") { Task { await send(to: t) } }
-                    .disabled(status == .sending)
+        Section("Copy") {
+            if let link {
+                Button("Link") { ReaderPasteboard.copy(link) }
+            }
+            Button("Markdown") { model.copyMarkdown(item: item) }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+        }
+        Section("Send To") {
+            if targets.isEmpty {
+                Button("Set Up…") { openIntegrationsSettings() }
+            } else {
+                ForEach(targets) { t in
+                    Button(Self.menuLabel(t)) { Task { await send(to: t) } }
+                        .disabled(status == .sending)
+                }
+            }
+        }
+        // Videos have no article to re-extract (as in View › Reload Article).
+        if item.source.kind != .youtube {
+            Section {
+                Button("Reload Article") { model.reloadArticle(item) }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
     }
@@ -146,8 +168,8 @@ struct SendToView: View {
             if case .sent = status {
                 OFIcon.check.image
                     .foregroundStyle(.ofAccent)
-            } else if share != nil {
-                OFIcon.share.image
+            } else if more {
+                OFIcon.moreMenu.image
                     .foregroundStyle(Color.ofInk)
                     .symbolEffect(.pulse, options: .repeating, isActive: status == .sending)
             } else {
