@@ -9,9 +9,11 @@ import AppKit
 ///
 /// - macOS / iPad (regular width): 54pt desktop header, rows without snippets. On macOS the column runs
 ///   flush to the window edges (like the Claude desktop app); the split view draws the column dividers.
-/// - iPhone (compact): no header or title; the system navigation bar carries a filter menu (content
-///   type + hn100/labs/blogs) and the `.searchable` search item; headline-only rows; pull to refresh.
-///   Opening a row pushes `ReaderView` onto this tab's NavigationStack.
+/// - iPhone (compact): no header; the navigation bar has no background and carries two floating Liquid
+///   Glass bubbles the rows scroll behind: a title menu at the leading edge (`FeedTitleMenu` on the Feed
+///   tab: views, folders, Copy as Markdown; `SavedTitleMenu` on the Saved tab; a back button instead on a
+///   single source's feed) and the `.searchable` search item at the trailing edge; headline-only rows; pull
+///   to refresh. Opening a row pushes `ReaderView` onto this tab's NavigationStack.
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
 /// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
@@ -110,32 +112,16 @@ struct ItemListView: View {
     }
 
     #if os(iOS)
-    /// iPhone: the list alone under the system navigation bar (no title text), so it scrolls under the
-    /// Liquid Glass bars. Toolbar: filter menu + search; pull to refresh.
+    /// iPhone: the list alone under the system navigation bar, so it scrolls visibly behind the floating
+    /// Liquid Glass bubbles (the bar itself has no background). Toolbar: the title menu (Feed or Saved tab)
+    /// or a back button, and search; pull to refresh.
     private var phoneColumn: some View {
         @Bindable var model = model
         return list
             .refreshable { await model.refresh(force: true) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarRole(.editor)
-            .toolbar {
-                if showsBackButton {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(action: backToSources) {
-                            Label("Back to sources", systemImage: OFIcon.back.rawValue)
-                        }
-                    }
-                } else if showsBrand {
-                    ToolbarItem(placement: .topBarLeading) {
-                        FeedBrand()
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    FeedFilterMenu(showsContentTypes: showsContentTypes)
-                }
-                DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-            }
+            .toolbar { phoneToolbar }
             .searchable(text: $model.searchDraft, isPresented: searchPresented, prompt: Text(model.searchPlaceholder))
             .searchToolbarBehavior(.minimize)
             .textInputAutocapitalization(.never)
@@ -147,21 +133,38 @@ struct ItemListView: View {
             }
     }
 
-    /// The content-type section of the filter menu: Feed tab only (not a source/folder feed, not Saved),
-    /// like the web's `tab === "feed"` chips.
-    private var showsContentTypes: Bool {
-        !model.isInSourceFeed && model.selectedView != .saved && (homeTab ?? .feed) == .feed
+    @ToolbarContentBuilder private var phoneToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) { leadingItem }
+        DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
     }
 
-    /// The Feed tab's home list leads with the app's logo and name.
-    private var showsBrand: Bool {
-        (homeTab ?? .feed) == .feed && !model.isInSourceFeed
+    /// Empty on a source's feed pushed from the Sources tab, which has the system back button.
+    @ViewBuilder private var leadingItem: some View {
+        if showsBackButton {
+            Button(action: backToSources) {
+                Label("Back to sources", systemImage: OFIcon.back.rawValue)
+            }
+        } else if showsFeedMenu {
+            FeedTitleMenu()
+        } else if showsSavedMenu {
+            SavedTitleMenu()
+        }
+    }
+
+    /// The Feed tab's list (a view or a folder, not a single source) leads with the title menu.
+    private var showsFeedMenu: Bool {
+        (homeTab ?? .feed) == .feed && model.selectedSourceID == nil
+    }
+
+    /// The Saved tab's saved items lead with the Saved / Highlights menu.
+    private var showsSavedMenu: Bool {
+        homeTab == .saved && !model.isInSourceFeed
     }
 
     /// A source/folder feed shown at the root of a tab (opened from Settings) has no system back button.
     /// Pushed from the Sources tab it does, and SourcesView handles the pop.
     private var showsBackButton: Bool {
-        model.isInSourceFeed && (homeTab ?? model.phoneTab) != .sources
+        model.isInSourceFeed && !showsFeedMenu && (homeTab ?? model.phoneTab) != .sources
     }
 
     private func backToSources() {
@@ -515,29 +518,6 @@ private struct RowMenu: View {
         }
     }
 }
-
-#if os(iOS)
-/// The app's logo and name at the top of the iPhone Feed tab.
-private struct FeedBrand: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Image("AppLogo")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            Text("OpenDispatch")
-                .font(OFFont.ui(20, .semibold))
-                .tracking(-0.3)
-                .foregroundStyle(.ofInk)
-                .fixedSize()
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("OpenDispatch")
-        .accessibilityAddTraits(.isHeader)
-    }
-}
-#endif
 
 private extension View {
     /// A context menu on the desktop layouts only (the iPhone row has none).

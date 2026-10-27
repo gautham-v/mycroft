@@ -63,11 +63,25 @@ struct HighlightsListView: View {
     }
 
     #if os(iOS)
-    /// iPhone: the Saved tab's list with the Saved / Highlights control above it (SavedTabView); opening
-    /// a row pushes the reader.
+    /// iPhone: the Saved tab's list under floating glass bubbles, like ItemListView's: the Saved / Highlights
+    /// title menu and search (which filters the articles here). Opening a row pushes the reader.
     private var phoneColumn: some View {
-        list
+        @Bindable var model = model
+        return list
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SavedTitleMenu() }
+                DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
+            }
+            .searchable(text: $model.searchDraft, isPresented: Binding(
+                get: { model.isSearchOpen && model.phoneTab == .saved },
+                set: { open in
+                    if open { model.openSearch() } else if model.isSearchOpen { model.closeSearch() }
+                }), prompt: Text("Search Highlights"))
+            .searchToolbarBehavior(.minimize)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
             .navigationDestination(isPresented: Binding(
                 get: { model.selectedItemID != nil && model.showsHighlights && model.phoneTab == .saved },
                 set: { presented in if !presented, model.selectedItemID != nil { model.select(nil) } })
@@ -77,17 +91,29 @@ struct HighlightsListView: View {
     }
     #endif
 
+    /// The articles shown: on the iPhone, those matching the search (every term in the title, source or a
+    /// highlight's text); the desktop layouts have no search here.
+    private var groups: [HighlightGroup] {
+        let terms = model.searchQuery.lowercased().split(whereSeparator: \.isWhitespace)
+        guard isPhone, !terms.isEmpty else { return store.groups }
+        return store.groups.filter { group in
+            let haystack = ([group.title, group.sourceTitle] + group.highlights.map(\.text)).joined(separator: " ").lowercased()
+            return terms.allSatisfy { haystack.contains($0) }
+        }
+    }
+
     private var list: some View {
-        List {
-            if store.groups.isEmpty {
+        let groups = groups
+        return List {
+            if groups.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 64)
                     .plainRow()
             }
-            ForEach(Array(store.groups.enumerated()), id: \.element.id) { index, group in
-                HighlightGroupRow(group: group, previousID: index > 0 ? store.groups[index - 1].id : nil, isPhone: isPhone) { inNewTab in
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                HighlightGroupRow(group: group, previousID: index > 0 ? groups[index - 1].id : nil, isPhone: isPhone) { inNewTab in
                     Task { await store.open(group, inNewTab: inNewTab) }
                 }
                 .plainRow()
@@ -103,12 +129,21 @@ struct HighlightsListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 4) {
-            Text("No highlights yet")
-                .font(OFFont.ui(15, .medium))
-                .foregroundStyle(.ofInk)
-            Text(isPhone ? "Select text in an article, then choose Highlight." : "Select text in an article, then Control-click to highlight it.")
-                .font(OFFont.ui(13))
-                .foregroundStyle(.ofMuted)
+            if !store.groups.isEmpty {
+                Text("No results for \u{201C}\(model.searchQuery)\u{201D}")
+                    .font(OFFont.ui(15, .medium))
+                    .foregroundStyle(.ofInk)
+                Text("Searched titles, sources and highlights")
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
+            } else {
+                Text("No highlights yet")
+                    .font(OFFont.ui(15, .medium))
+                    .foregroundStyle(.ofInk)
+                Text(isPhone ? "Select text in an article, then choose Highlight." : "Select text in an article, then Control-click to highlight it.")
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
+            }
         }
         .multilineTextAlignment(.center)
     }
@@ -251,24 +286,11 @@ private struct HighlightsListHeader: View {
 }
 
 #if os(iOS)
-/// iPhone's Saved tab: a Saved / Highlights control over the saved items or the articles with highlights.
+/// iPhone's Saved tab: the saved items or the articles with highlights, switched with the floating "Saved"
+/// title menu both lists carry (SavedTitleMenu), so the rows scroll behind it and the search bubble.
 struct SavedTabView: View {
-    @Environment(AppModel.self) private var model
-
     var body: some View {
         FeedColumn()
-            .safeAreaInset(edge: .top, spacing: 0) {
-                Picker("Show", selection: Binding(
-                    get: { model.showsHighlights },
-                    set: { highlights in if highlights { model.showHighlights() } else { model.navigate(view: .saved) } })
-                ) {
-                    Text("Saved").tag(false)
-                    Text("Highlights").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-            }
     }
 }
 #endif
