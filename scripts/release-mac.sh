@@ -14,6 +14,9 @@
 #
 # Needs: the "Developer ID Application" certificate and Sparkle's EdDSA private key in the login
 # keychain, and ~/.appstoreconnect/opendispatch.env (ASC_KEY_ID, ASC_ISSUER, ASC_KEY) for notarization.
+# iCloud (CloudKit) needs a Developer ID provisioning profile, which the API key can't make through
+# cloud signing: the export signs manually with the "OpenDispatch Developer ID" profile (MAC_APP_DIRECT,
+# that certificate, iCloud + push) installed in ~/Library/Developer/Xcode/UserData/Provisioning Profiles.
 set -euo pipefail
 ROOT=${0:A:h:h}
 APP_DIR=$ROOT/App
@@ -53,7 +56,11 @@ cat > $OUT/ExportOptions.plist <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>method</key><string>developer-id</string>
-  <key>signingStyle</key><string>automatic</string>
+  <key>signingStyle</key><string>manual</string>
+  <key>signingCertificate</key><string>Developer ID Application</string>
+  <key>provisioningProfiles</key><dict>
+    <key>com.gauthamv.openfeed</key><string>OpenDispatch Developer ID</string>
+  </dict>
   <key>teamID</key><string>26TVJ92MLZ</string>
   <key>destination</key><string>export</string>
 </dict></plist>
