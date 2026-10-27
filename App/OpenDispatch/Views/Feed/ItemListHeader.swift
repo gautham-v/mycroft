@@ -246,7 +246,7 @@ private struct PhoneBottomBar: View {
 }
 
 /// The pill of page dots, one per content view with the current one stretched to a capsule. Tapping it opens a
-/// menu of the views, the current one checked.
+/// menu of the views in page order, the current one checked.
 private struct PhonePageDots: View {
     @Environment(AppModel.self) private var model
 
@@ -273,6 +273,8 @@ private struct PhonePageDots: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // Opening upward from the bottom, iOS would otherwise list the views bottom to top.
+        .menuOrder(.fixed)
         .glassEffect(.regular.interactive(), in: .capsule)
         .accessibilityLabel("\(model.listTitle), switch view")
     }
