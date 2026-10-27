@@ -61,10 +61,9 @@ enum SidebarViewItem: Hashable, Identifiable {
     var isHideable: Bool { self != .view(.all) }
 }
 
-/// "More" at the end of the view rows when some are hidden: a chevron in the icon column, muted
-/// label, and the number of hidden views while collapsed. Looks like SidebarViewRow.
+/// "More" at the end of the view rows when some are hidden: a chevron in the icon column and a muted
+/// label. Looks like SidebarViewRow.
 struct SidebarMoreRow: View {
-    let count: Int
     let open: Bool
     let action: () -> Void
     @State private var hovered = false
@@ -81,11 +80,6 @@ struct SidebarMoreRow: View {
                     .font(OFFont.sidebarRow)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if !open {
-                    Text("\(count)")
-                        .font(OFFont.ui(13))
-                        .monospacedDigit()
-                }
             }
             .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
             .padding(.horizontal, SidebarStyle.rowPadding)
@@ -95,7 +89,7 @@ struct SidebarMoreRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
-        .accessibilityLabel(open ? "Collapse More" : "More, \(count) hidden")
+        .accessibilityLabel(open ? "Collapse More" : "Expand More")
     }
 }
 

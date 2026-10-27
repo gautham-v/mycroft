@@ -115,7 +115,7 @@ final class AppModel {
     var isSourceFilterOpen = false
     /// Bumped by ⌘K so the field takes focus even when it is already open.
     private(set) var sourceFilterFocusRequests = 0
-    /// The sidebar's collapsed-by-default "Hidden (N)" group is open. Session only.
+    /// The sidebar's collapsed-by-default "Hidden" group is open. Session only.
     var isHiddenGroupExpanded = false
     /// The sidebar's collapsed-by-default "More" row, which holds the hidden views, is open. Session only.
     var isMoreViewsExpanded = false

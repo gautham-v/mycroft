@@ -11,7 +11,7 @@ import SwiftUI
 /// Settings. Sources drag to reorder, between folders and in or out of the flat list; folder headers drag
 /// to reorder folders. Context menus and the hover "..." button offer the same actions.
 /// Pinned sources list in a "Pinned" group under the views (not in their folder); hidden ones in a
-/// collapsed "Hidden (N)" group at the end. Both are not drag targets. The filter field (⌘K) swaps the
+/// collapsed "Hidden" group at the end. Both are not drag targets. The filter field (⌘K) swaps the
 /// tree for a flat list of matches.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
@@ -156,7 +156,7 @@ struct SidebarView: View {
         return VStack(spacing: 0) {
             ForEach(shown) { item in viewRow(item) }
             if !hidden.isEmpty {
-                SidebarMoreRow(count: hidden.count, open: open) {
+                SidebarMoreRow(open: open) {
                     model.isMoreViewsExpanded = !open
                 }
                 if open {
@@ -212,7 +212,7 @@ struct SidebarView: View {
         let list = model.sources(inFolder: folder.id)
         let open = !model.isFolderCollapsed(folder.id)
         VStack(alignment: .leading, spacing: 0) {
-            folderHeader(folder, count: list.count, open: open)
+            folderHeader(folder, open: open)
             if open {
                 ForEach(list) { source in
                     sourceRow(source)
@@ -244,11 +244,10 @@ struct SidebarView: View {
         }
     }
 
-    private func folderHeader(_ folder: Folder, count: Int, open: Bool) -> some View {
+    private func folderHeader(_ folder: Folder, open: Bool) -> some View {
         let active = model.selectedFolderID == folder.id
         return SidebarFolderHeader(
             title: folder.title,
-            count: count,
             open: open,
             active: active,
             hasMenu: true,
@@ -332,7 +331,7 @@ struct SidebarView: View {
         if !list.isEmpty {
             let open = !model.isPinnedGroupCollapsed
             VStack(alignment: .leading, spacing: 0) {
-                groupHeader("Pinned", count: list.count, open: open) { model.togglePinnedGroupCollapsed() }
+                groupHeader("Pinned", open: open) { model.togglePinnedGroupCollapsed() }
                 if open {
                     ForEach(list) { source in sourceRow(source, draggable: false) }
                 }
@@ -341,14 +340,14 @@ struct SidebarView: View {
         }
     }
 
-    /// Collapsed "Hidden (N)" group after the unfiled sources: hidden sources stay reachable here and through the filter.
+    /// Collapsed "Hidden" group after the unfiled sources: hidden sources stay reachable here and through the filter.
     @ViewBuilder
     private var hiddenSection: some View {
         let list = model.hiddenSources
         if !list.isEmpty {
             let open = model.isHiddenGroupExpanded
             VStack(alignment: .leading, spacing: 0) {
-                groupHeader("Hidden (\(list.count))", count: list.count, open: open) { model.isHiddenGroupExpanded.toggle() }
+                groupHeader("Hidden", open: open) { model.isHiddenGroupExpanded.toggle() }
                 if open {
                     ForEach(list) { source in sourceRow(source, draggable: false) }
                 }
@@ -375,10 +374,10 @@ struct SidebarView: View {
         .padding(.top, 2)
     }
 
-    private func groupHeader(_ title: String, count: Int, open: Bool, toggle: @escaping () -> Void) -> some View {
+    private func groupHeader(_ title: String, open: Bool, toggle: @escaping () -> Void) -> some View {
         SidebarFolderHeader(
-            title: title, count: count, open: open, active: false, hasMenu: false, isEditing: false,
-            showsCount: false, onTitle: toggle, onToggle: toggle, onRename: { _ in }, onCancelRename: {},
+            title: title, open: open, active: false, hasMenu: false, isEditing: false,
+            onTitle: toggle, onToggle: toggle, onRename: { _ in }, onCancelRename: {},
             menu: { EmptyView() }
         )
     }
@@ -580,16 +579,13 @@ private struct SidebarSourceRow<MenuContent: View>: View {
 }
 
 /// A folder (or Pinned / Hidden group) header: 26pt, 13pt muted text (Claude's "Recents"); title opens the folder feed,
-/// count shows while collapsed, "..." on hover, chevron toggles.
+/// "..." on hover, chevron toggles.
 private struct SidebarFolderHeader<MenuContent: View>: View {
     let title: String
-    let count: Int
     let open: Bool
     let active: Bool
     let hasMenu: Bool
     let isEditing: Bool
-    /// Show the count beside the title while collapsed (off when the title carries it, "Hidden (3)").
-    var showsCount = true
     let onTitle: () -> Void
     let onToggle: () -> Void
     let onRename: (String) -> Void
@@ -611,9 +607,6 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { onTitle() }
                     .help(hasMenu ? "Show everything in \(title)" : "")
-                if !open && showsCount {
-                    Text("\(count)").monospacedDigit()
-                }
                 if hasMenu {
                     Menu {
                         menu()
