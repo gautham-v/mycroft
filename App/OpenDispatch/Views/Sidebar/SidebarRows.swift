@@ -39,6 +39,66 @@ struct SidebarDropIndicator: ViewModifier {
     }
 }
 
+/// A row in the sidebar's view list: one of the six views, or Highlights (under Saved). Every row but
+/// All can be hidden into the "More" row.
+enum SidebarViewItem: Hashable, Identifiable {
+    case view(FeedView)
+    case highlights
+
+    /// Sidebar order: the views, with Highlights after Saved.
+    static let ordered: [SidebarViewItem] = FeedView.allCases.flatMap { view in
+        view == .saved ? [.view(view), .highlights] : [.view(view)]
+    }
+
+    /// Stored in `AppModel.hiddenSidebarViews`.
+    var id: String {
+        switch self {
+        case .view(let view): view.rawValue
+        case .highlights: "highlights"
+        }
+    }
+
+    var isHideable: Bool { self != .view(.all) }
+}
+
+/// "More" at the end of the view rows when some are hidden: a chevron in the icon column, muted
+/// label, and the number of hidden views while collapsed. Looks like SidebarViewRow.
+struct SidebarMoreRow: View {
+    let count: Int
+    let open: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                OFIcon.chevron.image
+                    .font(.system(size: 11, weight: .semibold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                    .animation(.easeOut(duration: 0.15), value: open)
+                    .frame(width: SidebarStyle.iconColumn)
+                Text("More")
+                    .font(OFFont.sidebarRow)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if !open {
+                    Text("\(count)")
+                        .font(OFFont.ui(13))
+                        .monospacedDigit()
+                }
+            }
+            .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
+            .padding(.horizontal, SidebarStyle.rowPadding)
+            .frame(height: Metrics.sidebarRowHeight)
+            .contentShape(Rectangle())
+            .modifier(SidebarRowBackground(active: false, hovered: hovered))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityLabel(open ? "Collapse More" : "More, \(count) hidden")
+    }
+}
+
 /// One of the six view rows (All, Saved, Articles, Posts, Video, Podcasts).
 struct SidebarViewRow: View {
     let view: FeedView

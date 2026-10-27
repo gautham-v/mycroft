@@ -4,8 +4,9 @@ import SwiftUI
 /// Desktop (macOS, iPad) sidebar. Port of src/components/sidebar.tsx and the ordering in source-tree.ts
 /// (AppModel.orderedFolders / sources(inFolder:)).
 ///
-/// Top to bottom: the sidebar toggle, the search box, the six views, each folder (header opens the folder
-/// feed, chevron collapses it, persisted per device) with its sources, then the sources in no folder as a
+/// Top to bottom: the sidebar toggle, the search box, the six views and Highlights (any but All can be
+/// hidden from the context menu into a collapsed "More" row, and unhidden from there), each folder
+/// (header opens the folder feed, chevron collapses it, persisted per device) with its sources, then the sources in no folder as a
 /// flat list with no header (new sources land at its end), "New folder", and a footer with "Add source" and
 /// Settings. Sources drag to reorder, between folders and in or out of the flat list; folder headers drag
 /// to reorder folders. Context menus and the hover "..." button offer the same actions.
@@ -147,25 +148,61 @@ struct SidebarView: View {
 
     // MARK: Views
 
+    /// The views, then "More" holding the hidden ones (collapsed unless opened, or one of them is showing).
     private var viewRows: some View {
-        VStack(spacing: 0) {
-            ForEach(FeedView.allCases) { view in
-                SidebarViewRow(view: view, active: isActive(view)) {
-                    model.navigate(view: view)
+        let shown = SidebarViewItem.ordered.filter { !model.isSidebarViewHidden($0) }
+        let hidden = SidebarViewItem.ordered.filter { model.isSidebarViewHidden($0) }
+        let open = model.isMoreViewsExpanded || hidden.contains(where: isActive)
+        return VStack(spacing: 0) {
+            ForEach(shown) { item in viewRow(item) }
+            if !hidden.isEmpty {
+                SidebarMoreRow(count: hidden.count, open: open) {
+                    model.isMoreViewsExpanded = !open
                 }
-                .contextMenu { CopyDigestButtons(scope: .view(view)) }
-                if view == .saved {
-                    SidebarHighlightsRow(count: highlights.count, active: model.showsHighlights) {
-                        model.showHighlights()
-                    }
+                if open {
+                    ForEach(hidden) { item in viewRow(item) }
                 }
             }
         }
         .padding(.top, 2)
     }
 
-    private func isActive(_ view: FeedView) -> Bool {
-        model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
+    @ViewBuilder
+    private func viewRow(_ item: SidebarViewItem) -> some View {
+        switch item {
+        case .view(let view):
+            SidebarViewRow(view: view, active: isActive(item)) {
+                model.navigate(view: view)
+            }
+            .contextMenu {
+                CopyDigestButtons(scope: .view(view))
+                if item.isHideable {
+                    Divider()
+                    hideButton(item)
+                }
+            }
+        case .highlights:
+            SidebarHighlightsRow(count: highlights.count, active: isActive(item)) {
+                model.showHighlights()
+            }
+            .contextMenu { hideButton(item) }
+        }
+    }
+
+    private func hideButton(_ item: SidebarViewItem) -> some View {
+        let hidden = model.isSidebarViewHidden(item)
+        return Button(hidden ? "Unhide" : "Hide from Sidebar") {
+            model.setSidebarView(item, hidden: !hidden)
+        }
+    }
+
+    private func isActive(_ item: SidebarViewItem) -> Bool {
+        switch item {
+        case .view(let view):
+            model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
+        case .highlights:
+            model.showsHighlights
+        }
     }
 
     // MARK: Folders

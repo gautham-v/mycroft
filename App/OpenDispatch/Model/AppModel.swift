@@ -117,6 +117,8 @@ final class AppModel {
     private(set) var sourceFilterFocusRequests = 0
     /// The sidebar's collapsed-by-default "Hidden (N)" group is open. Session only.
     var isHiddenGroupExpanded = false
+    /// The sidebar's collapsed-by-default "More" row, which holds the hidden views, is open. Session only.
+    var isMoreViewsExpanded = false
 
     // MARK: Layout state
 
@@ -135,6 +137,10 @@ final class AppModel {
     /// Collapsed sidebar folders: folder id as a string, or "unfiled". Persisted.
     var collapsedFolders: Set<String> {
         didSet { UserDefaults.standard.set(Array(collapsedFolders), forKey: Keys.collapsedFolders) }
+    }
+    /// Sidebar views moved into "More" (Hide from Sidebar), by `SidebarViewItem.id`. Persisted per device.
+    var hiddenSidebarViews: Set<String> {
+        didSet { UserDefaults.standard.set(Array(hiddenSidebarViews), forKey: Keys.hiddenSidebarViews) }
     }
 
     // MARK: Presentation flags (sheets / dialogs)
@@ -219,6 +225,7 @@ final class AppModel {
     private enum Keys {
         static let sidebarCollapsed = "openfeed.sidebar-collapsed"
         static let collapsedFolders = "openfeed.sidebar.collapsed"
+        static let hiddenSidebarViews = "openfeed.sidebar.hidden-views"
         static let syncEnabled = "openfeed.icloud-sync"
         static let pinnedTabs = "openfeed.pinned-tabs"
     }
@@ -228,6 +235,7 @@ final class AppModel {
         let defaults = UserDefaults.standard
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
         collapsedFolders = Set(defaults.stringArray(forKey: Keys.collapsedFolders) ?? [])
+        hiddenSidebarViews = Set(defaults.stringArray(forKey: Keys.hiddenSidebarViews) ?? [])
         settings = AppSettings.load()
         syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? true
         sync = CloudSync(database: services.database) { [weak self] event in
@@ -371,6 +379,14 @@ final class AppModel {
     }
 
     static func folderKey(_ folderId: Int64?) -> String { folderId.map(String.init) ?? "unfiled" }
+
+    func isSidebarViewHidden(_ item: SidebarViewItem) -> Bool { hiddenSidebarViews.contains(item.id) }
+
+    /// Moves a view into the sidebar's "More" row, or back out. All can't be hidden.
+    func setSidebarView(_ item: SidebarViewItem, hidden: Bool) {
+        guard item.isHideable else { return }
+        if hidden { hiddenSidebarViews.insert(item.id) } else { hiddenSidebarViews.remove(item.id) }
+    }
 
     // MARK: Navigation
 
