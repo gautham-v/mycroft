@@ -52,35 +52,41 @@ enum ReaderYouTubePage {
         <style>
         html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;-webkit-user-select:none;user-select:none;
           -webkit-tap-highlight-color:transparent}
-        #stage{position:absolute;inset:0;background:#000;color:#fff;
-          font:500 12px/1 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+        /* The bar grows with the player (the viewport is the player): 17px icons up to ~810px wide, 20px at
+           960 (theater), 26px from ~1240 (full screen). Everything else follows the icon size. */
+        #stage{position:absolute;inset:0;background:#000;color:#fff;--i:clamp(17px,2.09vw,26px);
+          --tr:max(3px,calc(var(--i)*.2));--k:max(11px,calc(var(--i)*.65));--c:clamp(64px,calc(var(--i)*3.6),96px);
+          font:500 max(12px,calc(var(--i)*.68))/1 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
         #stage.idle{cursor:none}
         iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
         #shield{position:absolute;inset:0}
         .ctl{opacity:0;transition:opacity .2s ease;pointer-events:none}
         #stage.show .ctl{opacity:1;pointer-events:auto}
-        #scrim{position:absolute;left:0;right:0;bottom:0;height:96px;max-height:45%;
+        #scrim{position:absolute;left:0;right:0;bottom:0;height:calc(var(--i)*5.5);max-height:45%;
           background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.5))}
-        #bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:12px 16px}
+        #bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:max(14px,calc(var(--i)*.9));
+          padding:max(12px,calc(var(--i)*.7)) max(16px,var(--i))}
         button{appearance:none;-webkit-appearance:none;border:0;background:none;color:inherit;font:inherit;cursor:pointer;
           padding:5px;margin:-5px;display:grid;place-items:center;flex:none}
-        button svg{width:17px;height:17px;display:block}
+        button svg{width:var(--i);height:var(--i);display:block}
         button:focus-visible{outline:2px solid rgba(255,255,255,.75);outline-offset:1px;border-radius:5px}
         [hidden]{display:none!important}
         .t{font-variant-numeric:tabular-nums;opacity:.92;flex:none}
-        #track{flex:1;min-width:40px;height:22px;position:relative;cursor:pointer;touch-action:none}
-        #track i{position:absolute;left:0;top:50%;height:3px;margin-top:-1.5px;border-radius:2px}
+        #track{flex:1;min-width:40px;height:calc(var(--k) + 10px);position:relative;cursor:pointer;touch-action:none}
+        #track i{position:absolute;left:0;top:50%;height:var(--tr);margin-top:calc(var(--tr)/-2);border-radius:99px}
         #rail{right:0;background:rgba(255,255,255,.28)}
         #buf{background:rgba(255,255,255,.3);width:0}
         #fill{background:#fff;width:0}
-        #knob{position:absolute;top:50%;left:0;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;
+        #knob{position:absolute;top:50%;left:0;width:var(--k);height:var(--k);margin:calc(var(--k)/-2) 0 0 calc(var(--k)/-2);
+          border-radius:50%;
           background:#fff;transform:scale(0);transition:transform .12s ease}
         #track:hover #knob,#track.drag #knob{transform:scale(1)}
-        #speed{font-weight:600;min-width:28px}
-        .round{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;padding:0;border-radius:50%;
-          background:rgba(0,0,0,.42);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-        .round svg{width:26px;height:26px}
-        #big svg{margin-left:3px}
+        #speed{font-weight:650;min-width:2.3em}
+        /* A plain tinted circle: a backdrop blur over YouTube's frame only half draws. */
+        .round{position:absolute;left:50%;top:50%;width:var(--c);height:var(--c);margin:calc(var(--c)/-2) 0 0 calc(var(--c)/-2);
+          padding:0;border-radius:50%;background:rgba(0,0,0,.5)}
+        .round svg{width:40%;height:40%}
+        #big svg{margin-left:4%}
         #stage:not(.paused) #big{display:none}
         #cover{position:absolute;inset:0;background:#000 center/cover no-repeat;display:none}
         #cover::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.45)}
@@ -88,8 +94,11 @@ enum ReaderYouTubePage {
         .on-play,.on-muted,.on-cc,.on-fs{display:none}
         #stage.playing .on-play,#stage.muted .on-muted,#stage.cc .on-cc,#stage.fs .on-fs{display:block}
         #stage.playing .off-play,#stage.muted .off-muted,#stage.cc .off-cc,#stage.fs .off-fs{display:none}
+        @media (min-width:1005px){#stage{font-weight:600}}
         @media (max-width:480px){#bar{gap:12px;padding:10px 12px}}
-        @media (hover:none){#mute{display:none}button{padding:9px;margin:-9px}}
+        /* Touch: 44pt tap areas around the icons, whatever their drawn size. */
+        @media (hover:none){#mute{display:none}
+          #bar button{padding:calc((44px - var(--i))/2);margin:calc((var(--i) - 44px)/2)}}
         @media (prefers-reduced-motion:reduce){.ctl,#knob{transition:none}}
         </style></head>
         <body><div id="stage">
