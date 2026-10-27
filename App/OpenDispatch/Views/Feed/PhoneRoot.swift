@@ -8,6 +8,33 @@ enum PhoneRoute: Hashable {
     case manageSources
 }
 
+/// The home list's horizontal slide while swiping between views (PhoneRoot drives it; the list reads it).
+/// A reference type of its own so the per-frame drag only re-evaluates the small modifier that offsets the
+/// list, not the list or PhoneRoot.
+@MainActor @Observable final class PhoneChrome {
+    /// How far the list is displaced sideways (following the finger, then the slide on a view change).
+    var pageOffset: CGFloat = 0
+    /// A view change is sliding out and in: swipes are ignored until it lands.
+    var isPaging = false
+}
+
+extension AppModel {
+    /// The views the iPhone's page dots and horizontal swipe cycle through: the sidebar's content views in
+    /// order (All, Articles, Posts, Video, Podcasts), less the ones hidden in Settings.
+    var phonePages: [FeedView] {
+        SidebarViewItem.ordered.compactMap { item in
+            guard case .view(let view) = item, view != .saved, !isSidebarViewHidden(item) else { return nil }
+            return view
+        }
+    }
+
+    /// Where the list sits among `phonePages`; nil when it shows a folder, a source, Saved or Highlights.
+    var phonePageIndex: Int? {
+        guard !isInSourceFeed, !showsHighlights else { return nil }
+        return phonePages.firstIndex(of: selectedView)
+    }
+}
+
 /// Opens the iPhone drawer; the list's hamburger button calls it.
 struct PhoneDrawerControl: Sendable {
     var open: @MainActor @Sendable () -> Void = {}
@@ -37,36 +64,39 @@ extension EnvironmentValues {
 
 /// The iPhone layout (compact width): a single NavigationStack around the home list (the Feed, Saved or
 /// Highlights, by what the drawer picked), with a Duet-style side drawer behind it. The drawer opens from
-/// the list's hamburger button or an edge swipe from the left: it covers 82% of the width, and the list
-/// slides right, dims, shrinks a little and rounds its corners as a peek; tapping the peek or swiping
-/// closes it. Opening a row, Manage sources and a source's feed push onto the stack; Settings and Add
-/// source are sheets (RootView).
+/// the list's hamburger bubble or a swipe: in from the left edge, or right on the first view or on a list
+/// that is not one of the five content views. Sideways swipes otherwise move between those views (page
+/// dots). The drawer covers 82% of the width, and the list slides right, dims, shrinks a little and
+/// rounds its corners as a peek; tapping the peek or swiping left closes it. Opening a row, Manage
+/// sources and a source's feed push onto the stack; Settings and Add source are sheets (RootView).
+///
+/// The swipes are one UIKit pan recognizer on the hosting view (`PhoneSwipeBridge`), not a SwiftUI
+/// gesture: the list's scroll view takes the touch first and a SwiftUI drag on a parent never fired.
 struct PhoneRoot: View {
     @Environment(AppModel.self) private var model
     /// The drawer is open (or opening: a drag in progress is tracked by `drag`).
     @State private var isOpen = false
     /// Finger travel while dragging the drawer open or closed.
     @State private var drag: CGFloat = 0
-    /// Whether the current drag moves the drawer: decided once, on its first movement.
-    @State private var dragMoves: Bool?
+    @State private var chrome = PhoneChrome()
     @State private var path: [PhoneRoute] = []
 
     private static let drawerFraction: CGFloat = 0.82
     /// An edge swipe starts within this distance of the screen's left edge.
-    private static let edgeWidth: CGFloat = 24
+    private static let edgeWidth: CGFloat = 30
+    /// A sideways swipe this far (with its momentum) changes view.
+    private static let pageThreshold: CGFloat = 60
 
     var body: some View {
         // The outer reader only learns the safe area (the drawer's content keeps clear of the status bar
         // and home indicator); the inner one fills the screen.
-        // Read here, not in the geometry closures, which don't re-run when the model changes.
-        let edgeSwipe = canOpenFromEdge
-        return GeometryReader { outer in
-            screen(safeArea: outer.safeAreaInsets, edgeSwipe: edgeSwipe)
+        GeometryReader { outer in
+            screen(safeArea: outer.safeAreaInsets)
         }
         .background(Color.ofDrawer.ignoresSafeArea())
     }
 
-    private func screen(safeArea: EdgeInsets, edgeSwipe: Bool) -> some View {
+    private func screen(safeArea: EdgeInsets) -> some View {
         GeometryReader { geo in
             let width = geo.size.width * Self.drawerFraction
             let progress = progress(width: width)
@@ -92,9 +122,14 @@ struct PhoneRoot: View {
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             .background(Color.ofDrawer)
-            .simultaneousGesture(drawerDrag(width: width, edgeSwipe: edgeSwipe))
+            .background {
+                PhoneSwipeBridge(
+                    begin: { swipeBegin(startX: $0, velocity: $1) },
+                    changed: { swipeChanged($0, translation: $1, drawerWidth: width, pageWidth: geo.size.width) },
+                    ended: { swipeEnded($0, translation: $1, velocity: $2, drawerWidth: width, pageWidth: geo.size.width) })
+            }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container)
     }
 
     private var stack: some View {
@@ -106,6 +141,7 @@ struct PhoneRoot: View {
         }
         .environment(\.isFeedStackPushed, !path.isEmpty)
         .environment(\.phoneDrawer, PhoneDrawerControl(open: { open() }))
+        .environment(chrome)
     }
 
     // MARK: Opening and closing
@@ -132,50 +168,206 @@ struct PhoneRoot: View {
         path = [.manageSources]
     }
 
-    /// The edge swipe may only open the drawer from the home list: with something pushed, the stack's own
-    /// swipe back owns the left edge.
-    private var canOpenFromEdge: Bool {
-        path.isEmpty && model.selectedItemID == nil
+    // MARK: Swipes
+
+    /// Whether a swipe may do anything: with the drawer open, or on the home list. With something pushed
+    /// (the reader, Manage sources, a source's feed) the stack's own swipe back owns the left edge.
+    private var swipesEnabled: Bool {
+        isOpen || (path.isEmpty && model.selectedItemID == nil)
     }
 
-    /// The drawer follows the finger: `translation` is how far it moved horizontally.
-    private func panChanged(_ translation: CGFloat, width: CGFloat) {
-        drag = isOpen ? min(0, max(-width, translation)) : min(width, max(0, translation))
+    /// What a horizontal swipe that starts at `startX` moving at `velocity` (points per second) does, or
+    /// nil to leave it alone. Open drawer: swiping left closes it. Closed: from the left edge, rightwards
+    /// on the first view (or on a list that isn't one of the five views) it opens the drawer, otherwise
+    /// it moves between the views.
+    private func swipeBegin(startX: CGFloat, velocity: CGFloat) -> PhoneSwipeMode? {
+        guard swipesEnabled, !chrome.isPaging else { return nil }
+        if isOpen { return velocity < 0 ? .drawer : nil }
+        if startX < Self.edgeWidth, velocity > 0 { return .drawer }
+        if let index = model.phonePageIndex, !model.isSearchOpen {
+            return index == 0 && velocity > 0 ? .drawer : .pager
+        }
+        return velocity > 0 ? .drawer : nil
     }
 
-    /// Settles open or closed by where the drawer would stop.
-    private func panEnded(_ translation: CGFloat, velocity: CGFloat, width: CGFloat) {
-        let predicted = (isOpen ? width : 0) + translation + velocity * 0.15
-        settle(open: predicted > width / 2)
+    private func swipeChanged(_ mode: PhoneSwipeMode, translation: CGFloat, drawerWidth: CGFloat, pageWidth: CGFloat) {
+        switch mode {
+        case .drawer:
+            drag = isOpen ? min(0, max(-drawerWidth, translation)) : min(drawerWidth, max(0, translation))
+        case .pager:
+            guard let index = model.phonePageIndex else { return }
+            let atEnd = (translation > 0 && index == 0) || (translation < 0 && index == model.phonePages.count - 1)
+            chrome.pageOffset = translation * (atEnd ? 0.3 : 1)
+        }
     }
 
-    /// Dragging the drawer: a swipe from the left edge opens it (home list only); a horizontal swipe while it
-    /// is open closes it.
-    private func drawerDrag(width: CGFloat, edgeSwipe: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onChanged { value in
-                if dragMoves == nil {
-                    let horizontal = abs(value.translation.width) > abs(value.translation.height)
-                    dragMoves = horizontal && (isOpen || (edgeSwipe && value.startLocation.x < Self.edgeWidth))
-                    PhoneDrawerTouch.isDragging = dragMoves == true
+    private func swipeEnded(_ mode: PhoneSwipeMode, translation: CGFloat, velocity: CGFloat, drawerWidth: CGFloat, pageWidth: CGFloat) {
+        switch mode {
+        case .drawer:
+            PhoneDrawerTouch.endedAt = Date()
+            let predicted = (isOpen ? drawerWidth : 0) + translation + velocity * 0.15
+            settle(open: predicted > drawerWidth / 2)
+        case .pager:
+            PhoneDrawerTouch.endedAt = Date()
+            let pages = model.phonePages
+            let projected = translation + velocity * 0.12
+            if let index = model.phonePageIndex {
+                if projected < -Self.pageThreshold, index < pages.count - 1 {
+                    page(to: pages[index + 1], forward: true, pageWidth: pageWidth)
+                    return
                 }
-                if dragMoves == true { panChanged(value.translation.width, width: width) }
+                if projected > Self.pageThreshold, index > 0 {
+                    page(to: pages[index - 1], forward: false, pageWidth: pageWidth)
+                    return
+                }
             }
-            .onEnded { value in
-                defer {
-                    dragMoves = nil
-                    PhoneDrawerTouch.isDragging = false
-                }
-                if dragMoves == true {
-                    PhoneDrawerTouch.endedAt = Date()
-                    panEnded(value.translation.width, velocity: (value.predictedEndTranslation.width - value.translation.width) / 0.15, width: width)
-                }
-            }
+            withAnimation(.smooth(duration: 0.28)) { chrome.pageOffset = 0 }
+        }
+    }
+
+    /// Slides the list out the way the finger went, switches view, and slides the new one in from the other
+    /// side.
+    private func page(to view: FeedView, forward: Bool, pageWidth: CGFloat) {
+        let direction: CGFloat = forward ? 1 : -1
+        chrome.isPaging = true
+        withAnimation(.easeIn(duration: 0.16)) { chrome.pageOffset = -direction * pageWidth }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(170))
+            model.navigate(view: view)
+            // Let the new view's first page land (it is a local query) so the rows slide in, not the old ones.
+            await Task.yield()
+            for _ in 0..<15 where model.isLoading { try? await Task.sleep(for: .milliseconds(20)) }
+            var jump = Transaction()
+            jump.disablesAnimations = true
+            withTransaction(jump) { chrome.pageOffset = direction * pageWidth }
+            withAnimation(.smooth(duration: 0.3)) { chrome.pageOffset = 0 }
+            try? await Task.sleep(for: .milliseconds(300))
+            chrome.isPaging = false
+        }
     }
 }
 
-/// Whether a drawer drag is under way or just ended. The list under the finger is a UIKit view that still
-/// sees the touch and would open the row it ends on, so rows ignore taps for a moment after a drag.
+/// What a horizontal swipe on the home list is doing.
+enum PhoneSwipeMode {
+    /// Opening or closing the drawer, following the finger.
+    case drawer
+    /// Moving between the content views.
+    case pager
+}
+
+/// Slides the home list sideways while swiping between views. Only the list moves: the bubbles stay.
+struct PhonePageOffset: ViewModifier {
+    /// Only the stack's home list slides; a source's feed pushed above it stays put.
+    let isHome: Bool
+    @Environment(PhoneChrome.self) private var chrome: PhoneChrome?
+
+    func body(content: Content) -> some View {
+        content.offset(x: isHome ? chrome?.pageOffset ?? 0 : 0)
+    }
+}
+
+/// One UIKit pan recognizer on the screen's hosting view for every sideways swipe on the iPhone home list.
+/// It begins only for a horizontal-dominant drag that `begin` accepts (so vertical scrolling and row taps
+/// are untouched), runs alongside the list's scroll view, and cancels the touch in the views under the
+/// finger once it takes over, so the row it ends on isn't opened.
+private struct PhoneSwipeBridge: UIViewRepresentable {
+    /// Starting x in the hosting view and horizontal velocity; the mode, or nil to not begin.
+    let begin: (CGFloat, CGFloat) -> PhoneSwipeMode?
+    let changed: (PhoneSwipeMode, CGFloat) -> Void
+    let ended: (PhoneSwipeMode, CGFloat, CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> InstallerView {
+        let view = InstallerView()
+        view.isUserInteractionEnabled = false
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateUIView(_ uiView: InstallerView, context: Context) {
+        let c = context.coordinator
+        c.begin = begin
+        c.changed = changed
+        c.ended = ended
+    }
+
+    /// Finds the hosting view once it is in a window and adds the recognizer there.
+    final class InstallerView: UIView {
+        weak var coordinator: Coordinator?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { coordinator?.install(from: self) }
+        }
+    }
+
+    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var begin: (CGFloat, CGFloat) -> PhoneSwipeMode? = { _, _ in nil }
+        var changed: (PhoneSwipeMode, CGFloat) -> Void = { _, _ in }
+        var ended: (PhoneSwipeMode, CGFloat, CGFloat) -> Void = { _, _, _ in }
+        private let pan = UIPanGestureRecognizer()
+        private weak var host: UIView?
+        private var startX: CGFloat = 0
+        private var mode: PhoneSwipeMode?
+
+        override init() {
+            super.init()
+            pan.addTarget(self, action: #selector(handle))
+            pan.delegate = self
+            pan.maximumNumberOfTouches = 1
+        }
+
+        /// The topmost view below the window: the screen's hosting view. Sheets are presented outside it,
+        /// so swipes in a sheet never reach this recognizer.
+        func install(from view: UIView) {
+            var top = view
+            while let parent = top.superview, !(parent is UIWindow) { top = parent }
+            guard host !== top else { return }
+            host?.removeGestureRecognizer(pan)
+            top.addGestureRecognizer(pan)
+            host = top
+        }
+
+        @objc private func handle(_ g: UIPanGestureRecognizer) {
+            guard let host else { return }
+            let t = g.translation(in: host).x
+            switch g.state {
+            case .began:
+                PhoneDrawerTouch.isDragging = true
+                if let mode { changed(mode, t) }
+            case .changed:
+                if let mode { changed(mode, t) }
+            case .ended, .cancelled, .failed:
+                PhoneDrawerTouch.isDragging = false
+                if let mode { ended(mode, t, g.state == .ended ? g.velocity(in: host).x : 0) }
+                mode = nil
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            if let host { startX = touch.location(in: host).x }
+            return true
+        }
+
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let host else { return false }
+            let v = pan.velocity(in: host)
+            guard abs(v.x) > abs(v.y) * 1.25 else { return false }
+            mode = begin(startX, v.x)
+            return mode != nil
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
+}
+
+/// Whether a sideways swipe is under way or just ended. The list under the finger is a UIKit view that may
+/// still see the touch and open the row it ends on, so rows ignore taps for a moment after a swipe.
 @MainActor enum PhoneDrawerTouch {
     static var isDragging = false
     static var endedAt = Date.distantPast

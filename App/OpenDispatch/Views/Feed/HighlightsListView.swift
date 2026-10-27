@@ -66,13 +66,16 @@ struct HighlightsListView: View {
     }
 
     #if os(iOS)
-    /// iPhone: the Highlights list under floating glass bubbles, like ItemListView's: the drawer's hamburger,
-    /// the title and search (which filters the articles here). Opening a row pushes the reader.
+    /// iPhone: the Highlights list with its title as the first row and floating glass bubbles along the
+    /// bottom, like ItemListView's: the drawer's hamburger and search (which filters the articles here), no
+    /// page dots. Opening a row pushes the reader.
     private var phoneColumn: some View {
         list
+            .modifier(PhonePageOffset(isHome: true))
+            .background(Color.ofSurface.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { PhoneListToolbar(showsMenu: true) }
-            .phoneFloatingBubbles()
+            .toolbar(.hidden, for: .navigationBar)
+            .phoneListChrome(isHome: true, showsBubbles: !isFeedStackPushed)
             .navigationDestination(isPresented: Binding(
                 get: { model.selectedItemID != nil && model.showsHighlights && !isFeedStackPushed },
                 set: { presented in if !presented, model.selectedItemID != nil { model.select(nil) } })
@@ -96,6 +99,9 @@ struct HighlightsListView: View {
     private var list: some View {
         let groups = groups
         return List {
+            #if os(iOS)
+            if isPhone { PhoneTitleRow() }
+            #endif
             if groups.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity)

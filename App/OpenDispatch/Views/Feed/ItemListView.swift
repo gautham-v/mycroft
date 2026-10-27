@@ -9,11 +9,11 @@ import AppKit
 ///
 /// - macOS / iPad (regular width): 54pt desktop header, rows without snippets. On macOS the column runs
 ///   flush to the window edges (like the Claude desktop app); the split view draws the column dividers.
-/// - iPhone (compact): no header; the navigation bar has no background and carries floating Liquid Glass
-///   bubbles the rows scroll behind: the drawer's hamburger at the leading edge (a back button instead on a
-///   source's feed pushed from Manage sources), the list's title in the middle and a search button at the
-///   trailing edge; headline-only rows; pull to refresh. Saved leads with the big Saved /
-///   Highlights tabs. Opening a row pushes `ReaderView` onto the PhoneRoot stack.
+/// - iPhone (compact): no header or top bar; the list's title is its first row (32pt, scrolls away) and
+///   floating Liquid Glass bubbles sit over the rows along the bottom: the drawer's hamburger at the leading
+///   edge, page dots in the middle (the five content views), search at the trailing edge. A source's feed
+///   pushed from Manage sources has the system back button at the top and only the search bubble.
+///   Headline-only rows; pull to refresh. Opening a row pushes `ReaderView` onto the PhoneRoot stack.
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
 /// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
@@ -112,17 +112,18 @@ struct ItemListView: View {
     }
 
     #if os(iOS)
-    /// iPhone: the list alone under the system navigation bar, so it scrolls visibly behind the floating
-    /// Liquid Glass bubbles (the bar itself has no background): the hamburger that opens the drawer at the
-    /// leading edge (the system back button instead on a source's feed pushed from Manage sources), the
-    /// list's title in the middle and a search button at the trailing edge. Pull to refresh.
+    /// iPhone: the list with its title as the first row and the glass bubbles along the bottom (see
+    /// `phoneListChrome`). The home list has no navigation bar; a source's feed pushed from Manage sources
+    /// keeps the system one (transparent) for its back button. Pull to refresh. Swiping sideways slides
+    /// the list (`PhonePageOffset`) but not the bubbles.
     private var phoneColumn: some View {
-        @Bindable var model = model
-        return list
+        list
             .refreshable { await model.refresh(force: true) }
+            .modifier(PhonePageOffset(isHome: isPhoneHome))
+            .background(Color.ofSurface.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { PhoneListToolbar(showsMenu: isPhoneHome) }
-            .phoneFloatingBubbles()
+            .toolbar(isPhoneHome ? .hidden : .automatic, for: .navigationBar)
+            .phoneListChrome(isHome: isPhoneHome, showsBubbles: isFrontmost)
             .navigationDestination(isPresented: readerPresented) {
                 ReaderView()
             }
@@ -152,6 +153,9 @@ struct ItemListView: View {
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
         return ScrollViewReader { proxy in
             List {
+                #if os(iOS)
+                if isPhone { PhoneTitleRow() }
+                #endif
                 if items.isEmpty { ListStateRows() }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let previous = index > 0 ? items[index - 1].id : nil
@@ -176,17 +180,28 @@ struct ItemListView: View {
             .environment(\.defaultMinListRowHeight, 1)
             .onChange(of: model.currentQuery) { _, _ in
                 // The old list stays up while the next one loads; start the new one at the top.
-                if let first = model.items.first { proxy.scrollTo(first.id, anchor: .top) }
+                scrollToTop(proxy, firstID: model.items.first?.id)
             }
             .onChange(of: model.items.first?.id) { old, new in
                 // New items arrived above (a refresh finished): if the list was at the top, stay at the
                 // top instead of keeping the old first row anchored in place.
                 guard let new, let old, old != new, topRow.id == old else { return }
                 topRow.id = new
-                proxy.scrollTo(new, anchor: .top)
+                scrollToTop(proxy, firstID: new)
             }
             .background { HighlightFollower(proxy: proxy) }
         }
+    }
+
+    /// Back to the top: the first row, or on the iPhone the title above it.
+    private func scrollToTop(_ proxy: ScrollViewProxy, firstID: Int64?) {
+        #if os(iOS)
+        if isPhone {
+            proxy.scrollTo(PhoneTitleRow.id, anchor: .top)
+            return
+        }
+        #endif
+        if let firstID { proxy.scrollTo(firstID, anchor: .top) }
     }
 
     private func row(_ item: FeedItem, previousID: Int64?) -> some View {
