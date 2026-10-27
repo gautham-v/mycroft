@@ -137,6 +137,29 @@ public final class AppDatabase: Sendable {
         m.registerMigration("v3-quote-avatar") { db in
             try db.execute(sql: "ALTER TABLE items ADD COLUMN quote_avatar_url TEXT")
         }
+        // iCloud sync (SyncStore): per record, the hash both sides last agreed on and CloudKit's system
+        // fields; sync_parked holds incoming saved items waiting for their source; sync_meta holds the
+        // sync engine's state, apart from meta so saving it isn't a change.
+        m.registerMigration("v4-sync") { db in
+            try db.execute(sql: """
+                CREATE TABLE sync_records (
+                  record_name TEXT PRIMARY KEY NOT NULL,
+                  record_type TEXT NOT NULL,
+                  hash TEXT NOT NULL,
+                  system_fields BLOB
+                );
+                CREATE TABLE sync_parked (
+                  record_name TEXT PRIMARY KEY NOT NULL,
+                  record_type TEXT NOT NULL,
+                  fields TEXT NOT NULL,
+                  system_fields BLOB
+                );
+                CREATE TABLE sync_meta (
+                  key TEXT PRIMARY KEY NOT NULL,
+                  value TEXT NOT NULL
+                );
+                """)
+        }
         return m
     }
 }

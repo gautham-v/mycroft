@@ -27,7 +27,7 @@ while true; do
     cd $ROOT/App || exit 1
     xcodegen generate --quiet &&
     xcodebuild -project OpenDispatch.xcodeproj -scheme OpenDispatch -configuration Release \
-      -destination 'platform=macOS' -derivedDataPath $BUILD build -quiet
+      -destination 'platform=macOS' -derivedDataPath $BUILD -allowProvisioningUpdates build -quiet
   } >> $LOG 2>&1
   if [[ $? -ne 0 ]]; then
     notify "Build failed, see App/build/install.log"

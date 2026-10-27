@@ -2,7 +2,7 @@
 
 A native RSS and news reader for macOS and iOS, written in SwiftUI. It pulls RSS/Atom feeds, YouTube channels, podcasts, social posts and feedless news pages into one chronological feed, extracts the full text of articles, plays videos and podcasts inline, and sends items to Readwise Reader or a webhook.
 
-Single user, no accounts, no server. Everything is fetched and stored on the device. MIT licensed.
+Single user, no accounts, no server. Everything is fetched and stored on the device, and iCloud sync keeps your sources, folders, saved items and settings the same on your Macs, iPhones and iPads through the iCloud account they are already signed in to. MIT licensed.
 
 **Download for Mac:** the latest notarized DMG is on the [releases page](https://github.com/gautham-v/opendispatch/releases/latest). The app updates itself through Sparkle (OpenDispatch → Check for Updates…). Requires macOS 15 or later. The iPhone and iPad app (iOS/iPadOS 26 or later) builds from this repo; see [Build from source](#build-from-source).
 
@@ -31,8 +31,13 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Readwise Reader (paste an access token from readwise.io/access_token) and/or a webhook of your own, set up in Settings → Integrations. With one target the send button sends straight away; with both it asks which.
 - The webhook gets a JSON POST with `id`, `url`, `title`, `author`, `published_at`, `summary` and `source { title, host }`. Each target has a test button: the webhook gets a sample payload marked `"test": true`, and the Readwise token is only checked.
 
+**Sync**
+- iCloud sync is on by default and needs no sign-up: it uses the device's iCloud account and your private CloudKit database. It carries sources (with their folder, order, pin and hidden state), folders, saved items, appearance and playback settings, the webhook URL and the Readwise token (as an end-to-end encrypted field). Feed items are not synced; each device fetches its own.
+- A new device takes the library already in iCloud: if it still only has the starter sources it was seeded with, the ones iCloud doesn't have are dropped. A device that was already in use merges its library with iCloud's instead, so nothing on it is lost.
+- Turn it off per device in Settings → Data. Turning it off keeps the local library; turning it back on picks up what changed on both sides.
+
 **Settings**
-- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay, theater layout for videos), Integrations, Data (refresh interval, database location and size, clear cached article text) and About.
+- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay, theater layout for videos), Integrations, Data (iCloud sync, refresh interval, database location and size, clear cached article text) and About.
 - iPhone uses Liquid Glass system bars and a Feed / Sources / Saved / Settings tab bar.
 
 **Links**
@@ -100,12 +105,15 @@ The app icon and in-app logo are rendered from `design/app-icon.svg` with `scrip
 
 **Mac.** Bump `CURRENT_PROJECT_VERSION` (and `MARKETING_VERSION` when it changes) in `App/project.yml`, commit, then run `scripts/release-mac.sh`. It builds from a clean worktree of the commit, archives, signs with Developer ID, notarizes and staples the app and a DMG, and writes a Sparkle `appcast.xml` signed with the EdDSA key in the login keychain (keep a backup with `generate_keys -x`; without it existing installs can't verify updates). It needs `~/.appstoreconnect/opendispatch.env` with an App Store Connect API key for notarization. Output is in `App/build/release/`; publish with the `gh release create v<version> …` command the script prints. Installed copies read `appcast.xml` from the latest release.
 
+**iCloud.** The app uses the CloudKit container `iCloud.com.gauthamv.openfeed`. Development builds write to its Development environment, which creates record types on first save; TestFlight and Developer ID builds use Production, which only has the record types deployed to it. After changing what syncs (`Core/Sources/OpenDispatchCore/Sync/SyncRecord.swift`), update `App/CloudKit/schema.ckdb` (same record types and fields) and deploy it before releasing: import it into Development with `xcrun cktool import-schema --team-id 26TVJ92MLZ --container-id iCloud.com.gauthamv.openfeed --environment development --file App/CloudKit/schema.ckdb` (needs a CloudKit management token, `xcrun cktool save-token`), then use Deploy Schema Changes in the CloudKit Console.
+
 **iOS.** `scripts/release-ios.sh` archives the app from a clean worktree of the commit, uploads it to App Store Connect, waits for processing and adds the build to the TestFlight Internal group (`scripts/asc-distribute.swift`), which doesn't pick up new builds on its own. Bump `CURRENT_PROJECT_VERSION` first; App Store Connect rejects a build number it has seen.
 
 ## Where data lives
 
 - Database: one SQLite file (WAL mode), `openfeed.sqlite`, in Application Support/OpenDispatch. On macOS that's `~/Library/Containers/com.gauthamv.openfeed/Data/Library/Application Support/OpenDispatch/`. Settings → Data shows the path and size.
 - Appearance and playback settings, sidebar state and podcast positions are in UserDefaults. The Readwise token is in the Keychain; the webhook URL is in the database.
+- iCloud sync: records in a zone named `OpenDispatch` in your private CloudKit database. The database's `sync_records` table remembers what was last synced per record, and `sync_meta` holds the sync engine's state.
 - The first launch creates the database, seeds a starter set of sources and folders (`Core/Sources/OpenDispatchCore/Database/Seed.swift`) and refreshes.
 
 The app was called Openfeed before it was renamed. The bundle id `com.gauthamv.openfeed`, the background task id, UserDefaults keys, the Keychain item, the database file name and the `openfeed:kind` attribute in OPML exports keep that name so existing installs, settings, data and TestFlight builds carry over.
@@ -113,7 +121,7 @@ The app was called Openfeed before it was renamed. The bundle id `com.gauthamv.o
 ## Project layout
 
 - `App/` — the SwiftUI app, one multiplatform target for macOS and iOS. `project.yml` (XcodeGen); `OpenDispatch/Model` (AppModel, settings, background refresh), `OpenDispatch/Design` (colors, type, icons), `OpenDispatch/Views` (sidebar, item list, reader, sources, settings), `OpenDispatch/Resources` (assets, reader stylesheet).
-- `Core/` — Swift package `OpenDispatchCore` with all the logic: models, SQLite schema and queries (GRDB), feed parsing, feed detection and OPML, page scraping, article extraction (Readability.js in WebKit plus SwiftSoup), the refresh pipeline and the Readwise/webhook integrations. Tests in `Core/Tests`.
+- `Core/` — Swift package `OpenDispatchCore` with all the logic: models, SQLite schema and queries (GRDB), feed parsing, feed detection and OPML, page scraping, article extraction (Readability.js in WebKit plus SwiftSoup), the refresh pipeline, the Readwise/webhook integrations and iCloud sync (`Sync/`). Tests in `Core/Tests`.
 - `scripts/` — release, local install, git hooks and icon generation.
 - `design/` — the app icon source.
 - `SPEC.md` — product spec: design, data model, behavior.

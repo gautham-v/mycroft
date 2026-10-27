@@ -53,8 +53,8 @@ extension View {
     func openDispatchAutoRefresh() -> some View { modifier(OpenDispatchAutoRefresh()) }
 }
 
-/// Data pane (native): database location and size, refresh interval and Refresh now, and clearing
-/// the cached article text (it is fetched again when an item is opened).
+/// Data pane (native): iCloud sync, database location and size, refresh interval and Refresh now, and
+/// clearing the cached article text (it is fetched again when an item is opened).
 struct SettingsDataPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
@@ -71,7 +71,8 @@ struct SettingsDataPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsPaneHeading(title: "Data", hint: "Everything is stored on this device. Nothing is synced.")
+            SettingsPaneHeading(title: "Data", hint: "Everything is stored on this device. iCloud sync copies sources, folders, saved items and settings to your other devices.")
+            syncRow
             locationRow
             SettingsRow(label: "Refresh", hint: refreshHint) {
                 Picker("Refresh", selection: $refreshMinutes) {
@@ -122,6 +123,33 @@ struct SettingsDataPane: View {
     }
 
     // MARK: Rows
+
+    private var syncRow: some View {
+        @Bindable var model = model
+        return TimelineView(.periodic(from: .now, by: 30)) { context in
+            SettingsRow(label: "iCloud sync", hint: syncHint(now: context.date)) {
+                Toggle("iCloud sync", isOn: $model.syncEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(.ofOK)
+                    #if os(macOS)
+                    .controlSize(.small)
+                    #endif
+            }
+        }
+    }
+
+    private func syncHint(now: Date) -> String {
+        switch model.syncStatus {
+        case .off: return "Off on this device"
+        case .unavailable(let why): return why
+        case .syncing: return "Syncing…"
+        case .synced(let at):
+            let rel = RelativeTime.format(at, now: now)
+            return rel == "now" ? "Up to date" : "Synced \(rel) ago"
+        case .failed(let why): return "Couldn't sync: \(why)"
+        }
+    }
 
     private var locationRow: some View {
         VStack(alignment: .leading, spacing: 4) {

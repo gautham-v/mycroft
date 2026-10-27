@@ -36,7 +36,9 @@ struct RootView: View {
             .onOpenURL { url in model.handleOpenURL(url) }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
-                case .active: Task { await model.refresh(force: false) }
+                case .active:
+                    Task { await model.refresh(force: false) }
+                    Task { await model.syncNow() }
                 case .background: BackgroundRefresh.schedule()
                 default: break
                 }

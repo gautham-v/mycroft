@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 import OpenDispatchCore
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// One reader tab. `itemID` nil follows the list's first item (the desktop default selection).
 struct ReaderTab: Identifiable, Equatable, Sendable {
@@ -118,10 +123,31 @@ final class AppModel {
     /// Bumped per item by Reload Article; the reader showing that item re-extracts when it changes.
     private(set) var articleReloads: [Int64: Int] = [:]
 
-    /// Reader settings, theme, playback. Persisted on change.
+    /// Reader settings, theme, playback. Persisted on change, and mirrored into the database for iCloud sync.
     var settings: AppSettings {
-        didSet { if settings != oldValue { settings.save() } }
+        didSet {
+            guard settings != oldValue else { return }
+            settings.save()
+            if !applyingSyncedSettings { mirrorSettingsForSync() }
+        }
     }
+
+    // MARK: iCloud sync
+
+    /// iCloud sync on this device (Settings → Data). Persisted; on by default.
+    var syncEnabled: Bool {
+        didSet {
+            guard syncEnabled != oldValue else { return }
+            UserDefaults.standard.set(syncEnabled, forKey: Keys.syncEnabled)
+            // Chained, so quick off/on flips reach CloudSync in order.
+            let previous = syncToggle, on = syncEnabled, sync = sync!
+            syncToggle = Task {
+                await previous?.value
+                await sync.setEnabled(on)
+            }
+        }
+    }
+    private(set) var syncStatus: CloudSyncStatus = .off
 
     // MARK: Private
 
@@ -135,11 +161,16 @@ final class AppModel {
     @ObservationIgnored private var sidebarCollapsedBeforeSplit: Bool?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var applyingSyncedSettings = false
+    @ObservationIgnored private var syncToggle: Task<Void, Never>?
+    /// Created in init; its events come back to `handleSync(_:)` on the main actor.
+    @ObservationIgnored private var sync: CloudSync!
 
     /// UserDefaults keys keep the app's original name so existing settings carry over.
     private enum Keys {
         static let sidebarCollapsed = "openfeed.sidebar-collapsed"
         static let collapsedFolders = "openfeed.sidebar.collapsed"
+        static let syncEnabled = "openfeed.icloud-sync"
     }
 
     init(services: OpenDispatchServices) {
@@ -148,6 +179,10 @@ final class AppModel {
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
         collapsedFolders = Set(defaults.stringArray(forKey: Keys.collapsedFolders) ?? [])
         settings = AppSettings.load()
+        syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? true
+        sync = CloudSync(database: services.database) { [weak self] event in
+            await self?.handleSync(event)
+        }
     }
 
     /// Opens the on-disk database; falls back to an in-memory one if that fails (the app still runs).
@@ -179,6 +214,8 @@ final class AppModel {
         await loadItems(reset: true)
         await loadStats()
         await loadIntegrations()
+        // Not awaited: the first fetch from iCloud must not hold up the first refresh.
+        Task { await startSync() }
         await refresh(force: false)
     }
 
@@ -599,6 +636,70 @@ final class AppModel {
         }
         try? await database.reorderFolders(ids)
         await loadSources()
+    }
+
+    // MARK: iCloud sync
+
+    private func startSync() async {
+        // The database copy is what syncs. Only rewrite it when the settings differ, so a copy from a
+        // newer version (with fields this one doesn't know) isn't stripped and sent back. Awaited, so
+        // it lands before the first fetch can bring in another device's settings.
+        let stored = try? await database.meta(MetaKey.syncedSettings)
+        if stored.flatMap(AppSettings.init(syncJSON:)) != settings {
+            try? await database.setMeta(MetaKey.syncedSettings, settings.syncJSON)
+        }
+        #if os(macOS)
+        NSApplication.shared.registerForRemoteNotifications()
+        #else
+        UIApplication.shared.registerForRemoteNotifications()
+        #endif
+        let previous = syncToggle, on = syncEnabled, sync = sync!
+        syncToggle = Task {
+            await previous?.value
+            await sync.setEnabled(on)
+        }
+    }
+
+    /// Fetch and send now (app came to the foreground).
+    func syncNow() async {
+        await sync.syncNow()
+    }
+
+    private func fetchSyncedSources(_ ids: [Int64]) async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        for id in ids { _ = try? await services.refresh.refreshSource(id: id) }
+        isRefreshing = false
+        await reloadAll()
+    }
+
+    private func mirrorSettingsForSync() {
+        let json = settings.syncJSON
+        Task { try? await database.setMeta(MetaKey.syncedSettings, json) }
+    }
+
+    private func handleSync(_ event: CloudSyncEvent) async {
+        switch event {
+        case .status(let s):
+            syncStatus = s
+        case .applied(let r):
+            if let json = r.settingsJSON, let s = AppSettings(syncJSON: json), s != settings {
+                applyingSyncedSettings = true
+                settings = s
+                applyingSyncedSettings = false
+            }
+            if r.integrationsChanged { await loadIntegrations() }
+            guard r.libraryChanged else { return }
+            await loadSources()
+            if let id = selectedSourceID, !sources.contains(where: { $0.id == id }) { goHome() }
+            if let id = selectedFolderID, !folders.contains(where: { $0.id == id }) { goHome() }
+            await loadItems(reset: true)
+            // Sources added on another device have no items here yet. In a task of its own, since this
+            // runs inside the sync engine's event handling.
+            if !r.addedSourceIDs.isEmpty {
+                Task { await self.fetchSyncedSources(r.addedSourceIDs) }
+            }
+        }
     }
 
     // MARK: OPML

@@ -39,6 +39,9 @@ public enum Seed {
         yt("Fireship", "UCsBjURrPoezykLs9EqgamOA"),
     ]
 
+    /// Default folders, in sidebar order (seedFolders).
+    public static let folderTitles = ["Labs", "Blogs", "News", "Posts", "YouTube"]
+
     /// Fallback feed URLs tried when the primary returns an error (FEED_FALLBACKS; currently empty).
     public static let feedFallbacks: [String: [String]] = [:]
 
@@ -71,7 +74,7 @@ public enum Seed {
     public static func seedFolders(_ db: Database, now: Date = Date()) throws {
         if try Queries.meta(db, MetaKey.foldersSeeded) != nil { return }
         var ids: [String: Int64] = [:]
-        for (i, title) in ["Labs", "Blogs", "News", "Posts", "YouTube"].enumerated() {
+        for (i, title) in folderTitles.enumerated() {
             var f = Folder(title: title, position: i, createdAt: now)
             try f.insert(db)
             ids[title] = f.id

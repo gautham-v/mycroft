@@ -11,6 +11,8 @@ public enum MetaKey {
     /// Integrations (web app stored these in meta; Integrations agent may move the token to the Keychain).
     public static let readwiseToken = "integration.readwise_token"
     public static let webhookURL = "integration.webhook_url"
+    /// The app's settings as JSON, mirrored here by the app so iCloud sync can carry them.
+    public static let syncedSettings = "sync.settings"
 }
 
 /// Item retention (fetcher.ts): unsaved items older than this are pruned after each refresh,

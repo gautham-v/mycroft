@@ -30,6 +30,7 @@ targets:
         excludes:
           - "**/.DS_Store"
           - "OpenDispatch.entitlements"
+          - "OpenDispatch-iOS.entitlements"
           - "Info.plist"
     dependencies:
       - package: OpenDispatchCore
@@ -59,7 +60,8 @@ targets:
         # original name on purpose: changing them would orphan installs, settings, the Keychain token and
         # the TestFlight record.
         BGTaskSchedulerPermittedIdentifiers: [com.gauthamv.openfeed.refresh]
-        UIBackgroundModes: [fetch, audio]
+        # remote-notification: CloudKit pushes wake the app to pull changes from other devices (iCloud sync).
+        UIBackgroundModes: [fetch, audio, remote-notification]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         CFBundleURLTypes:
@@ -85,6 +87,8 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 26TVJ92MLZ
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": OpenDispatch/OpenDispatch.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": OpenDispatch/OpenDispatch-iOS.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": OpenDispatch/OpenDispatch-iOS.entitlements
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         # The multiplatform default is iOS's @executable_path/Frameworks; a Mac app keeps Sparkle in Contents/Frameworks.
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "$(inherited) @executable_path/../Frameworks"

@@ -108,6 +108,18 @@ struct AppSettings: Codable, Equatable, Sendable {
         return s
     }
 
+    /// The copy iCloud sync carries (MetaKey.syncedSettings). Sorted keys, so equal settings give equal text.
+    var syncJSON: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return (try? encoder.encode(self)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+
+    init?(syncJSON: String) {
+        guard let s = try? JSONDecoder().decode(AppSettings.self, from: Data(syncJSON.utf8)) else { return nil }
+        self = s
+    }
+
     func save(to defaults: UserDefaults = .standard) {
         if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.storageKey) }
     }
