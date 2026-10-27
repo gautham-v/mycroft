@@ -264,6 +264,24 @@ enum ReaderYouTubePage {
           }
           var failTimer = setTimeout(fail, 12000);
 
+          function setState(s) {
+            state = s;
+            if (isPlaying() && !started) {
+              started = true;
+              if (!ccOn) captionsOff();
+              post({ type: 'playing' });
+            }
+            render();
+            update();
+          }
+          // The embed autoplays on its own, so it can be playing before the API attaches; then no
+          // onStateChange comes for that start (the page would think it paused: the poster stays up and a
+          // click plays instead of pausing). The state the API last heard is read back every tick instead.
+          function tick() {
+            var s = player.getPlayerState();
+            if (typeof s === 'number' && s !== state) setState(s); else render();
+          }
+
           window.onYouTubeIframeAPIReady = function () {
             player = new YT.Player('yt', { events: {
               onReady: function () {
@@ -271,20 +289,11 @@ enum ReaderYouTubePage {
                 clearTimeout(failTimer);
                 muted = player.isMuted();
                 captionsOff();
-                setInterval(render, 250);
-                render();
+                setInterval(tick, 250);
+                tick();
                 update();
               },
-              onStateChange: function (e) {
-                state = e.data;
-                if (isPlaying() && !started) {
-                  started = true;
-                  if (!ccOn) captionsOff();
-                  post({ type: 'playing' });
-                }
-                render();
-                update();
-              },
+              onStateChange: function (e) { setState(e.data); },
               onError: fail
             } });
           };
