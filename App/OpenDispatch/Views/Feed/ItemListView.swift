@@ -193,25 +193,18 @@ struct ItemListView: View {
 
     // MARK: List
 
+    /// The body reads only the items and whether more pages exist. Selection, open tabs and loading
+    /// state are read by the rows and small views that show them: whatever this body reads makes List
+    /// re-diff every row when it changes, which on j/k was every key press.
     private var list: some View {
         let items = model.items
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
-        let highlighted = model.highlightedItemID
-        let secondaryID = model.secondaryHighlightedItemID
-        let openIDs = model.openItemIDs
         return ScrollViewReader { proxy in
             List {
-                stateRows
+                if items.isEmpty { ListStateRows() }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let selected = item.id == highlighted
-                    let secondary = item.id == secondaryID
-                    let openInTab = !selected && !secondary && openIDs.contains(item.id)
                     let previous = index > 0 ? items[index - 1].id : nil
-                    // Inset hairline above the row, hidden around the selected, secondary or hovered row
-                    // (the hovered part is applied by the row, which observes the hover).
-                    let divider = previous != nil && !selected && !secondary
-                        && previous != highlighted && previous != secondaryID
-                    row(item, previousID: previous, selected: selected, secondary: secondary, openInTab: openInTab, divider: divider)
+                    row(item, previousID: previous)
                         .onAppear {
                             if index == 0 { topRow.id = item.id }
                             if index >= prefetchFrom { Task { await model.loadMore() } }
@@ -221,7 +214,7 @@ struct ItemListView: View {
                         }
                 }
                 if model.nextCursor != nil {
-                    sentinel
+                    ListSentinel(page: items.count)
                 }
             }
             .listStyle(.plain)
@@ -241,32 +234,32 @@ struct ItemListView: View {
                 topRow.id = new
                 proxy.scrollTo(new, anchor: .top)
             }
-            .onChange(of: model.highlightedItemID) { _, id in
-                guard let id else { return }
-                proxy.scrollTo(id)
-            }
+            .background { HighlightFollower(proxy: proxy) }
         }
     }
 
-    private func row(_ item: FeedItem, previousID: Int64?, selected: Bool, secondary: Bool, openInTab: Bool, divider: Bool) -> some View {
-        HoverTracking(hover: hover, id: item.id, previousID: previousID) { hovered, previousHovered in
-            Button(action: { open(item) }) {
-                ItemRowView(item: item, isSelected: selected, isSecondary: secondary, isOpenInTab: openInTab,
-                            isHovered: hovered, isPhone: isPhone)
-                    .equatable()
-            }
-            .buttonStyle(.plain)
-            .overlay(alignment: .top) {
-                if divider && !hovered && !previousHovered {
-                    Rectangle()
-                        .fill(Color.ofHairline)
-                        .frame(height: 1)
-                        .padding(.leading, Metrics.rowDividerInset)
-                        .padding(.trailing, Metrics.rowPaddingH)
-                        .allowsHitTesting(false)
+    private func row(_ item: FeedItem, previousID: Int64?) -> some View {
+        RowMarks(id: item.id, previousID: previousID) { marks in
+            HoverTracking(hover: hover, id: item.id, previousID: previousID) { hovered, previousHovered in
+                Button(action: { open(item) }) {
+                    ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
+                                isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone)
+                        .equatable()
                 }
+                .buttonStyle(.plain)
+                .overlay(alignment: .top) {
+                    // Inset hairline above the row, hidden around the selected, secondary or hovered row.
+                    if marks.divider && !hovered && !previousHovered {
+                        Rectangle()
+                            .fill(Color.ofHairline)
+                            .frame(height: 1)
+                            .padding(.leading, Metrics.rowDividerInset)
+                            .padding(.trailing, Metrics.rowPaddingH)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 8)
         }
         .rowContextMenu(enabled: !isPhone) { RowMenu(item: item, sendError: $sendError) }
         .plainListRow()
@@ -288,38 +281,41 @@ struct ItemListView: View {
         model.open(item)
         #endif
     }
+}
 
-    /// Skeleton, error and empty states (only when there are no rows).
-    @ViewBuilder private var stateRows: some View {
-        if model.items.isEmpty {
-            if model.isLoading {
-                ForEach(0..<8, id: \.self) { _ in
-                    ItemSkeletonRow()
-                        .padding(.horizontal, 8)
-                        .plainListRow()
-                }
-            } else if model.loadError != nil {
-                HStack(spacing: 4) {
-                    Text("Could not load items.")
-                        .foregroundStyle(.ofMuted)
-                    Button("Retry") { Task { await model.loadItems(reset: true) } }
-                        .buttonStyle(.plain)
-                        .fontWeight(.medium)
-                        .underline()
-                        .foregroundStyle(.ofAccent)
-                }
-                .font(OFFont.ui(14))
+/// Skeleton, error and empty states (only when there are no rows). A view of its own so the list body
+/// doesn't read `isLoading`, which flips on every view change.
+private struct ListStateRows: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.isLoading {
+            ForEach(0..<8, id: \.self) { _ in
+                ItemSkeletonRow()
+                    .padding(.horizontal, 8)
+                    .plainListRow()
+            }
+        } else if model.loadError != nil {
+            HStack(spacing: 4) {
+                Text("Could not load items.")
+                    .foregroundStyle(.ofMuted)
+                Button("Retry") { Task { await model.loadItems(reset: true) } }
+                    .buttonStyle(.plain)
+                    .fontWeight(.medium)
+                    .underline()
+                    .foregroundStyle(.ofAccent)
+            }
+            .font(OFFont.ui(14))
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 64)
+            .plainListRow()
+        } else {
+            emptyState
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 64)
                 .plainListRow()
-            } else {
-                emptyState
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 64)
-                    .plainListRow()
-            }
         }
     }
 
@@ -343,18 +339,71 @@ struct ItemListView: View {
         }
         .multilineTextAlignment(.center)
     }
+}
 
-    /// Bottom of a list with more pages: "Loading..." while fetching. Re-keyed per page so it fires
-    /// `onAppear` again if it is still on screen after a page lands.
-    private var sentinel: some View {
+/// Bottom of a list with more pages: "Loading..." while fetching. Re-keyed per page (`page` is the row
+/// count) so it fires `onAppear` again if it is still on screen after a page lands. Reads
+/// `isLoadingMore` itself so a page load doesn't re-diff the list twice more.
+private struct ListSentinel: View {
+    let page: Int
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
         Text(model.isLoadingMore ? "Loading..." : " ")
             .font(OFFont.ui(13))
             .foregroundStyle(.ofMuted)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
             .plainListRow()
-            .id("sentinel-\(model.items.count)")
+            .id("sentinel-\(page)")
             .onAppear { Task { await model.loadMore() } }
+    }
+}
+
+/// Keeps the highlighted row visible when it moves (keyboard), without the list body reading it.
+private struct HighlightFollower: View {
+    let proxy: ScrollViewProxy
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Color.clear
+            .onChange(of: model.highlightedItemID) { _, id in
+                guard let id else { return }
+                proxy.scrollTo(id)
+            }
+    }
+}
+
+/// How the list marks a row.
+private struct RowMarkState {
+    /// The focused pane's item.
+    var selected: Bool
+    /// The other pane's item in split view.
+    var secondary: Bool
+    /// Open in a background tab.
+    var openInTab: Bool
+    /// The hairline above the row (hidden around the selected and secondary rows).
+    var divider: Bool
+}
+
+/// A row's selection-dependent part, read per row so moving the selection re-evaluates the rows on
+/// screen instead of the whole list (like `HoverTracking` for hover).
+private struct RowMarks<Content: View>: View {
+    let id: Int64
+    let previousID: Int64?
+    @ViewBuilder let content: (RowMarkState) -> Content
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let highlighted = model.highlightedItemID
+        let secondaryID = model.secondaryHighlightedItemID
+        let selected = id == highlighted
+        let secondary = id == secondaryID
+        content(RowMarkState(
+            selected: selected,
+            secondary: secondary,
+            openInTab: !selected && !secondary && model.openItemIDs.contains(id),
+            divider: previousID != nil && !selected && !secondary && previousID != highlighted && previousID != secondaryID))
     }
 }
 
