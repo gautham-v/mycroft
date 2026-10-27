@@ -13,8 +13,9 @@ public final class AppDatabase: Sendable {
     public let writer: any DatabaseWriter
     public var reader: any DatabaseReader { writer }
 
-    /// Runs migrations, then seeds (once per database; see Seed) when `seed` is true.
-    public init(_ writer: any DatabaseWriter, seed: Bool = true) throws {
+    /// Runs migrations, then seeds (once per database; see Seed) when `seed` is true. The app starts
+    /// empty; seeding is for tests and previews.
+    public init(_ writer: any DatabaseWriter, seed: Bool = false) throws {
         self.writer = writer
         try AppDatabase.migrator.migrate(writer)
         if seed {
@@ -51,12 +52,12 @@ public final class AppDatabase: Sendable {
     public static let fileName = "openfeed.sqlite"
 
     /// The app's on-disk database (DatabasePool, WAL).
-    public static func openDefault(seed: Bool = true) throws -> AppDatabase {
+    public static func openDefault(seed: Bool = false) throws -> AppDatabase {
         let path = try defaultDirectory().appendingPathComponent(fileName).path
         return try open(path: path, seed: seed)
     }
 
-    public static func open(path: String, seed: Bool = true) throws -> AppDatabase {
+    public static func open(path: String, seed: Bool = false) throws -> AppDatabase {
         let pool = try DatabasePool(path: path, configuration: makeConfiguration())
         return try AppDatabase(pool, seed: seed)
     }
