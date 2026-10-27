@@ -20,6 +20,15 @@ private struct HighlightsPanelModifier: ViewModifier {
     @Environment(HighlightStore.self) private var store
     /// iPhone: the highlight whose color the second menu is changing.
     @State private var colorTarget: String?
+    /// The pane's width: too narrow to keep a readable column beside the panel, the panel floats over it.
+    @State private var paneWidth: CGFloat = 0
+
+    private static let panelWidth: CGFloat = 300
+    /// The narrowest article (text column plus its side padding) worth keeping beside the panel.
+    private static let minArticleWidth: CGFloat = 460
+
+    private var showsPanel: Bool { !compact && store.isPanelOpen(pane: pane) && item.source.kind != .youtube }
+    private var floats: Bool { paneWidth < Self.panelWidth + 1 + Self.minArticleWidth }
 
     func body(content: Content) -> some View {
         @Bindable var store = store
@@ -27,13 +36,24 @@ private struct HighlightsPanelModifier: ViewModifier {
             HStack(spacing: 0) {
                 content
                     .environment(\.highlightArticle, ReaderHighlightArticle(item: item, pane: pane, compact: compact))
-                if !compact, store.isPanelOpen(pane: pane), item.source.kind != .youtube {
+                if showsPanel, !floats {
                     Rectangle().fill(Color.ofHairline).frame(width: 1)
                     HighlightsPanel(item: item, pane: pane)
-                        .frame(width: 300)
+                        .frame(width: Self.panelWidth)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .overlay(alignment: .trailing) {
+                if showsPanel, floats {
+                    HighlightsPanel(item: item, pane: pane)
+                        .frame(width: min(Self.panelWidth, max(paneWidth - 40, 0)))
+                        .background(Color.ofSurface)
+                        .overlay(alignment: .leading) { Rectangle().fill(Color.ofHairline).frame(width: 1) }
+                        .shadow(color: .black.opacity(0.12), radius: 12, x: -2)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { paneWidth = $0 }
             .animation(.easeOut(duration: 0.18), value: store.isPanelOpen(pane: pane))
             // The web view has put its marker at the highlight: bring it a fifth of the way down.
             .onChange(of: store.scrollReady) { _, ready in

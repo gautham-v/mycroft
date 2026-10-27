@@ -186,7 +186,12 @@ struct ReaderItemView: View {
         #endif
         .readerSpeech(page: speechPage, pane: pane, compact: compact, contentKey: bodyHTML, listen: listen)
         .onAppear {
-            speechPage.onReadAloudFromSelection = { speech.toggle(page: speechPage, item: item, settings: settings, from: .selection) }
+            // Explicit captures: the page owns this closure, and capturing the view would keep its state
+            // (the page itself and the article HTML) alive after the article closes.
+            speechPage.onReadAloudFromSelection = { [weak speechPage, speech, model, item] in
+                guard let speechPage else { return }
+                speech.toggle(page: speechPage, item: item, settings: model.settings, from: .selection)
+            }
         }
         .task { await load(refresh: false) }
         // Reload Article (⇧⌘R, or the article's right-click menu).

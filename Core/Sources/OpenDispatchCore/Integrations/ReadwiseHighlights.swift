@@ -78,6 +78,8 @@ extension IntegrationRequests {
         return books.flatMap { ($0["modified_highlights"] as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.int64Value } }
     }
 
+    /// Status 400 marks a request Readwise will never accept (a 4xx other than a bad token, a timeout or rate
+    /// limiting): the sender drops it instead of retrying. Everything else is 502 and stays queued.
     private static func readwiseFailure(_ data: Data, _ res: HTTPURLResponse) -> IntegrationError {
         let message: String
         switch res.statusCode {
@@ -85,7 +87,13 @@ extension IntegrationRequests {
         case 429: message = "Readwise is rate limiting requests"
         default: message = upstreamError(data, response: res, label: "Readwise")
         }
-        return .send(message: message, status: 502)
+        let permanent = (400..<500).contains(res.statusCode) && ![401, 408, 429].contains(res.statusCode)
+        return .send(message: message, status: permanent ? 400 : 502)
+    }
+
+    /// True for a failure `readwiseFailure` marked as one Readwise will never accept.
+    static func isPermanentReadwiseFailure(_ error: Error) -> Bool {
+        (error as? IntegrationError)?.status == 400
     }
 }
 
@@ -152,16 +160,36 @@ public actor ReadwiseHighlightSync {
         }
         do {
             let deletes = try await database.reader.read { db in try Queries.pendingReadwiseDeletes(db) }
+            // A request Readwise will never accept is dropped (and reported) so it can't hold up the rest.
             for rid in deletes {
-                try await IntegrationRequests.deleteReadwiseHighlight(token: token, readwiseId: rid, session: session)
+                do {
+                    try await IntegrationRequests.deleteReadwiseHighlight(token: token, readwiseId: rid, session: session)
+                    out.deleted += 1
+                } catch where IntegrationRequests.isPermanentReadwiseFailure(error) {
+                    out.error = out.error ?? HTTP.message(error)
+                }
                 try await database.writer.write { db in try Queries.clearReadwiseDelete(db, readwiseId: rid) }
-                out.deleted += 1
             }
             let pending = try await database.reader.read { db in try Queries.pendingReadwiseHighlights(db) }
             for h in pending {
-                let id = try await push(h, token: token)
-                try await database.writer.write { db in try Queries.markReadwiseSent(db, sent: h, readwiseId: id) }
-                out.sent += 1
+                let id: Int64?
+                do {
+                    id = try await push(h, token: token)
+                    out.sent += 1
+                } catch where IntegrationRequests.isPermanentReadwiseFailure(error) {
+                    out.error = out.error ?? HTTP.message(error)
+                    id = nil
+                }
+                let orphaned = try await database.writer.write { db -> Bool in
+                    // Removed while the request was in flight: delete the copy Readwise just made.
+                    if let id, try Highlight.fetchOne(db, key: h.id) == nil {
+                        try db.execute(sql: "INSERT OR IGNORE INTO readwise_deletes (readwise_id) VALUES (?)", arguments: [id])
+                        return true
+                    }
+                    try Queries.markReadwiseSent(db, sent: h, readwiseId: id)
+                    return false
+                }
+                if orphaned { again = true }
             }
         } catch {
             out.error = HTTP.message(error)

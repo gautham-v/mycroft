@@ -34,15 +34,19 @@
 
   function build() {
     var root = document.querySelector('article') || document.body;
-    var text = '';
     var nodes = [];   // nodes[i], offs[i]: where normalized char i came from; null for a stand-in space
     var offs = [];
     var mapped = [];  // indexes of the characters that have a source
     var sep = false;
+    // Characters collect in an array joined once, and the last one is tracked: reading `text` back after
+    // each `+=` flattened the string every time, quadratic on long articles.
+    var chars = [];
+    var last = 32;
 
     function push(ch, node, off) {
-      if (node) mapped.push(text.length);
-      text += ch;
+      if (node) mapped.push(chars.length);
+      chars.push(ch);
+      last = ch.charCodeAt(0);
       nodes.push(node);
       offs.push(off);
       sep = false;
@@ -52,11 +56,10 @@
       var d = n.data;
       for (var i = 0; i < d.length; i++) {
         var c = d.charCodeAt(i);
-        var last = text.length ? text.charCodeAt(text.length - 1) : 32;
         if (isSpace(c)) {
-          if (text.length && last !== 32) push(' ', n, i);
+          if (chars.length && last !== 32) push(' ', n, i);
         } else {
-          if (sep && text.length && last !== 32) push(' ', null, 0);
+          if (sep && chars.length && last !== 32) push(' ', null, 0);
           push(d.charAt(i), n, i);
         }
       }
@@ -75,7 +78,7 @@
     }
 
     walk(root);
-    return { text: text, nodes: nodes, offs: offs, mapped: mapped };
+    return { text: chars.join(''), nodes: nodes, offs: offs, mapped: mapped };
   }
 
   function index() {

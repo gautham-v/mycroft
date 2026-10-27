@@ -119,6 +119,20 @@ extension IntegrationTests {
         #expect(out == .init(sent: 1, deleted: 0, remaining: 0, error: nil))
     }
 
+    @Test func aHighlightReadwiseRejectsIsDroppedSoTheRestStillSend() async throws {
+        let db = try Fixture.db()
+        let bad = HighlightTests.highlight("https://b.example/feed", "bad")
+        try await db.insertHighlight(bad, forReadwise: true)
+        try await db.insertHighlight(HighlightTests.highlight("https://b.example/feed", "good"), forReadwise: true)
+        IntegrationMockURLProtocol.reset { _, body in
+            String(decoding: body ?? Data(), as: UTF8.self).contains(bad.id) ? (400, Data("bad source_url".utf8)) : (200, Self.response([5]))
+        }
+        let out = await sender(db).send()
+        #expect(out.sent == 1)
+        #expect(out.remaining == 0)
+        #expect(out.error == "Readwise returned 400: bad source_url")
+    }
+
     @Test func nothingIsSentWithoutATokenOrForSyncedHighlights() async throws {
         let db = try Fixture.db()
         // Arrived through sync: not pending.

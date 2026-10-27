@@ -184,8 +184,10 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        // Reload on the next update.
+        // Reload on the next update; highlights repaint and read aloud stops, as for a new document.
         loadedKey = nil
+        bridge.pageWillLoad()
+        speechPage?.documentWillChange()
         webView.reload()
     }
 

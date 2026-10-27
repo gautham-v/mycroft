@@ -357,6 +357,8 @@ public enum SyncStore {
             if let existing = try Highlight.fetchOne(db, key: incoming.id) {
                 var merged = incoming
                 merged.readwisePending = existing.readwisePending
+                // An id this device got from Readwise but hasn't uploaded yet must not be lost to an older copy.
+                merged.readwiseId = incoming.readwiseId ?? existing.readwiseId
                 if merged != existing {
                     try merged.update(db)
                     result.highlightsChanged = true

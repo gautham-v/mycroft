@@ -163,6 +163,8 @@ enum ReaderSpeechScript {
         if (e.target.closest && e.target.closest('a,button,input,select,textarea,summary,video,audio,iframe')) return;
         var sel = window.getSelection();
         if (sel && !sel.isCollapsed) return;
+        // A click on a highlight belongs to Highlights & Notes (reader-highlights.js), not a jump.
+        if (window.__odHL && window.__odHL.hit(e.clientX, e.clientY)) return;
         var caret = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
         if (!caret) return;
         var i = indexAt(caret.startContainer, caret.startOffset, true);
