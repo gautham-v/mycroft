@@ -19,10 +19,30 @@ enum ReaderWebSupport {
         #endif
     }
 
-    /// Non-persistent configuration: no cookies or caches shared with anything else, media can play inline.
-    static func configuration(autoplay: Bool) -> WKWebViewConfiguration {
+    /// The article body's data store: its own, shared by every article so images come from the HTTP
+    /// cache on a repeat view instead of downloading again. Nothing is shared with any other web view.
+    /// Everything but the cache (cookies, local storage) is wiped once per launch.
+    static let articleDataStore: WKWebsiteDataStore = {
+        let store = WKWebsiteDataStore(forIdentifier: articleStoreID)
+        var kept = WKWebsiteDataStore.allWebsiteDataTypes()
+        kept.remove(WKWebsiteDataTypeDiskCache)
+        kept.remove(WKWebsiteDataTypeMemoryCache)
+        store.removeData(ofTypes: kept, modifiedSince: .distantPast) {}
+        return store
+    }()
+
+    private static let articleStoreID = UUID(uuidString: "3EE244B9-7A6E-4805-87EF-3F780E1725DD")!
+
+    /// Settings → Data → Clear: the article images go with the article text.
+    static func clearArticleData() async {
+        await articleDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+    }
+
+    /// No cookies or caches shared with anything else (a throwaway data store unless `dataStore` is
+    /// given), media can play inline.
+    static func configuration(autoplay: Bool, dataStore: WKWebsiteDataStore? = nil) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
+        config.websiteDataStore = dataStore ?? .nonPersistent()
         config.mediaTypesRequiringUserActionForPlayback = autoplay ? [] : .all
         config.preferences.isElementFullscreenEnabled = true
         config.preferences.javaScriptCanOpenWindowsAutomatically = false

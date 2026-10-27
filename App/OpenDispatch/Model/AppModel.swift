@@ -220,6 +220,10 @@ final class AppModel {
     @ObservationIgnored private var syncToggle: Task<Void, Never>?
     /// Created in init; its events come back to `handleSync(_:)` on the main actor.
     @ObservationIgnored private var sync: CloudSync!
+    /// Reads ahead of the open article (ArticlePrefetcher.swift).
+    @ObservationIgnored private var prefetcher: ArticlePrefetcher!
+    /// The way j/k last moved through the list (1 down, -1 up); reading ahead follows it.
+    @ObservationIgnored private var readingStep = 1
 
     /// UserDefaults keys keep the app's original name so existing settings carry over.
     private enum Keys {
@@ -241,6 +245,8 @@ final class AppModel {
         sync = CloudSync(database: services.database) { [weak self] event in
             await self?.handleSync(event)
         }
+        prefetcher = ArticlePrefetcher(services: services)
+        prefetcher.onFetched = { [weak self] id, result in self?.didFetchContent(id, result) }
     }
 
     /// Opens the on-disk database; falls back to an in-memory one if that fails (the app still runs).
@@ -276,6 +282,7 @@ final class AppModel {
         // Not awaited: the first fetch from iCloud must not hold up the first refresh.
         Task { await startSync() }
         await refresh(force: false)
+        await prefetcher.queueSaved()
     }
 
     // MARK: Derived
@@ -498,6 +505,7 @@ final class AppModel {
         if step > 0, nextCursor != nil, i + step >= items.count - 5 { Task { await loadMore() } }
         let next = items[target]
         if next.id == from { return }
+        readingStep = step < 0 ? -1 : 1
         select(next)
     }
 
@@ -508,6 +516,7 @@ final class AppModel {
         do {
             try await database.setSaved(itemId: item.id, saved: saved)
             counts = (try? await database.counts()) ?? counts
+            if saved { await prefetcher.queueSaved() }
         } catch {
             patchLocal(item.id) { $0.item.isSaved = !saved }
         }
@@ -526,12 +535,28 @@ final class AppModel {
         }
     }
 
-    /// Reader content (cached or freshly extracted). Marks the row as having content.
+    /// Reader content (cached or freshly extracted). Marks the row as having content. Reading ahead
+    /// stops while it loads (joining its extraction if it was already fetching this item) and starts
+    /// again from here once it has, when this is the focused pane's article.
     func content(for item: FeedItem, refresh: Bool = false) async throws -> ExtractResult {
-        let result = try await services.content.content(forItem: item.id, refresh: refresh)
-        if result.contentHtml != nil { patchLocal(item.id) { $0.hasContent = true } }
-        if item.item.thumbnailUrl == nil, let lead = result.leadImage { patchLocal(item.id) { $0.item.thumbnailUrl = lead } }
+        prefetcher.stop(except: item.id)
+        let result: ExtractResult
+        if !refresh, let ahead = prefetcher.inFlight(item.id), let done = try? await ahead.value {
+            result = done
+        } else {
+            result = try await services.content.content(forItem: item.id, refresh: refresh)
+        }
+        didFetchContent(item.id, result)
+        if item.id == selectedItemID, !showsHighlights { prefetcher.readAhead(from: item.id, in: items, step: readingStep) }
         return result
+    }
+
+    private func didFetchContent(_ id: Int64, _ result: ExtractResult) {
+        guard result.contentHtml != nil || result.leadImage != nil else { return }
+        patchLocal(id) { row in
+            if result.contentHtml != nil { row.hasContent = true }
+            if row.item.thumbnailUrl == nil, let lead = result.leadImage { row.item.thumbnailUrl = lead }
+        }
     }
 
     // MARK: Refresh

@@ -191,6 +191,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         guard message.name == "openDispatchHeight" else { return }
         let value: CGFloat? = (message.body as? NSNumber).map { CGFloat($0.doubleValue) }
         if let h = value, h.isFinite, h >= 0 { onHeight(h) }
+        if let width = message.webView?.bounds.width, width > 0 { ArticleImageWarmer.viewportWidth = width }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -218,7 +219,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     func makeWebView() -> WKWebView {
-        let config = ReaderWebSupport.configuration(autoplay: false)
+        let config = ReaderWebSupport.configuration(autoplay: false, dataStore: ReaderWebSupport.articleDataStore)
         let world = WKContentWorld.defaultClient
         let controller = config.userContentController
         controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchHeight")

@@ -54,7 +54,7 @@ extension View {
 }
 
 /// Data pane (native): iCloud sync, database location and size, refresh interval and Refresh now, and
-/// clearing the cached article text (it is fetched again when an item is opened).
+/// clearing the cached article text and images (they are fetched again when an item is opened).
 struct SettingsDataPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
@@ -236,6 +236,7 @@ struct SettingsDataPane: View {
             }
             // Give the space back; harmless if another connection is busy.
             _ = try? await model.database.writer.writeWithoutTransaction { db in try db.execute(sql: "VACUUM") }
+            await ReaderWebSupport.clearArticleData()
             clearStatus = .init(text: "Cleared \(cleared) article\(cleared == 1 ? "" : "s").", error: false)
             await model.loadItems(reset: true)
         } catch {
