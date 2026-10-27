@@ -73,7 +73,7 @@ struct SidebarView: View {
             footer
         }
         #if os(macOS)
-        .background(Color.ofGround.opacity(0.6))
+        .background(Color.ofGround.opacity(0.45))
         .background(SidebarMaterial())
         #else
         .background(Color.ofGround)
