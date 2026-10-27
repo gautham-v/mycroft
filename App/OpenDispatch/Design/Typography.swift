@@ -72,8 +72,6 @@ enum OFFont {
     /// like the reader toolbar's source · time beside it.
     static let listHeaderTitle = ui(14.5)
     static let listHeaderSubline = ui(14.5)
-    /// Bottom tab labels 11 / 500.
-    static let tabLabel = ui(11, .medium)
 
     // Sidebar (sidebar.tsx)
     static let sidebarRow = ui(14.5)

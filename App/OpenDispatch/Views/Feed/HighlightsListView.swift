@@ -6,11 +6,13 @@ import AppKit
 
 /// The list column: the Highlights view when it is showing, else the item list. The Highlights view is
 /// a navigation state of AppModel (`showsHighlights`), so it needs no item query of its own.
+/// `isPhoneHome` marks the iPhone stack's home list (PhoneRoot).
 struct FeedColumn: View {
     @Environment(AppModel.self) private var model
+    var isPhoneHome = false
 
     var body: some View {
-        if model.showsHighlights { HighlightsListView() } else { ItemListView() }
+        if model.showsHighlights { HighlightsListView() } else { ItemListView(isPhoneHome: isPhoneHome) }
     }
 }
 
@@ -26,6 +28,7 @@ struct HighlightsListView: View {
     @FocusState private var searchFocused: Bool
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.isFeedStackPushed) private var isFeedStackPushed
     #endif
 
     private var isPhone: Bool {
@@ -63,27 +66,14 @@ struct HighlightsListView: View {
     }
 
     #if os(iOS)
-    /// iPhone: the Saved tab's list under floating glass bubbles, like ItemListView's: the Saved / Highlights
-    /// title menu and search (which filters the articles here). Opening a row pushes the reader.
+    /// iPhone: the Highlights list under floating glass bubbles, like ItemListView's: the drawer's hamburger,
+    /// the title and search (which filters the articles here). Opening a row pushes the reader.
     private var phoneColumn: some View {
-        @Bindable var model = model
-        return list
+        list
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarRole(.editor)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { SavedTitleMenu() }
-                DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-            }
-            .searchable(text: $model.searchDraft, isPresented: Binding(
-                get: { model.isSearchOpen && model.phoneTab == .saved },
-                set: { open in
-                    if open { model.openSearch() } else if model.isSearchOpen { model.closeSearch() }
-                }), prompt: Text("Search Highlights"))
-            .searchToolbarBehavior(.minimize)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
+            .toolbar { PhoneListToolbar(showsMenu: true) }
             .navigationDestination(isPresented: Binding(
-                get: { model.selectedItemID != nil && model.showsHighlights && model.phoneTab == .saved },
+                get: { model.selectedItemID != nil && model.showsHighlights && !isFeedStackPushed },
                 set: { presented in if !presented, model.selectedItemID != nil { model.select(nil) } })
             ) {
                 ReaderView()
@@ -105,6 +95,9 @@ struct HighlightsListView: View {
     private var list: some View {
         let groups = groups
         return List {
+            #if os(iOS)
+            if isPhone { SavedTabs().plainRow() }
+            #endif
             if groups.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity)
@@ -169,7 +162,7 @@ private struct HighlightGroupRow: View {
             #if os(macOS)
             open(NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command))
             #else
-            open(false)
+            if !PhoneDrawerTouch.blocksRowTap { open(false) }
             #endif
         } label: {
             VStack(alignment: .leading, spacing: 4) {
@@ -284,16 +277,6 @@ private struct HighlightsListHeader: View {
         return "\(n) \(n == 1 ? "highlight" : "highlights") in \(a) \(a == 1 ? "article" : "articles")"
     }
 }
-
-#if os(iOS)
-/// iPhone's Saved tab: the saved items or the articles with highlights, switched with the floating "Saved"
-/// title menu both lists carry (SavedTitleMenu), so the rows scroll behind it and the search bubble.
-struct SavedTabView: View {
-    var body: some View {
-        FeedColumn()
-    }
-}
-#endif
 
 private extension View {
     /// Full-bleed list row: no insets, separators or system background (rows draw their own).

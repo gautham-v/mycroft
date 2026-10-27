@@ -4,7 +4,8 @@ import SwiftUI
 /// Top-level layout.
 /// - macOS and iPad (regular width): three columns, sidebar 230 / list 410 / reader (NavigationSplitView).
 ///   With nothing opened the reader shows the first item (prefersDefaultSelection).
-/// - iPhone (compact): tab bar Feed / Sources / Saved / Settings, each a NavigationStack.
+/// - iPhone (compact): no tab bar; one NavigationStack with a side drawer for views, folders, sources and
+///   Settings (PhoneRoot). Settings and Add source are sheets.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -152,21 +153,7 @@ struct RootView: View {
 
     #if os(iOS)
     private var phoneLayout: some View {
-        @Bindable var model = model
-        return TabView(selection: $model.phoneTab) {
-            Tab("Feed", systemImage: OFIcon.inbox.rawValue, value: PhoneTab.feed) {
-                NavigationStack { ItemListView() }
-            }
-            Tab("Sources", systemImage: OFIcon.folder.rawValue, value: PhoneTab.sources) {
-                NavigationStack { SourcesView() }
-            }
-            Tab("Saved", systemImage: OFIcon.bookmark.rawValue, value: PhoneTab.saved) {
-                NavigationStack { SavedTabView() }
-            }
-            Tab("Settings", systemImage: OFIcon.gear.rawValue, value: PhoneTab.settings) {
-                NavigationStack { SettingsView() }
-            }
-        }
+        PhoneRoot()
     }
     #endif
 }

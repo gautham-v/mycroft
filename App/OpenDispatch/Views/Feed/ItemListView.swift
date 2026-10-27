@@ -9,11 +9,11 @@ import AppKit
 ///
 /// - macOS / iPad (regular width): 54pt desktop header, rows without snippets. On macOS the column runs
 ///   flush to the window edges (like the Claude desktop app); the split view draws the column dividers.
-/// - iPhone (compact): no header; the navigation bar has no background and carries two floating Liquid
-///   Glass bubbles the rows scroll behind: a title menu at the leading edge (`FeedTitleMenu` on the Feed
-///   tab: views, folders, Copy as Markdown; `SavedTitleMenu` on the Saved tab; a back button instead on a
-///   single source's feed) and the `.searchable` search item at the trailing edge; headline-only rows; pull
-///   to refresh. Opening a row pushes `ReaderView` onto this tab's NavigationStack.
+/// - iPhone (compact): no header; the navigation bar has no background and carries floating Liquid Glass
+///   bubbles the rows scroll behind: the drawer's hamburger at the leading edge (a back button instead on a
+///   source's feed pushed from Manage sources), the list's title in the middle and a search button at the
+///   trailing edge; headline-only rows; pull to refresh. Saved leads with the big Saved /
+///   Highlights tabs. Opening a row pushes `ReaderView` onto the PhoneRoot stack.
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
 /// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
@@ -28,7 +28,7 @@ struct ItemListView: View {
     @Environment(\.openURL) private var openURL
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.isFeedStackPushed) private var isFeedStackPushed
     #endif
     @FocusState private var searchFocused: Bool
     /// Which row the pointer is over. A reference the rows observe themselves (`HoverTracking`), not
@@ -39,9 +39,9 @@ struct ItemListView: View {
     /// `onChange` handlers, so it lives in a plain reference: as `@State` its first change on scrolling
     /// away from the top re-evaluated the whole list.
     @State private var topRow = TopRowTracker()
-    /// iPhone: the tab this instance lives in, learned on first appearance (TabView keeps every tab
-    /// alive, so only the instance of the active tab may push the reader).
-    @State private var homeTab: PhoneTab?
+    /// iPhone: this is the stack's home list (the drawer's views and folders), not a source's feed pushed
+    /// from Manage sources, which SourcesView creates with the default.
+    var isPhoneHome = false
     /// A Send to from the row menu failed: the message, shown in an alert.
     @State private var sendError: String?
 
@@ -113,81 +113,28 @@ struct ItemListView: View {
 
     #if os(iOS)
     /// iPhone: the list alone under the system navigation bar, so it scrolls visibly behind the floating
-    /// Liquid Glass bubbles (the bar itself has no background). Toolbar: the title menu (Feed or Saved tab)
-    /// or a back button, and search; pull to refresh.
+    /// Liquid Glass bubbles (the bar itself has no background): the hamburger that opens the drawer at the
+    /// leading edge (the system back button instead on a source's feed pushed from Manage sources), the
+    /// list's title in the middle and a search button at the trailing edge. Pull to refresh.
     private var phoneColumn: some View {
         @Bindable var model = model
         return list
             .refreshable { await model.refresh(force: true) }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarRole(.editor)
-            .toolbar { phoneToolbar }
-            .searchable(text: $model.searchDraft, isPresented: searchPresented, prompt: Text(model.searchPlaceholder))
-            .searchToolbarBehavior(.minimize)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .onSubmit(of: .search) { model.flushSearch() }
-            .onAppear { if homeTab == nil { homeTab = model.phoneTab } }
+            .toolbar { PhoneListToolbar(showsMenu: isPhoneHome) }
             .navigationDestination(isPresented: readerPresented) {
                 ReaderView()
             }
     }
 
-    @ToolbarContentBuilder private var phoneToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) { leadingItem }
-        DefaultToolbarItem(kind: .search, placement: .topBarTrailing)
-    }
-
-    /// Empty on a source's feed pushed from the Sources tab, which has the system back button.
-    @ViewBuilder private var leadingItem: some View {
-        if showsBackButton {
-            Button(action: backToSources) {
-                Label("Back to sources", systemImage: OFIcon.back.rawValue)
-            }
-        } else if showsFeedMenu {
-            FeedTitleMenu()
-        } else if showsSavedMenu {
-            SavedTitleMenu()
-        }
-    }
-
-    /// The Feed tab's list (a view or a folder, not a single source) leads with the title menu.
-    private var showsFeedMenu: Bool {
-        (homeTab ?? .feed) == .feed && model.selectedSourceID == nil
-    }
-
-    /// The Saved tab's saved items lead with the Saved / Highlights menu.
-    private var showsSavedMenu: Bool {
-        homeTab == .saved && !model.isInSourceFeed
-    }
-
-    /// A source/folder feed shown at the root of a tab (opened from Settings) has no system back button.
-    /// Pushed from the Sources tab it does, and SourcesView handles the pop.
-    private var showsBackButton: Bool {
-        model.isInSourceFeed && !showsFeedMenu && (homeTab ?? model.phoneTab) != .sources
-    }
-
-    private func backToSources() {
-        if model.phoneTab == .sources {
-            dismiss()
-            model.goHome()
-        } else {
-            model.phoneTab = .sources
-        }
-    }
-
-    /// Search presentation for this tab's instance only (TabView keeps every tab's list alive).
-    private var searchPresented: Binding<Bool> {
-        Binding(
-            get: { model.isSearchOpen && (homeTab == nil || homeTab == model.phoneTab) },
-            set: { open in
-                if open { model.openSearch() } else if model.isSearchOpen { model.closeSearch() }
-            })
-    }
+    /// Whether this list is the one this screen is showing: the home list while nothing is pushed above it,
+    /// else the source's feed pushed from Manage sources. Both stay alive in the stack, and only the
+    /// visible one may push the reader.
+    private var isFrontmost: Bool { isPhoneHome != isFeedStackPushed }
 
     private var readerPresented: Binding<Bool> {
         Binding(
-            get: { model.selectedItemID != nil && (homeTab == nil || homeTab == model.phoneTab) },
+            get: { model.selectedItemID != nil && isFrontmost },
             set: { presented in
                 if !presented, model.selectedItemID != nil { model.select(nil) }
             })
@@ -204,6 +151,11 @@ struct ItemListView: View {
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
         return ScrollViewReader { proxy in
             List {
+                #if os(iOS)
+                if isPhone, model.selectedView == .saved, !model.isInSourceFeed {
+                    SavedTabs().plainListRow()
+                }
+                #endif
                 if items.isEmpty { ListStateRows() }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let previous = index > 0 ? items[index - 1].id : nil
@@ -270,6 +222,9 @@ struct ItemListView: View {
 
     /// Row click: ⌘ opens a new tab, ⌥ opens the other pane (macOS), otherwise the focused pane.
     private func open(_ item: FeedItem) {
+        #if os(iOS)
+        if PhoneDrawerTouch.blocksRowTap { return }
+        #endif
         #if os(macOS)
         let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags.contains(.command) {
