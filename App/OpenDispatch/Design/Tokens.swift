@@ -148,8 +148,10 @@ enum Metrics {
     static let readerPaddingWide: CGFloat = 32
     /// Video player max width in theater layout.
     static let theaterMaxWidth: CGFloat = 960
-    /// A Short's 9:16 player: 338pt wide is 600pt tall, and still fits the player's control bar.
-    static let verticalVideoMaxWidth: CGFloat = 338
+    /// A Short's 9:16 player is as tall as the reader less `verticalVideoTitleRoom`, so the title shows
+    /// under it, but never narrower than 300pt (533pt tall), the least that fits the player's control bar.
+    static let verticalVideoTitleRoom: CGFloat = 120
+    static let verticalVideoMinWidth: CGFloat = 300
     /// Desktop list/reader header height.
     static let desktopHeaderHeight: CGFloat = 54
     /// Desktop icon buttons 30pt; phone touch targets 44pt.

@@ -66,6 +66,8 @@ struct ReaderItemView: View {
     @State private var content: ReaderContentState = .loading
     /// Read aloud's hold on this article's web view.
     @State private var speechPage = ReaderSpeechPage()
+    /// The reader's visible height under the toolbar, which sizes a Short's player (videos only).
+    @State private var viewportHeight: CGFloat = 0
 
     // MARK: Derived (same rules as reader.tsx)
 
@@ -165,7 +167,8 @@ struct ReaderItemView: View {
                         .padding(.top, 8)
                 }
                 if isVideo {
-                    ReaderVideoBody(item: item, autoplay: settings.autoplay, theater: settings.theater, wide: wide)
+                    ReaderVideoBody(item: item, autoplay: settings.autoplay, theater: settings.theater, wide: wide,
+                                    viewportHeight: viewportHeight)
                 } else {
                     article
                 }
@@ -173,6 +176,11 @@ struct ReaderItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.containerSize.height - geo.contentInsets.top - geo.contentInsets.bottom
+        } action: { _, height in
+            if isVideo { viewportHeight = height }
+        }
         .overlayScrollers()
         .readerHighlights(item: item, pane: pane, compact: compact)
         // The article scrolls under the toolbar, which is frosted.

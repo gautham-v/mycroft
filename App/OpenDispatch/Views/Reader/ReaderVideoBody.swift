@@ -3,17 +3,24 @@ import SwiftUI
 
 /// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title,
 /// player up to 960pt. Otherwise the player sits in the text column under the title and meta row.
-/// A Short skips the band: a 9:16 player centered in the column, above the title in theater.
+/// A Short skips the band: a 9:16 player centered in the column, above the title in theater, as tall
+/// as the reader less room for the title to show under it.
 struct ReaderVideoBody: View {
     let item: FeedItem
     let autoplay: Bool
     let theater: Bool
     let wide: Bool
+    /// The reader's visible height; 0 until it's measured.
+    let viewportHeight: CGFloat
 
     @State private var expanded = false
     @Environment(\.openURL) private var openURL
 
     private var vertical: Bool { item.item.isVerticalVideo }
+    /// The column narrows it further when the window is narrow and tall.
+    private var portraitWidth: CGFloat {
+        max(Metrics.verticalVideoMinWidth, (viewportHeight - Metrics.verticalVideoTitleRoom) * 9 / 16)
+    }
     private var summaryText: String { TextFormat.stripHTML(item.item.summary) }
     private var isLong: Bool {
         summaryText.count > 280 || summaryText.split(separator: "\n", omittingEmptySubsequences: false).count > 3
@@ -116,7 +123,7 @@ struct ReaderVideoBody: View {
         ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                             thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec, vertical: true)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(maxWidth: Metrics.verticalVideoMaxWidth)
+            .frame(maxWidth: portraitWidth)
             .frame(maxWidth: .infinity)
     }
 }
