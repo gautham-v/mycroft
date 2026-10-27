@@ -19,6 +19,15 @@ struct SupportTests {
         #expect(RelativeTime.isStale(now.addingTimeInterval(-16 * 60), now: now))
     }
 
+    @Test func verticalVideo() {
+        func item(_ url: String, videoID: String? = "abc") -> Item {
+            Item(sourceId: 1, guid: url, url: url, title: "t", publishedAt: Date(), videoId: videoID)
+        }
+        #expect(item("https://www.youtube.com/shorts/abc").isVerticalVideo)
+        #expect(!item("https://www.youtube.com/watch?v=abc").isVerticalVideo)
+        #expect(!item("https://example.com/shorts/abc", videoID: nil).isVerticalVideo)
+    }
+
     @Test func normalizeSourceURL() throws {
         #expect(try SourceURL.normalize("example.com") == "https://example.com/")
         #expect(try SourceURL.normalize("  https://Example.com/a?b=1#c ") == "https://example.com/a?b=1#c")

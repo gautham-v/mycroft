@@ -62,6 +62,13 @@ public struct Item: Sendable, Hashable, Identifiable {
     }
 }
 
+extension Item {
+    /// A YouTube Short, which plays in a 9:16 frame: the channel feed links Shorts as youtube.com/shorts/ID.
+    public var isVerticalVideo: Bool {
+        videoId != nil && URL(string: url)?.path.hasPrefix("/shorts/") == true
+    }
+}
+
 extension Item: FetchableRecord, MutablePersistableRecord {
     public static let databaseTableName = "items"
 

@@ -3,6 +3,7 @@ import SwiftUI
 
 /// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title,
 /// player up to 960pt. Otherwise the player sits in the text column under the title and meta row.
+/// A Short skips the band: a 9:16 player centered in the column, above the title in theater.
 struct ReaderVideoBody: View {
     let item: FeedItem
     let autoplay: Bool
@@ -12,6 +13,7 @@ struct ReaderVideoBody: View {
     @State private var expanded = false
     @Environment(\.openURL) private var openURL
 
+    private var vertical: Bool { item.item.isVerticalVideo }
     private var summaryText: String { TextFormat.stripHTML(item.item.summary) }
     private var isLong: Bool {
         summaryText.count > 280 || summaryText.split(separator: "\n", omittingEmptySubsequences: false).count > 3
@@ -19,7 +21,7 @@ struct ReaderVideoBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if theater, let videoID = item.item.videoId {
+            if theater, !vertical, let videoID = item.item.videoId {
                 ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                     thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec)
                     .frame(maxWidth: Metrics.theaterMaxWidth)
@@ -29,6 +31,11 @@ struct ReaderVideoBody: View {
             }
 
             VStack(alignment: .leading, spacing: 0) {
+                if theater, vertical, let videoID = item.item.videoId {
+                    portraitPlayer(videoID)
+                        .padding(.bottom, 24)
+                }
+
                 Text(item.item.title)
                     .font(wide ? OFFont.videoTitleWide : OFFont.videoTitle)
                     .tracking(-0.01 * (wide ? 22 : 20))
@@ -70,7 +77,10 @@ struct ReaderVideoBody: View {
                 .foregroundStyle(.ofMuted)
                 .padding(.top, 12)
 
-                if !theater, let videoID = item.item.videoId {
+                if !theater, vertical, let videoID = item.item.videoId {
+                    portraitPlayer(videoID)
+                        .padding(.top, 20)
+                } else if !theater, let videoID = item.item.videoId {
                     ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                     thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -100,5 +110,13 @@ struct ReaderVideoBody: View {
             .padding(.top, theater ? 24 : (wide ? 40 : 32))
             .padding(.bottom, 32)
         }
+    }
+
+    private func portraitPlayer(_ videoID: String) -> some View {
+        ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
+                            thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec, vertical: true)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(maxWidth: Metrics.verticalVideoMaxWidth)
+            .frame(maxWidth: .infinity)
     }
 }

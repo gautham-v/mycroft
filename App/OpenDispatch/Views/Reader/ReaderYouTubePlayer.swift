@@ -2,7 +2,7 @@ import OpenDispatchCore
 import SwiftUI
 import WebKit
 
-/// 16:9 youtube-nocookie embed with our own controls (ReaderYouTubePage). The embed sits in a tiny
+/// 16:9 (9:16 for a Short) youtube-nocookie embed with our own controls (ReaderYouTubePage). The embed sits in a tiny
 /// local page whose origin identifies the app, because YouTube refuses embeds without a referrer.
 ///
 /// Until playback starts the video's thumbnail covers the player, so YouTube's own poster never shows.
@@ -14,11 +14,12 @@ struct ReaderYouTubePlayer: View {
     let autoplay: Bool
     var thumbnail: String?
     var durationSec: Int?
+    var vertical = false
 
     var body: some View {
         ReaderYouTubeStage(videoID: videoID, title: title, autoplay: autoplay, thumbnail: thumbnail,
-                           durationSec: durationSec)
-            .aspectRatio(16 / 9, contentMode: .fit)
+                           durationSec: durationSec, vertical: vertical)
+            .aspectRatio(vertical ? 9 / 16 : 16 / 9, contentMode: .fit)
             .background(Color.black)
             .id(videoID)
             .accessibilityLabel(title)
@@ -30,6 +31,7 @@ private struct ReaderYouTubeStage: View {
     let title: String
     let thumbnail: String?
     let durationSec: Int?
+    let vertical: Bool
 
     @State private var started: Bool
     /// The poster is gone: playback started, or the player failed or took too long and is shown as is.
@@ -39,11 +41,12 @@ private struct ReaderYouTubeStage: View {
     @State private var fullscreen: ReaderYouTubeFullscreenStart?
     #endif
 
-    init(videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?) {
+    init(videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?, vertical: Bool) {
         self.videoID = videoID
         self.title = title
         self.thumbnail = thumbnail
         self.durationSec = durationSec
+        self.vertical = vertical
         _started = State(initialValue: autoplay)
     }
 
@@ -55,7 +58,7 @@ private struct ReaderYouTubeStage: View {
             }
             if !revealed {
                 ReaderYouTubePoster(videoID: videoID, title: title, thumbnail: thumbnail, durationSec: durationSec,
-                                    loading: started) { started = true }
+                                    vertical: vertical, loading: started) { started = true }
                     .transition(.opacity)
             }
         }
@@ -73,7 +76,7 @@ private struct ReaderYouTubeStage: View {
         }
         #if os(iOS)
         .fullScreenCover(item: $fullscreen) { start in
-            ReaderYouTubeFullscreen(videoID: videoID, title: title, start: start.time) { time in
+            ReaderYouTubeFullscreen(videoID: videoID, title: title, start: start.time, vertical: vertical) { time in
                 fullscreen = nil
                 controller.resume(at: time)
             }
@@ -99,12 +102,13 @@ private struct ReaderYouTubeStage: View {
 }
 
 /// The thumbnail over the player before it plays: YouTube's largest frame (maxresdefault, which not
-/// every video has), else the feed's thumbnail.
+/// every video has; oar2, the full 9:16 frame, for a Short), else the feed's thumbnail.
 private struct ReaderYouTubePoster: View {
     let videoID: String
     let title: String
     let thumbnail: String?
     let durationSec: Int?
+    let vertical: Bool
     let loading: Bool
     let play: () -> Void
 
@@ -142,7 +146,8 @@ private struct ReaderYouTubePoster: View {
     }
 
     private var image: some View {
-        CachedAsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg"), maxPixelSize: 1280) { image in
+        CachedAsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(id)/\(vertical ? "oar2" : "maxresdefault").jpg"),
+                         maxPixelSize: 1280) { image in
             image.resizable().scaledToFill()
         } placeholder: { failed in
             if failed {
@@ -189,6 +194,7 @@ private struct ReaderYouTubeFullscreen: View {
     let videoID: String
     let title: String
     let start: Double
+    let vertical: Bool
     let onExit: (Double) -> Void
 
     var body: some View {
@@ -201,7 +207,7 @@ private struct ReaderYouTubeFullscreen: View {
                 default: break
                 }
             }
-            .aspectRatio(16 / 9, contentMode: .fit)
+            .aspectRatio(vertical ? 9 / 16 : 16 / 9, contentMode: .fit)
         }
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
