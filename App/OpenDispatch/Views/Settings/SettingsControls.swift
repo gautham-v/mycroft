@@ -56,13 +56,17 @@ struct SettingsSectionLabel: View {
 }
 
 /// A settings row: label (and optional hint) on the left, a control on the right, hairline on top.
+/// `stacked` puts the control under the label instead, for controls too wide to share a phone's row.
 struct SettingsRow<Control: View>: View {
     let label: String
     var hint: String?
+    var stacked = false
     @ViewBuilder var control: () -> Control
 
     var body: some View {
-        HStack(spacing: 12) {
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                             : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
                     .font(OFFont.ui(14))

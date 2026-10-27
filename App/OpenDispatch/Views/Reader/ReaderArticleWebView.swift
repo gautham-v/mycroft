@@ -7,6 +7,7 @@ enum ReaderHTML {
     struct Appearance: Equatable {
         var font: ReaderFontSetting
         var size: TextSizeSetting
+        var leading: LineSpacingSetting
         /// nil follows the system appearance (prefers-color-scheme).
         var theme: ThemeSetting
         /// 32pt side padding (md+ in the web) instead of 20pt.
@@ -43,7 +44,7 @@ enum ReaderHTML {
         <style>\(stylesheet)</style>
         </head>
         <body>
-        <article class="prose-opendispatch" style="--column: \(a.columnCSS)" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
+        <article class="prose-opendispatch" style="--column: \(a.columnCSS)" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-leading="\(a.leading.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
         </body>
         </html>
         """
@@ -83,6 +84,7 @@ enum ReaderHTML {
           if (!a) return;
           a.setAttribute('data-font', '\(a.font.rawValue)');
           a.setAttribute('data-size', '\(a.size.rawValue)');
+          a.setAttribute('data-leading', '\(a.leading.rawValue)');
           a.setAttribute('data-wide', '\(a.wide ? "1" : "0")');
           a.style.setProperty('--column', '\(a.columnCSS)');
         })();

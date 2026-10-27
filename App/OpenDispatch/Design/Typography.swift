@@ -1,7 +1,8 @@
 import SwiftUI
 
-// System fonts only, no bundled font files: SF (the default design) for all UI and metadata, New York
-// (`.serif`) for article text. No monospace anywhere outside code blocks in articles (reader.css).
+// System fonts only, no bundled font files: SF (the default design) for all UI and metadata; article
+// text in SF, New York (`.serif`), Charter or Iowan Old Style (all installed on macOS and iOS). No
+// monospace anywhere outside code blocks in articles (reader.css).
 
 enum OFFont {
     static func ui(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
@@ -10,6 +11,16 @@ enum OFFont {
 
     static func serif(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .serif)
+    }
+
+    /// Article text in the reader font setting (the headline and the summary shown when extraction fails).
+    static func reader(_ font: ReaderFontSetting, _ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        switch font {
+        case .sans: ui(size, weight)
+        case .serif: serif(size, weight)
+        case .charter: .custom("Charter", size: size).weight(weight)
+        case .iowan: .custom("Iowan Old Style", size: size).weight(weight)
+        }
     }
 
     // Item list (item-row.tsx)
@@ -47,18 +58,28 @@ enum OFFont {
     /// Reader headline size per text-size setting (HEADLINE_SIZE in reader.tsx), weight 600, leading 1.12.
     static func headlineSize(_ size: TextSizeSetting, wide: Bool) -> CGFloat {
         switch size {
+        case .xxs: wide ? 28 : 23
+        case .xs: wide ? 30 : 24
         case .s: wide ? 32 : 26
         case .m: wide ? 36 : 30
         case .l: wide ? 40 : 34
+        case .xl: wide ? 42 : 36
+        case .xxl: wide ? 44 : 38
+        case .xxxl: wide ? 46 : 40
         }
     }
 
-    /// Reader body size per text-size setting (prose-opendispatch): 16 / 17.5 / 19.5, line height 1.6.
+    /// Reader body size per text-size setting (prose-opendispatch data-size in reader.css).
     static func bodySize(_ size: TextSizeSetting) -> CGFloat {
         switch size {
+        case .xxs: 14
+        case .xs: 15
         case .s: 16
         case .m: 17.5
         case .l: 19.5
+        case .xl: 21
+        case .xxl: 23
+        case .xxxl: 25
         }
     }
 }

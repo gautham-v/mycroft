@@ -3,11 +3,13 @@
 
    <html data-theme="light|dark" (optional; omit to follow the system)>
      <body>
-       <article class="prose-opendispatch" data-font="serif|sans" data-size="s|m|l"> ...sanitized HTML... </article>
+       <article class="prose-opendispatch" data-font="sans|serif|charter|iowan" data-size="xxs…xxxl"
+            data-leading="tight|normal|loose"> ...sanitized HTML... </article>
      </body>
    </html>
 
-   data-font / data-size come from AppSettings (readerFont / textSize). Default is 17.5px sans.
+   data-font / data-size / data-leading come from AppSettings (readerFont / textSize / lineSpacing).
+   Default is 17.5px sans at line height 1.6.
    data-wide="1|0" (set by ReaderView) picks the 32px / 20px side padding so the body lines up with the
    native header column; without it the media query below decides. The reader web view is fitted to the
    article's height, so the page itself never scrolls vertically. */
@@ -28,6 +30,8 @@
   /* Monospace is for <pre>/<code> in articles only. */
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --font-serif: ui-serif, -apple-system-ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-charter: Charter, "Bitstream Charter", Georgia, serif;
+  --font-iowan: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   color-scheme: light;
 }
 
@@ -96,8 +100,19 @@ body {
 body { overflow-y: hidden; }
 ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 .prose-opendispatch[data-font="serif"] { font-family: var(--font-serif); }
+.prose-opendispatch[data-font="charter"] { font-family: var(--font-charter); }
+.prose-opendispatch[data-font="iowan"] { font-family: var(--font-iowan); }
+/* Sizes match OFFont.bodySize. */
+.prose-opendispatch[data-size="xxs"] { font-size: 14px; }
+.prose-opendispatch[data-size="xs"] { font-size: 15px; }
 .prose-opendispatch[data-size="s"] { font-size: 16px; }
 .prose-opendispatch[data-size="l"] { font-size: 19.5px; }
+.prose-opendispatch[data-size="xl"] { font-size: 21px; }
+.prose-opendispatch[data-size="xxl"] { font-size: 23px; }
+.prose-opendispatch[data-size="xxxl"] { font-size: 25px; }
+/* Line heights match LineSpacingSetting. */
+.prose-opendispatch[data-leading="tight"] { line-height: 1.45; }
+.prose-opendispatch[data-leading="loose"] { line-height: 1.8; }
 
 .prose-opendispatch > :first-child { margin-top: 0; }
 .prose-opendispatch > * + *,

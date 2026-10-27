@@ -129,7 +129,8 @@ struct ReaderItemView: View {
     }
 
     private var appearance: ReaderHTML.Appearance {
-        ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, theme: settings.theme, wide: wide,
+        ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, leading: settings.lineSpacing,
+                              theme: settings.theme, wide: wide,
                               columnWidth: settings.readerColumnWidth)
     }
 
@@ -365,11 +366,8 @@ struct ReaderItemView: View {
     }
 
     private var headlineText: some View {
-        let font: Font = settings.readerFont == .sans
-            ? OFFont.ui(headlineSize, .semibold)
-            : OFFont.serif(headlineSize, .semibold)
-        return Text(item.item.title)
-            .font(font)
+        Text(item.item.title)
+            .font(OFFont.reader(settings.readerFont, headlineSize, .semibold))
             .tracking(-0.01 * headlineSize)
             .foregroundStyle(.ofInk)
             .multilineTextAlignment(.leading)
@@ -410,9 +408,8 @@ struct ReaderItemView: View {
             heroImage
             if !summary.isEmpty {
                 Text(summary)
-                    .font(settings.readerFont == .sans ? OFFont.ui(OFFont.bodySize(settings.textSize))
-                                                       : OFFont.serif(OFFont.bodySize(settings.textSize)))
-                    .lineSpacing(OFFont.bodySize(settings.textSize) * 0.4)
+                    .font(OFFont.reader(settings.readerFont, OFFont.bodySize(settings.textSize)))
+                    .lineSpacing(OFFont.bodySize(settings.textSize) * (settings.lineSpacing.lineHeight - 1.2))
                     .foregroundStyle(.ofInk)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
