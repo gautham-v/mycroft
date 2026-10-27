@@ -31,11 +31,14 @@ public enum FeedDetection {
         return host == "youtube.com" || host.hasSuffix(".youtube.com")
     }
 
-    /// findChannelIdInHtml: `"channelId":"UC…"`, then `"externalId":"UC…"`, then `channel_id=UC…`.
+    /// The page's own channel: the canonical `/channel/UC…` link, then `"externalId":"UC…"`, then
+    /// `channel_id=UC…` (its RSS link), then `"channelId":"UC…"` (a watch page's owner). A channel page's first
+    /// `"channelId"` can be a featured channel (@Fireship's is Beyond Fireship), so it comes last.
     public static func findChannelID(inHTML html: String) -> String? {
-        if let m = html.firstMatch(of: #/"channelId":"(UC[A-Za-z0-9_\-]{22})"/#) { return String(m.1) }
+        if let m = html.firstMatch(of: #/rel="canonical" href="https?://(?:www\.)?youtube\.com/channel/(UC[A-Za-z0-9_\-]{22})"/#) { return String(m.1) }
         if let m = html.firstMatch(of: #/"externalId":"(UC[A-Za-z0-9_\-]{22})"/#) { return String(m.1) }
         if let m = html.firstMatch(of: #/channel_id=(UC[A-Za-z0-9_\-]{22})/#) { return String(m.1) }
+        if let m = html.firstMatch(of: #/"channelId":"(UC[A-Za-z0-9_\-]{22})"/#) { return String(m.1) }
         return nil
     }
 
