@@ -678,6 +678,8 @@ private struct PhoneDrawer: View {
                 Text("\(count) \(count == 1 ? "source" : "sources")").font(OFFont.ui(14)).foregroundStyle(.ofMuted)
             }
         }
+        // The menu in ink, like the feed rows' menu, rather than the accent blue.
+        .tint(.ofInk)
     }
 
     private func sourceRows(_ list: [Source]) -> some View {
@@ -701,6 +703,8 @@ private struct PhoneDrawer: View {
                 Text(source.host).font(OFFont.ui(14)).foregroundStyle(.ofMuted).lineLimit(1)
             }
         }
+        // The menu in ink, like the feed rows' menu, rather than the accent blue.
+        .tint(.ofInk)
     }
 
     private func toggleExpanded(_ key: String) {
