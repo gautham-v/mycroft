@@ -99,3 +99,30 @@ DEFINE SCHEMA
         GRANT CREATE TO "_icloud",
         GRANT READ TO "_world"
     );
+
+    RECORD TYPE Highlight (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        "sourceFeedUrl"   STRING,
+        "itemGuid"        STRING,
+        "itemUrl"         STRING,
+        "itemTitle"       STRING,
+        "sourceTitle"     STRING,
+        "itemAuthor"      STRING,
+        "itemPublishedAt" TIMESTAMP,
+        "text"            STRING,
+        "prefix"          STRING,
+        "suffix"          STRING,
+        "note"            STRING,
+        "color"           STRING,
+        "createdAt"       TIMESTAMP,
+        "updatedAt"       TIMESTAMP,
+        "readwiseId"      INT64,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );

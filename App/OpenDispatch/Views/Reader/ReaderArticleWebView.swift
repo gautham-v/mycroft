@@ -94,7 +94,8 @@ enum ReaderHTML {
 
 /// The article body: a WKWebView sized to its content so it scrolls with the native header inside the
 /// reader's ScrollView. Links open in the system browser; text is selectable; follows dark mode.
-/// On the Mac its right-click menu adds Open Original, Copy Link and Reload Article (`onReload`).
+/// On the Mac its right-click menu adds Open Original, Copy Link and Reload Article (`onReload`), and
+/// the highlight colors above them (ReaderHighlights.swift).
 struct ReaderArticleWebView: View {
     let html: String
     let hero: String?
@@ -104,15 +105,43 @@ struct ReaderArticleWebView: View {
     /// Read aloud's bridge to this web view (ReaderSpeechPage.swift).
     var speechPage: ReaderSpeechPage? = nil
 
+    @Environment(HighlightStore.self) private var highlights
+    @Environment(\.highlightArticle) private var article
     @State private var height: CGFloat = 0
+    @State private var bridge = ReaderHighlightBridge()
+    /// Where the scroll marker sits in the article, for scrolling the reader to a highlight.
+    @State private var markerY: CGFloat = 0
 
     var body: some View {
-        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload,
-                                          speechPage: speechPage) { h in
+        ReaderArticleWebViewRepresentable(
+            html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload, bridge: bridge,
+            highlight: article.map { ReaderHighlightState(store: highlights, article: $0, highlights: highlights.highlights(forKey: $0.key)) },
+            speechPage: speechPage
+        ) { h in
             if abs(h - height) > 0.5 { height = h }
         }
         .frame(height: max(height, 1))
         .frame(maxWidth: .infinity)
+        // The web view doesn't scroll itself, so the page reports where a highlight is and an invisible
+        // marker is put there for the reader's ScrollView to scroll to.
+        .overlay(alignment: .topLeading) {
+            if let article {
+                VStack(spacing: 0) {
+                    Color.clear.frame(width: 1, height: markerY)
+                    Color.clear.frame(width: 1, height: 1).id(HighlightScroll.markerID(pane: article.pane))
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
+        .onChange(of: highlights.scrollRequest) { _, request in
+            guard let request, let article, request.pane == article.pane else { return }
+            bridge.locate(request.id) { y in
+                guard let y else { return }
+                markerY = y
+                highlights.scrollIsReady(request)
+            }
+        }
         .accessibilityLabel("Article")
     }
 }
@@ -124,9 +153,13 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     var appearance: ReaderHTML.Appearance?
     var documentURL: URL?
     var onReload: (() -> Void)?
+    let bridge: ReaderHighlightBridge
     var speechPage: ReaderSpeechPage?
 
-    init(onHeight: @escaping (CGFloat) -> Void) { self.onHeight = onHeight }
+    init(onHeight: @escaping (CGFloat) -> Void, bridge: ReaderHighlightBridge) {
+        self.onHeight = onHeight
+        self.bridge = bridge
+    }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "openDispatchHeight" else { return }
@@ -146,6 +179,10 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         return nil
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        bridge.pageDidLoad()
+    }
+
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         // Reload on the next update.
         loadedKey = nil
@@ -159,8 +196,10 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchHeight")
         controller.addUserScript(WKUserScript(source: ReaderHTML.fitScript, injectionTime: .atDocumentEnd,
                                               forMainFrameOnly: true, in: world))
+        bridge.install(in: config)
         speechPage?.install(in: controller, world: world)
         let webView = ReaderFittedWebView(frame: .zero, configuration: config)
+        bridge.attach(webView)
         speechPage?.attach(webView)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -168,7 +207,9 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         #if os(macOS)
         webView.allowsMagnification = false
         webView.extraMenuItems = { [weak self] in self?.menuItems() ?? [] }
+        webView.topMenuItems = { [weak bridge] in bridge?.macMenuItems() ?? [] }
         #else
+        webView.highlightMenu = { [weak bridge] in bridge?.editMenuElements() ?? [] }
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -207,6 +248,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
             loadedKey = key
             self.appearance = appearance
             documentURL = baseURL
+            bridge.pageWillLoad()
             speechPage?.documentWillChange()
             webView.loadHTMLString(ReaderHTML.document(body: html, hero: hero, appearance: appearance), baseURL: baseURL)
         } else if appearance != self.appearance {
@@ -224,10 +266,12 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     let onReload: (() -> Void)?
+    let bridge: ReaderHighlightBridge
+    let highlight: ReaderHighlightState?
     let speechPage: ReaderSpeechPage?
     let onHeight: (CGFloat) -> Void
 
-    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
+    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge) }
 
     func makeNSView(context: Context) -> WKWebView {
         context.coordinator.speechPage = speechPage
@@ -237,6 +281,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
+        if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
@@ -255,10 +300,12 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     let onReload: (() -> Void)?
+    let bridge: ReaderHighlightBridge
+    let highlight: ReaderHighlightState?
     let speechPage: ReaderSpeechPage?
     let onHeight: (CGFloat) -> Void
 
-    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
+    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge) }
 
     func makeUIView(context: Context) -> WKWebView {
         context.coordinator.speechPage = speechPage
@@ -268,6 +315,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
+        if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }

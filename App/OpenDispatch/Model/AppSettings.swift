@@ -114,6 +114,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var speechVoice: String?
     /// Read aloud speed multiplier at the start of each article (one of the podcast player's steps).
     var speechRate: Float = 1
+    /// Send highlights and notes made on this device to Readwise (when a token is set).
+    var sendHighlightsToReadwise: Bool = true
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -135,6 +137,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         speechVoice = (try? c.decodeIfPresent(String.self, forKey: .speechVoice)) ?? nil
         let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1
         speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
+        sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
     }
 
     init() {}

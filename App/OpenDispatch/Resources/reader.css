@@ -26,6 +26,11 @@
   --hairline: #e5e5ea;
   --code: #f0f0f3;
   --accent: #007aff;
+  --hl-yellow: rgba(255, 204, 0, 0.42);
+  --hl-green: rgba(52, 199, 89, 0.34);
+  --hl-blue: rgba(10, 132, 255, 0.28);
+  --hl-pink: rgba(255, 55, 95, 0.26);
+  --hl-purple: rgba(175, 82, 222, 0.28);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   /* Monospace is for <pre>/<code> in articles only. */
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -49,6 +54,11 @@
     --hairline: #313133;
     --code: #2e2e30;
     --accent: #0a84ff;
+    --hl-yellow: rgba(255, 214, 10, 0.32);
+    --hl-green: rgba(48, 209, 88, 0.30);
+    --hl-blue: rgba(10, 132, 255, 0.42);
+    --hl-pink: rgba(255, 55, 95, 0.38);
+    --hl-purple: rgba(191, 90, 242, 0.40);
     color-scheme: dark;
   }
 }
@@ -65,6 +75,11 @@
   --hairline: #313133;
   --code: #2e2e30;
   --accent: #0a84ff;
+  --hl-yellow: rgba(255, 214, 10, 0.32);
+  --hl-green: rgba(48, 209, 88, 0.30);
+  --hl-blue: rgba(10, 132, 255, 0.42);
+  --hl-pink: rgba(255, 55, 95, 0.38);
+  --hl-purple: rgba(191, 90, 242, 0.40);
   color-scheme: dark;
 }
 
@@ -102,6 +117,14 @@ body { overflow-y: hidden; }
 /* Read aloud: the sentence being spoken (CSS Custom Highlight API, ReaderSpeechScript.swift). The accent
    already differs per theme, so one rule covers light and dark. */
 ::highlight(od-speech) { background-color: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; }
+/* Highlights and notes (Resources/reader-highlights.js): one CSS Custom Highlight per color, painted
+   over the text without touching the DOM. The page's colors are not changed, only a tint behind it. */
+::highlight(od-hl-yellow) { background-color: var(--hl-yellow); }
+::highlight(od-hl-green) { background-color: var(--hl-green); }
+::highlight(od-hl-blue) { background-color: var(--hl-blue); }
+::highlight(od-hl-pink) { background-color: var(--hl-pink); }
+::highlight(od-hl-purple) { background-color: var(--hl-purple); }
+::highlight(od-hl-underline) { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
 .prose-opendispatch[data-font="serif"] { font-family: var(--font-serif); }
 .prose-opendispatch[data-font="charter"] { font-family: var(--font-charter); }
 .prose-opendispatch[data-font="iowan"] { font-family: var(--font-iowan); }
