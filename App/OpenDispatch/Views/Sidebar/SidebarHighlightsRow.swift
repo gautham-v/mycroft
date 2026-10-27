@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// The Highlights row under Saved in the sidebar: the highlighter glyph, the name, and how many
-/// highlights there are, muted at the end. Looks like SidebarViewRow.
+/// The Highlights row under Saved in the sidebar: the highlighter glyph and the name.
+/// Looks like SidebarViewRow.
 struct SidebarHighlightsRow: View {
-    let count: Int
     let active: Bool
     let action: () -> Void
     @State private var hovered = false
@@ -20,12 +19,6 @@ struct SidebarHighlightsRow: View {
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if count > 0 {
-                    Text("\(count)")
-                        .font(OFFont.ui(13))
-                        .foregroundStyle(.ofMuted)
-                        .monospacedDigit()
-                }
             }
             .padding(.horizontal, SidebarStyle.rowPadding)
             .frame(height: Metrics.sidebarRowHeight)
@@ -34,7 +27,7 @@ struct SidebarHighlightsRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
-        .accessibilityLabel(count > 0 ? "Highlights, \(count)" : "Highlights")
+        .accessibilityLabel("Highlights")
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 }

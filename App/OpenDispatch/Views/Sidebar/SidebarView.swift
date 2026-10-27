@@ -15,7 +15,6 @@ import SwiftUI
 /// tree for a flat list of matches.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
-    @Environment(HighlightStore.self) private var highlights
     @Environment(\.openURL) private var openURL
 
     /// Inline text field in use (sidebar.tsx `editing`).
@@ -182,7 +181,7 @@ struct SidebarView: View {
                 }
             }
         case .highlights:
-            SidebarHighlightsRow(count: highlights.count, active: isActive(item)) {
+            SidebarHighlightsRow(active: isActive(item)) {
                 model.showHighlights()
             }
             .contextMenu { hideButton(item) }

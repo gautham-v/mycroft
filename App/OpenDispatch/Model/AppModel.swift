@@ -296,9 +296,6 @@ final class AppModel {
     /// Search field placeholder: "Search" in All, else "Search <title>".
     var searchPlaceholder: String { listTitle == "All" ? "Search" : "Search \(listTitle)" }
 
-    /// "updated 5m ago" / "updated just now" / "updated never".
-    func updatedLabel(now: Date = Date()) -> String { RelativeTime.updatedLabel(lastRefreshAt, now: now) }
-
     /// The item the reader shows: the opened one, else (tablet/desktop) the first in the list.
     var selectedItem: FeedItem? { activeItem(inPane: focusedPane) }
 

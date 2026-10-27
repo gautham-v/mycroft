@@ -1,8 +1,8 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 44pt on the Mac's top row (54pt on iPad), title + "updated X ago" muted (14.5 regular, as the reader
-/// toolbar's source · time) on one baseline, search button (or the search field in place of the title), refresh button.
+/// Desktop and iPad list header (openfeed-app.tsx, lg and up): 44pt on the Mac's top row (54pt on iPad), title, search
+/// button (or the search field in place of the title), refresh button.
 /// A show-sidebar button leads when the sidebar is collapsed.
 struct DesktopListHeader: View {
     @Environment(AppModel.self) private var model
@@ -24,17 +24,12 @@ struct DesktopListHeader: View {
             if model.isSearchOpen {
                 FeedSearchField(focus: searchFocus)
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(model.listTitle)
-                        .font(OFFont.listHeaderTitle)
-                        .foregroundStyle(.ofInk)
-                        .lineLimit(1)
-                        .layoutPriority(1)
-                    FeedUpdatedLabel(font: OFFont.listHeaderSubline)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
+                Text(model.listTitle)
+                    .font(OFFont.listHeaderTitle)
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
                 FeedSearchButton(searchFocus: searchFocus)
             }
             FeedRefreshButton()
@@ -57,21 +52,6 @@ struct DesktopListHeader: View {
         .frame(height: Metrics.desktopHeaderHeight)
         .frostedBar()
         #endif
-    }
-}
-
-/// "updated 5m ago", re-rendered every 30 s.
-struct FeedUpdatedLabel: View {
-    @Environment(AppModel.self) private var model
-    let font: Font
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            Text(model.updatedLabel(now: context.date))
-                .font(font)
-                .foregroundStyle(.ofMuted)
-                .lineLimit(1)
-        }
     }
 }
 

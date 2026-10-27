@@ -19,13 +19,6 @@ public enum RelativeTime {
         return "\(d / 365)y"
     }
 
-    /// "updated just now" / "updated 5m ago" / "updated never" (the list header subline).
-    public static func updatedLabel(_ last: Date?, now: Date = Date()) -> String {
-        guard let last else { return "updated never" }
-        let r = format(last, now: now)
-        return r == "now" ? "updated just now" : "updated \(r) ago"
-    }
-
     public static func isStale(_ last: Date?, now: Date = Date()) -> Bool {
         guard let last else { return true }
         return now.timeIntervalSince(last) > staleInterval
