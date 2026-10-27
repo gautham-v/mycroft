@@ -122,6 +122,7 @@ struct ItemListView: View {
             .refreshable { await model.refresh(force: true) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { PhoneListToolbar(showsMenu: isPhoneHome) }
+            .phoneFloatingBubbles()
             .navigationDestination(isPresented: readerPresented) {
                 ReaderView()
             }

@@ -72,6 +72,7 @@ struct HighlightsListView: View {
         list
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { PhoneListToolbar(showsMenu: true) }
+            .phoneFloatingBubbles()
             .navigationDestination(isPresented: Binding(
                 get: { model.selectedItemID != nil && model.showsHighlights && !isFeedStackPushed },
                 set: { presented in if !presented, model.selectedItemID != nil { model.select(nil) } })

@@ -210,6 +210,29 @@ struct PhoneListToolbar: ToolbarContent {
     }
 }
 
+extension View {
+    /// iPhone lists: nothing behind the toolbar's glass bubbles (no bar band, no scroll-edge blur or
+    /// hairline), only a short fade of the ground under the status bar so the clock stays legible over
+    /// rows scrolling up.
+    func phoneFloatingBubbles() -> some View {
+        scrollEdgeEffectHidden(true, for: .top)
+            .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+            .overlay(alignment: .top) {
+                LinearGradient(stops: [.init(color: .ofSurface, location: 0), .init(color: .ofSurface, location: 0.6),
+                                       .init(color: .ofSurface.opacity(0), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: Self.statusBarHeight + 8)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+            }
+    }
+
+    private static var statusBarHeight: CGFloat {
+        let scene = UIApplication.shared.connectedScenes.first { $0.activationState == .foregroundActive } as? UIWindowScene
+        return scene?.statusBarManager?.statusBarFrame.height ?? 54
+    }
+}
+
 /// The search field that replaces the title while searching on the iPhone: a glass capsule bound to
 /// `AppModel.searchDraft`, focused when it appears; Search commits right away.
 private struct PhoneSearchField: View {
