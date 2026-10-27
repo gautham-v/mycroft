@@ -7,10 +7,12 @@ import AppKit
 import UIKit
 #endif
 
-/// One reader tab. `itemID` nil follows the list's first item (the desktop default selection).
+/// One reader tab. `itemID` nil follows the list's first item (the desktop default selection), unless
+/// the tab is a new, empty one (`isNew`, from + or ⌘T) waiting for something to be opened in it.
 struct ReaderTab: Identifiable, Equatable, Sendable {
     let id = UUID()
     var itemID: Int64?
+    var isNew = false
 }
 
 /// A reader column (split view has two): its tabs and the one showing.
@@ -254,11 +256,16 @@ final class AppModel {
 
     var isSplit: Bool { panes.count > 1 }
 
-    /// More than one tab anywhere, or a split: ⌘W closes a tab instead of the window.
-    var hasReaderTabs: Bool { isSplit || panes[0].tabs.count > 1 }
+    /// ⌘W closes a tab instead of the window: there's a split, more than one tab, or the one tab
+    /// isn't already a new tab.
+    var hasReaderTabs: Bool { isSplit || panes[0].tabs.count > 1 || !panes[0].activeTab.isNew }
+
+    /// Items from closed tabs, most recent first (⇧⌘T, the new tab's Recently closed). Session only.
+    private(set) var closedItems: [FeedItem] = []
 
     /// What a tab shows: its item, or with none opened (tablet/desktop) the first in the list.
     func item(for tab: ReaderTab) -> FeedItem? {
+        if tab.isNew { return nil }
         if let id = tab.itemID { return items.first { $0.id == id } ?? openItems[id] }
         return prefersDefaultSelection ? items.first : nil
     }
@@ -844,6 +851,11 @@ final class AppModel {
             panes[p].active = t
             return
         }
+        // A new tab takes the item itself rather than staying empty behind it.
+        if panes[p].activeTab.isNew {
+            open(item)
+            return
+        }
         pinFocusedTab()
         openItems[item.id] = item
         panes[p].tabs.insert(ReaderTab(itemID: item.id), at: panes[p].active + 1)
@@ -899,11 +911,27 @@ final class AppModel {
         panes[pane].active = index
     }
 
-    /// Close a tab. A pane's last tab closes the pane in split view, else empties the reader.
+    /// + / ⌘T: an empty tab after the active one in the focused pane; the next item opened fills it.
+    func openNewTab() {
+        let p = focusedPane
+        pinFocusedTab()
+        panes[p].tabs.insert(ReaderTab(isNew: true), at: panes[p].active + 1)
+        panes[p].active += 1
+    }
+
+    /// ⇧⌘T: the most recently closed tab's item, in a new tab (or the empty one that's showing).
+    func reopenClosedTab() {
+        guard !closedItems.isEmpty else { return }
+        openInNewTab(closedItems.removeFirst())
+    }
+
+    /// Close a tab. A pane's last tab closes the pane in split view, else becomes a new, empty tab.
     func closeTab(pane: Int, index: Int) {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        rememberClosed(panes[pane].tabs[index])
         if panes[pane].tabs.count == 1 {
-            if isSplit { closePane(pane) } else { setActiveItem(nil) }
+            if isSplit { closePane(pane) } else { panes[pane].tabs[0] = ReaderTab(isNew: true) }
+            pruneOpenItems()
             return
         }
         panes[pane].tabs.remove(at: index)
@@ -914,6 +942,7 @@ final class AppModel {
 
     func closeOtherTabs(pane: Int, index: Int) {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        for (t, tab) in panes[pane].tabs.enumerated().reversed() where t != index { rememberClosed(tab) }
         panes[pane].tabs = [panes[pane].tabs[index]]
         panes[pane].active = 0
         pruneOpenItems()
@@ -938,8 +967,18 @@ final class AppModel {
 
     /// The focused pane's active tab shows `id` (nil: the list's first item).
     private func setActiveItem(_ id: Int64?) {
-        panes[focusedPane].tabs[panes[focusedPane].active].itemID = id
+        let p = focusedPane, t = panes[p].active
+        panes[p].tabs[t].itemID = id
+        panes[p].tabs[t].isNew = false
         pruneOpenItems()
+    }
+
+    /// Keep a closing tab's item for ⇧⌘T and Recently closed (newest first, at most 20, no repeats).
+    private func rememberClosed(_ tab: ReaderTab) {
+        guard let item = item(for: tab) else { return }
+        closedItems.removeAll { $0.id == item.id }
+        closedItems.insert(item, at: 0)
+        if closedItems.count > 20 { closedItems.removeLast() }
     }
 
     /// A tab that follows the list's first item keeps that item once focus or the active tab moves
@@ -962,6 +1001,7 @@ final class AppModel {
                 }
             }
         }
+        closedItems.removeAll(where: match)
     }
 
     private func pruneOpenItems() {

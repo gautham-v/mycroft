@@ -39,7 +39,9 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["⌥", "click"], label: "Open in split view"),
             ShortcutEntry(keys: ["⇧", "⌘", "]"], label: "Next tab"),
             ShortcutEntry(keys: ["⇧", "⌘", "["], label: "Previous tab"),
+            ShortcutEntry(keys: ["⌘", "T"], label: "New tab"),
             ShortcutEntry(keys: ["⌘", "W"], label: "Close the tab"),
+            ShortcutEntry(keys: ["⇧", "⌘", "T"], label: "Reopen the last closed tab"),
             ShortcutEntry(keys: ["⌥", "⌘", "S"], label: "Split view on or off"),
         ]),
         ShortcutGroup(title: "App", items: [

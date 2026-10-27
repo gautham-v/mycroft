@@ -6,8 +6,8 @@ import SwiftUI
 /// byline, article HTML in a height-fitted WKWebView styled by Resources/reader.css, a YouTube player
 /// for videos and a native audio player for podcasts. Shows the empty state when nothing is selected.
 ///
-/// On the desktop the reader is one pane or two side by side (ReaderSplitView), and a pane with more
-/// than one tab shows them in its bar in place of the source line (ReaderTabs.swift).
+/// On the desktop the reader is one pane or two side by side (ReaderSplitView), and each pane's bar
+/// shows its tabs, even a lone one, with + for a new tab (ReaderTabs.swift).
 ///
 /// On iPhone it is pushed in the list's NavigationStack and uses the system navigation bar (Liquid
 /// Glass): the system back button pops (ItemListView's binding then calls `model.select(nil)`), the
@@ -75,10 +75,6 @@ struct ReaderItemView: View {
     }
 
     private var wide: Bool { !compact }
-    /// Split view: the focused pane's bar carries an accent underline, the other's source line dims.
-    private var isFocusedPane: Bool { model.isSplit && model.focusedPane == pane }
-    private var isUnfocusedPane: Bool { model.isSplit && model.focusedPane != pane }
-    private var hasTabs: Bool { model.panes.indices.contains(pane) && model.panes[pane].tabs.count > 1 }
     private var settings: AppSettings { model.settings }
     private var isVideo: Bool { item.source.kind == .youtube }
     /// Podcasts read like articles with an audio player between header and notes.
@@ -213,47 +209,10 @@ struct ReaderItemView: View {
 
     // MARK: Toolbar
 
-    /// macOS / iPad toolbar row (iPhone uses the system bar, see `phoneToolbar`).
+    /// macOS / iPad toolbar row: the pane's tabs, then the actions (iPhone uses the system bar, see
+    /// `phoneToolbar`).
     private var toolbar: some View {
-        HStack(spacing: 6) {
-            Group {
-                if hasTabs {
-                    ReaderTabStrip(pane: pane)
-                } else {
-                    HStack(spacing: 8) {
-                        SourceBadge(host: item.source.host, title: item.source.title, size: 20)
-                        titleLine
-                    }
-                    .opacity(isUnfocusedPane ? 0.6 : 1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            actions
-        }
-        .padding(.leading, focusInset)
-        .padding(.trailing, 16)
-        #if os(macOS)
-        // The top row shared with the list header and traffic lights, hairline under it like Claude's bar.
-        .frame(height: Metrics.topBarHeight)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
-        #else
-        .padding(.vertical, 8)
-        .frame(minHeight: Metrics.desktopHeaderHeight)
-        #endif
-        .overlay(alignment: .bottom) {
-            if isFocusedPane { Rectangle().fill(Color.ofAccent).frame(height: 2) }
-        }
-        .frostedBar()
-    }
-
-    /// macOS full-screen reader: the traffic lights sit over the toolbar's leading edge (the left pane's).
-    private var focusInset: CGFloat {
-        #if os(macOS)
-        model.isFocused && pane == 0 ? Metrics.trafficLightInset : 16
-        #else
-        16
-        #endif
+        ReaderBar(pane: pane) { actions }
     }
 
     private var actions: some View {
@@ -362,6 +321,13 @@ struct ReaderItemView: View {
                 Text(item.source.title).fontWeight(.medium).foregroundStyle(.ofInk)
                 if let author = item.item.author, !author.isEmpty, author != item.source.title {
                     Text(author)
+                }
+                // The bar shows tabs, not source · time, so the age lives here (phones have the meta row).
+                if wide {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        let age = RelativeTime.format(item.item.publishedAt, now: context.date)
+                        Text(age == "now" ? "just now" : "\(age) ago")
+                    }
                 }
                 if isPodcast, let dur = TextFormat.duration(item.item.durationSec) {
                     Text(dur).monospacedDigit()

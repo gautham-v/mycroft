@@ -59,6 +59,8 @@ struct OpenDispatchCommands: Commands {
                 .keyboardShortcut(",", modifiers: .command)
         }
         CommandGroup(replacing: .newItem) {
+            Button("New Tab") { model.openNewTab() }
+                .keyboardShortcut("t", modifiers: .command)
             Button("Add Source…") { model.isAddSourcePresented = true }
                 .keyboardShortcut("n", modifiers: .command)
         }
@@ -78,6 +80,9 @@ struct OpenDispatchCommands: Commands {
         CommandGroup(replacing: .saveItem) {
             Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { closeTabOrWindow() }
                 .keyboardShortcut("w", modifiers: .command)
+            Button("Reopen Closed Tab") { model.reopenClosedTab() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .disabled(model.closedItems.isEmpty)
         }
         CommandGroup(after: .sidebar) {
             Button(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") { model.toggleSidebar() }

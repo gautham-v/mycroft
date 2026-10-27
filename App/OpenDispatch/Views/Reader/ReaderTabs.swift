@@ -4,8 +4,8 @@ import SwiftUI
 import AppKit
 #endif
 
-/// One reader pane: the active tab's item, or the empty state. In split view a click anywhere in the
-/// pane (the article's web view included) focuses it, so the list and j/k act on it.
+/// One reader pane: the active tab's item, a new tab, or the empty state. In split view a click anywhere
+/// in the pane (the article's web view included) focuses it, so the list and j/k act on it.
 struct ReaderPaneView: View {
     let pane: Int
     @Environment(AppModel.self) private var model
@@ -15,6 +15,8 @@ struct ReaderPaneView: View {
             if let item = model.activeItem(inPane: pane) {
                 ReaderItemView(item: item, pane: pane)
                     .id(item.id)
+            } else if model.panes.indices.contains(pane), model.panes[pane].activeTab.isNew {
+                NewTabView(pane: pane)
             } else {
                 ReaderEmptyView()
             }
@@ -28,6 +30,101 @@ struct ReaderPaneView: View {
         #else
         .simultaneousGesture(TapGesture().onEnded { if model.isSplit { model.focusPane(pane) } })
         #endif
+    }
+}
+
+/// A new tab (+ or ⌘T): the bar, then what to open in it, recently closed tabs and the latest saved
+/// items. Opening anything, from here or the list, fills this tab.
+struct NewTabView: View {
+    let pane: Int
+    @Environment(AppModel.self) private var model
+    @State private var saved: [FeedItem] = []
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(spacing: 4) {
+                    Text("New Tab").font(OFFont.ui(15, .medium)).foregroundStyle(.ofInk)
+                    Text("Pick an item from the list, or one below").font(OFFont.ui(13)).foregroundStyle(.ofMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
+
+                section("Recently closed", Array(model.closedItems.prefix(5)))
+                section("Saved", saved)
+            }
+            .frame(maxWidth: 440)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 56)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollContentBackground(.hidden)
+        .overlayScrollers()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            ReaderBar(pane: pane) {
+                if model.isSplit {
+                    Button { model.closePane(pane) } label: { OFIcon.close.image }
+                        .buttonStyle(ReaderIconButtonStyle(size: Metrics.readerActionButton, glyph: Metrics.readerActionGlyph))
+                        .help("Close this pane")
+                        .accessibilityLabel("Close pane")
+                }
+            }
+        }
+        .background(Color.ofSurface)
+        .task { saved = (try? await model.database.items(ItemQuery(view: .saved, limit: 5)).items) ?? [] }
+    }
+
+    @ViewBuilder private func section(_ title: String, _ items: [FeedItem]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
+                    .padding(.leading, 8)
+                    .padding(.bottom, 4)
+                ForEach(items, id: \.id) { item in
+                    NewTabRow(item: item) {
+                        model.focusPane(pane)
+                        model.open(item)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// An item on the new tab: badge, title, source muted on the right; the hover grey under the pointer.
+private struct NewTabRow: View {
+    let item: FeedItem
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                SourceBadge(host: item.source.host, title: item.source.title, size: 16)
+                Text(item.item.title)
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(item.source.title)
+                    .foregroundStyle(.ofMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .font(OFFont.ui(13))
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                    .fill(hovering ? Color.ofHover : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(item.item.title)
     }
 }
 
@@ -77,8 +174,48 @@ struct ReaderSplitView: View {
     }
 }
 
-/// The reader bar's tabs, shown once a pane has more than one: badge and title, the active tab on the
-/// selection grey, × on the active or hovered tab. Tabs share the width up to 196pt each.
+/// The reader's top row on macOS / iPad: the pane's tabs, then `actions`. Split view underlines the
+/// focused pane's bar in the accent.
+struct ReaderBar<Actions: View>: View {
+    let pane: Int
+    @ViewBuilder var actions: Actions
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ReaderTabStrip(pane: pane)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            actions
+        }
+        .padding(.leading, leadingInset)
+        .padding(.trailing, 16)
+        #if os(macOS)
+        // The top row shared with the list header and traffic lights, hairline under it like Claude's bar.
+        .frame(height: Metrics.topBarHeight)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
+        #else
+        .padding(.vertical, 8)
+        .frame(minHeight: Metrics.desktopHeaderHeight)
+        #endif
+        .overlay(alignment: .bottom) {
+            if model.isSplit && model.focusedPane == pane { Rectangle().fill(Color.ofAccent).frame(height: 2) }
+        }
+        .frostedBar()
+    }
+
+    /// macOS full-screen reader: the traffic lights sit over the bar's leading edge (the left pane's).
+    private var leadingInset: CGFloat {
+        #if os(macOS)
+        model.isFocused && pane == 0 ? Metrics.trafficLightInset : 16
+        #else
+        16
+        #endif
+    }
+}
+
+/// The reader bar's tabs, shown even when there's only one: badge and title, the active tab on the
+/// selection grey, × on the active or hovered tab, then + for a new tab. Tabs share the width up to
+/// 196pt each.
 struct ReaderTabStrip: View {
     let pane: Int
     @Environment(AppModel.self) private var model
@@ -92,6 +229,15 @@ struct ReaderTabStrip: View {
                 tabView(tab, index: index, count: p.tabs.count, active: index == p.active,
                         divider: index > 0 && quiet(index) && quiet(index - 1))
             }
+            Button { model.focusPane(pane); model.openNewTab() } label: {
+                OFIcon.plus.image
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(NewTabButtonStyle())
+            .help("New tab (⌘T)")
+            .accessibilityLabel("New tab")
         }
         .padding(.leading, -6)
     }
@@ -99,7 +245,9 @@ struct ReaderTabStrip: View {
     private func tabView(_ tab: ReaderTab, index: Int, count: Int, active: Bool, divider: Bool) -> some View {
         let item = model.item(for: tab)
         let isHovered = hovered == tab.id
-        let title = item?.item.title ?? "Nothing selected"
+        let title = tab.isNew ? "New Tab" : item?.item.title ?? "Nothing selected"
+        // The window's only tab, already empty, has nothing to close.
+        let closable = count > 1 || model.isSplit || !tab.isNew
         return HStack(spacing: 7) {
             if let item {
                 SourceBadge(host: item.source.host, title: item.source.title, size: 14)
@@ -116,7 +264,8 @@ struct ReaderTabStrip: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(TabCloseButtonStyle())
-            .opacity(active || isHovered ? 1 : 0)
+            .opacity(closable && (active || isHovered) ? 1 : 0)
+            .disabled(!closable)
             .help("Close tab (⌘W)")
             .accessibilityLabel("Close tab")
         }
@@ -146,6 +295,28 @@ struct ReaderTabStrip: View {
         .help(title)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// The strip's +: muted, ink on the hover grey while hovered, like an inactive tab.
+private struct NewTabButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        NewTabButtonBody(configuration: configuration)
+    }
+}
+
+private struct NewTabButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .foregroundStyle(hovering ? Color.ofInk : Color.ofMuted)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                    .fill(configuration.isPressed ? Color.ofSelection : hovering ? Color.ofHover : Color.clear)
+            )
+            .onHover { hovering = $0 }
     }
 }
 
