@@ -18,6 +18,8 @@ struct AddSourceView: View {
     @State private var searchError = false
     @State private var importing = false
     @State private var importStatus: SettingsOPMLStatus?
+    /// Height of the list or intro, which sizes the sheet on macOS.
+    @State private var contentHeight: CGFloat = 0
     @FocusState private var fieldFocused: Bool
 
     /// Links in the field (empty when it holds a name).
@@ -32,14 +34,19 @@ struct AddSourceView: View {
             ScrollView {
                 content
                     .padding(.vertical, 8)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
             .scrollIndicators(.automatic)
+            #if os(macOS)
+            // The sheet fits what it shows (the short intro, or the results up to a cap).
+            .frame(height: min(contentHeight, Self.maxContentHeight))
+            #endif
             .padding(.top, 4)
             footer
         }
         .padding(20)
         #if os(macOS)
-        .frame(width: 460, height: 520)
+        .frame(width: 460)
         #else
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .presentationDetents([.large])
@@ -278,6 +285,9 @@ struct AddSourceView: View {
     }
 
     // MARK: Formatting
+
+    /// Tallest the results get on macOS before they scroll.
+    static let maxContentHeight: CGFloat = 400
 
     static func progress(adding: Int, added: Int) -> String {
         switch (adding, added) {
