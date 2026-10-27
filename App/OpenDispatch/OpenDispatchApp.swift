@@ -8,6 +8,8 @@ import Sparkle
 struct OpenDispatchApp: App {
     /// The single app model (owns AppDatabase via OpenDispatchServices). Injected with `.environment(model)`.
     @State private var model = AppModel.live()
+    /// Read aloud (the reader's Listen): one session at a time, app-wide.
+    @State private var speech = ReaderSpeech()
     #if os(macOS)
     /// Sparkle: checks the appcast on its own schedule and backs "Check for Updates…".
     private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
@@ -27,12 +29,13 @@ struct OpenDispatchApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(speech)
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 820)
         .windowResizability(.contentMinSize)
-        .commands { OpenDispatchCommands(model: model, updater: updater.updater) }
+        .commands { OpenDispatchCommands(model: model, speech: speech, updater: updater.updater) }
         #endif
         #if os(iOS)
         .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) { [services = model.services] in
@@ -47,6 +50,7 @@ struct OpenDispatchApp: App {
 /// Views/Feed/KeyboardShortcuts.swift; these are the ⌘ equivalents that belong in menus.
 struct OpenDispatchCommands: Commands {
     let model: AppModel
+    let speech: ReaderSpeech
     let updater: SPUUpdater
 
     var body: some Commands {
@@ -104,6 +108,10 @@ struct OpenDispatchCommands: Commands {
             }
             .disabled(model.selectedItem == nil)
             Divider()
+            Button(listenTitle) { speech.requestToggle() }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(model.selectedItem == nil || model.selectedItem?.source.kind == .youtube)
+            Divider()
             // Re-extract the focused reader's article (⌘R is Feed › Refresh).
             Button("Reload Article") { if let item = model.selectedItem { model.reloadArticle(item) } }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
@@ -112,6 +120,14 @@ struct OpenDispatchCommands: Commands {
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { model.isShortcutsPresented = true }
                 .keyboardShortcut("/", modifiers: .command)
+        }
+    }
+
+    private var listenTitle: String {
+        switch speech.state {
+        case .idle: "Listen"
+        case .playing: "Pause Listening"
+        case .paused: "Resume Listening"
         }
     }
 

@@ -152,7 +152,7 @@ struct ReaderPodcastPlayer: View {
 /// AVPlayer wrapper. The player item is created on the first Play (like preload="none").
 @MainActor @Observable
 final class ReaderPodcastPlayback {
-    static let rates: [Float] = [0.8, 1, 1.2, 1.5, 1.75, 2]
+    nonisolated static let rates: [Float] = [0.8, 1, 1.2, 1.5, 1.75, 2]
     static let saveEvery: TimeInterval = 5
     // Subsystem is the bundle id (which keeps the app's original name).
     nonisolated static let log = Logger(subsystem: "com.gauthamv.openfeed", category: "podcast")
@@ -507,6 +507,7 @@ enum PodcastRemote {
             owner?.pause()
             owner = playback
         }
+        NotificationCenter.default.post(name: .readerPodcastDidStart, object: nil)
     }
 
     static func deactivate(_ playback: ReaderPodcastPlayback) {

@@ -99,6 +99,9 @@ body {
 .prose-opendispatch[data-wide="0"] { padding-left: 20px; padding-right: 20px; }
 body { overflow-y: hidden; }
 ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+/* Read aloud: the sentence being spoken (CSS Custom Highlight API, ReaderSpeechScript.swift). The accent
+   already differs per theme, so one rule covers light and dark. */
+::highlight(od-speech) { background-color: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; }
 .prose-opendispatch[data-font="serif"] { font-family: var(--font-serif); }
 .prose-opendispatch[data-font="charter"] { font-family: var(--font-charter); }
 .prose-opendispatch[data-font="iowan"] { font-family: var(--font-iowan); }

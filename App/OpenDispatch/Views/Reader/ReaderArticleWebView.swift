@@ -101,11 +101,14 @@ struct ReaderArticleWebView: View {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     var onReload: (() -> Void)? = nil
+    /// Read aloud's bridge to this web view (ReaderSpeechPage.swift).
+    var speechPage: ReaderSpeechPage? = nil
 
     @State private var height: CGFloat = 0
 
     var body: some View {
-        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload) { h in
+        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload,
+                                          speechPage: speechPage) { h in
             if abs(h - height) > 0.5 { height = h }
         }
         .frame(height: max(height, 1))
@@ -121,6 +124,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     var appearance: ReaderHTML.Appearance?
     var documentURL: URL?
     var onReload: (() -> Void)?
+    var speechPage: ReaderSpeechPage?
 
     init(onHeight: @escaping (CGFloat) -> Void) { self.onHeight = onHeight }
 
@@ -155,7 +159,9 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchHeight")
         controller.addUserScript(WKUserScript(source: ReaderHTML.fitScript, injectionTime: .atDocumentEnd,
                                               forMainFrameOnly: true, in: world))
+        speechPage?.install(in: controller, world: world)
         let webView = ReaderFittedWebView(frame: .zero, configuration: config)
+        speechPage?.attach(webView)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = false
@@ -167,6 +173,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         webView.scrollView.bounces = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        webView.extraMenuElements = { [weak self] in self?.speechPage?.menuElements() ?? [] }
         #endif
         if #available(macOS 13.3, iOS 16.4, *) { webView.isInspectable = true }
         ReaderWebSupport.makeTransparent(webView)
@@ -180,6 +187,9 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         if let url = documentURL {
             items.append(ReaderMenuItem("Open Original") { ReaderWebSupport.openExternally(url) })
             items.append(ReaderMenuItem("Copy Link") { ReaderPasteboard.copy(url) })
+        }
+        if speechPage?.hasSelection == true {
+            items.append(ReaderMenuItem(ReaderSpeechMenu.title) { [weak self] in self?.speechPage?.onReadAloudFromSelection?() })
         }
         if let onReload {
             let reload = ReaderMenuItem("Reload Article", action: onReload)
@@ -197,6 +207,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
             loadedKey = key
             self.appearance = appearance
             documentURL = baseURL
+            speechPage?.documentWillChange()
             webView.loadHTMLString(ReaderHTML.document(body: html, hero: hero, appearance: appearance), baseURL: baseURL)
         } else if appearance != self.appearance {
             self.appearance = appearance
@@ -213,19 +224,25 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     let onReload: (() -> Void)?
+    let speechPage: ReaderSpeechPage?
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
 
-    func makeNSView(context: Context) -> WKWebView { context.coordinator.makeWebView() }
+    func makeNSView(context: Context) -> WKWebView {
+        context.coordinator.speechPage = speechPage
+        return context.coordinator.makeWebView()
+    }
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
+        context.coordinator.speechPage = speechPage
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {
+        coordinator.speechPage?.documentWillChange()
         view.configuration.userContentController.removeAllScriptMessageHandlers()
         view.navigationDelegate = nil
         view.uiDelegate = nil
@@ -238,19 +255,25 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     let onReload: (() -> Void)?
+    let speechPage: ReaderSpeechPage?
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
 
-    func makeUIView(context: Context) -> WKWebView { context.coordinator.makeWebView() }
+    func makeUIView(context: Context) -> WKWebView {
+        context.coordinator.speechPage = speechPage
+        return context.coordinator.makeWebView()
+    }
 
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
+        context.coordinator.speechPage = speechPage
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {
+        coordinator.speechPage?.documentWillChange()
         view.configuration.userContentController.removeAllScriptMessageHandlers()
         view.navigationDelegate = nil
         view.uiDelegate = nil

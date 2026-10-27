@@ -34,7 +34,7 @@ enum OFIcon: String, CaseIterable {
     case play = "play.fill"
     /// VideoIcon (Video view)
     case video = "play.rectangle"
-    /// HeadphonesIcon (Podcasts view, podcast thumbnails)
+    /// HeadphonesIcon (Podcasts view, podcast thumbnails, the reader's Listen button)
     case headphones = "headphones"
     /// CommentIcon (HN comments)
     case comment = "bubble.left"
@@ -90,6 +90,7 @@ enum OFIcon: String, CaseIterable {
         case .collapse: "of.collapse"
         case .close: "of.close"
         case .plus: "of.plus"
+        case .headphones: "of.headphones"
         default: nil
         }
     }

@@ -24,6 +24,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Selecting an article fetches the page and runs Mozilla Readability (bundled, in a hidden WKWebView with page scripts off), then cleans, sanitizes and caches the text. If the page blocks it, the feed's own full text or a Jina Reader render is used.
 - YouTube videos play in an embedded youtube-nocookie player, full width above the title by default. Podcasts play in a native audio player that remembers your position and has playback speeds from 0.8× to 2×.
 - Mac: reader tabs, shown like a browser's even when there's one (⌘-click a row, or + / ⌘T for a new tab, ⇧⌘T to reopen a closed one; right-click a tab to pin it) and split view (⌥-click a row, or ⌥⌘S), each pane with its own tabs; a full-screen reader (⇧⌘F).
+- Read aloud: the headphones button (⇧⌘L on the Mac) speaks the headline and then the article, a sentence at a time, with the system voices, highlighting the sentence being read and scrolling to keep it in view. A player bar steps sentences, pauses, changes speed (0.8× to 2×) and shows elapsed and estimated time; click or tap a sentence to jump there, or select text and choose Read Aloud from Here. On iPhone it keeps going in the background with lock-screen controls. Pick the voice and starting speed in Settings → Playback; better voices download in System Settings → Accessibility → Spoken Content.
 - Search across titles, summaries, authors and article text (/ or ⌘F).
 - Save, Open original, Share and Send to from the reader.
 
@@ -37,7 +38,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Turn it off per device in Settings → Data. Turning it off keeps the local library; turning it back on picks up what changed on both sides.
 
 **Settings**
-- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay, theater layout for videos), Integrations, Data (iCloud sync, refresh interval, database location and size, clear cached article text) and About.
+- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay and theater layout for videos, Read aloud voice and speed), Integrations, Data (iCloud sync, refresh interval, database location and size, clear cached article text) and About.
 - iPhone uses Liquid Glass system bars and a Feed / Sources / Saved / Settings tab bar.
 
 **Links**
@@ -54,6 +55,7 @@ Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
 | o or Enter | Open the original in the browser |
 | s | Save or unsave |
 | ⇧⌘R | Reload the article (extract it again) |
+| ⇧⌘L | Listen to the article (read aloud), pause or resume |
 | g then a / s / v / p | All / Saved / Video / Podcasts |
 | ⌘-click | Open in a new tab |
 | ⌥-click | Open in split view |

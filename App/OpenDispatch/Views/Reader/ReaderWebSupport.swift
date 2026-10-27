@@ -103,7 +103,7 @@ final class ReaderFittedWebView: WKWebView {
         menu.items.removeAll { $0.identifier?.rawValue == "WKMenuItemIdentifierReload" }
         // On a link WebKit already offers Open Link and Copy Link; keep only Reload Article.
         if menu.items.contains(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierCopyLink" }) {
-            extra = extra.filter { $0.title == "Reload Article" }
+            extra = extra.filter { $0.title == "Reload Article" || $0.title == ReaderSpeechMenu.title }
         }
         var at = menu.items.firstIndex { $0.identifier?.rawValue == "WKMenuItemIdentifierInspectElement" } ?? menu.items.count
         if at > 0, !menu.items[at - 1].isSeparatorItem {
@@ -215,5 +215,15 @@ enum ReaderScrollKeys {
     }
 }
 #else
-typealias ReaderFittedWebView = WKWebView
+/// The article web view on iOS: a subclass so the text-selection edit menu can gain the article's actions.
+final class ReaderFittedWebView: WKWebView {
+    var extraMenuElements: (() -> [UIMenuElement])?
+
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        let extra = extraMenuElements?() ?? []
+        guard !extra.isEmpty else { return }
+        builder.insertChild(UIMenu(options: .displayInline, children: extra), atEndOfMenu: .standardEdit)
+    }
+}
 #endif

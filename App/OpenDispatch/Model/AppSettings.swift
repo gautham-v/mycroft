@@ -109,6 +109,11 @@ struct AppSettings: Codable, Equatable, Sendable {
     var autoplay: Bool = true
     /// Full-width player above the title.
     var theater: Bool = true
+    /// Read aloud voice (AVSpeechSynthesisVoice identifier); nil is the best voice installed. Another
+    /// device's voice may not exist here, so readers resolve it through `ReaderSpeechVoices.resolve`.
+    var speechVoice: String?
+    /// Read aloud speed multiplier at the start of each article (one of the podcast player's steps).
+    var speechRate: Float = 1
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -127,6 +132,9 @@ struct AppSettings: Codable, Equatable, Sendable {
         fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
+        speechVoice = (try? c.decodeIfPresent(String.self, forKey: .speechVoice)) ?? nil
+        let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1
+        speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
     }
 
     init() {}

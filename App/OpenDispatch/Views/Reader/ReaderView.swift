@@ -55,6 +55,7 @@ struct ReaderItemView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(ReaderSpeech.self) private var speech
 
     @Environment(\.displayScale) private var displayScale
     #if os(iOS)
@@ -62,6 +63,8 @@ struct ReaderItemView: View {
     #endif
 
     @State private var content: ReaderContentState = .loading
+    /// Read aloud's hold on this article's web view.
+    @State private var speechPage = ReaderSpeechPage()
 
     // MARK: Derived (same rules as reader.tsx)
 
@@ -134,6 +137,19 @@ struct ReaderItemView: View {
                               columnWidth: settings.readerColumnWidth)
     }
 
+    /// Listen (read aloud) works on anything with an extracted body.
+    private var canListen: Bool { contentHTML != nil && !isVideo }
+
+    /// Listen button and menu command: start reading, or pause / resume when already reading this article.
+    private func listen() {
+        guard canListen else { return }
+        speech.toggle(page: speechPage, item: item, settings: settings)
+    }
+
+    private var listenLabel: String {
+        speech.owns(speechPage) ? (speech.state == .playing ? "Pause reading" : "Resume reading") : "Listen"
+    }
+
     private var buttonSize: CGFloat { compact ? Metrics.touchTarget : Metrics.readerActionButton }
     private var glyphSize: CGFloat { compact ? 17 : Metrics.readerActionGlyph }
 
@@ -166,6 +182,10 @@ struct ReaderItemView: View {
         .toolbar { if compact { phoneToolbar } }
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .readerSpeech(page: speechPage, pane: pane, compact: compact, contentKey: bodyHTML, listen: listen)
+        .onAppear {
+            speechPage.onReadAloudFromSelection = { speech.toggle(page: speechPage, item: item, settings: settings, from: .selection) }
+        }
         .task { await load(refresh: false) }
         // Reload Article (⇧⌘R, or the article's right-click menu).
         .onChange(of: model.articleReloads[item.id]) { _, _ in Task { await load(refresh: true) } }
@@ -191,6 +211,12 @@ struct ReaderItemView: View {
                       systemImage: (item.isSaved ? OFIcon.bookmarkFilled : OFIcon.bookmark).rawValue)
             }
             .tint(item.isSaved ? Color.ofAccent : Color.primary)
+            if canListen {
+                Button(action: listen) {
+                    Label(listenLabel, systemImage: OFIcon.headphones.rawValue)
+                }
+                .tint(speech.owns(speechPage) ? Color.ofAccent : Color.primary)
+            }
             if let url = itemURL {
                 Button { openURL(url) } label: {
                     Label("Open original", systemImage: OFIcon.external.rawValue)
@@ -230,6 +256,15 @@ struct ReaderItemView: View {
             .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
             .help(item.isSaved ? "Remove from saved" : "Save")
             .accessibilityLabel(item.isSaved ? "Remove from saved" : "Save")
+
+            if canListen {
+                Button(action: listen) {
+                    OFIcon.headphones.image.foregroundStyle(speech.owns(speechPage) ? Color.ofAccent : Color.ofInk)
+                }
+                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                .help(speech.owns(speechPage) ? "Pause or resume reading (⇧⌘L)" : "Listen (⇧⌘L)")
+                .accessibilityLabel(listenLabel)
+            }
 
             if let url = itemURL {
                 Button { openURL(url) } label: { OFIcon.external.image }
@@ -287,7 +322,7 @@ struct ReaderItemView: View {
             switch content {
             case .ok:
                 ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
-                                     onReload: { model.reloadArticle(item) })
+                                     onReload: { model.reloadArticle(item) }, speechPage: speechPage)
             case .loading:
                 VStack(alignment: .leading, spacing: 0) {
                     heroImage
@@ -500,5 +535,5 @@ struct ReaderSkeleton: View {
 }
 
 #Preview {
-    ReaderView().environment(AppModel.preview())
+    ReaderView().environment(AppModel.preview()).environment(ReaderSpeech())
 }

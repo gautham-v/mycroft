@@ -75,6 +75,14 @@ icon("collapse") { p in
 }
 icon("close") { p in poly(p, [P(6, 6), P(18, 18)]); poly(p, [P(18, 6), P(6, 18)]) }
 icon("plus") { p in poly(p, [P(12, 5), P(12, 19)]); poly(p, [P(5, 12), P(19, 12)]) }
+icon("headphones") { p in
+    // The band over the top (angles run clockwise on screen from the left), an ear cup at each end.
+    p.move(to: P(3.5, 15)); p.addLine(to: P(3.5, 12))
+    p.addArc(center: P(12, 12), radius: 8.5, startAngle: .pi, endAngle: 2 * .pi, clockwise: false)
+    p.addLine(to: P(20.5, 15))
+    rrect(p, CGRect(x: 3.5, y: 13.5, width: 4.5, height: 7), 2)
+    rrect(p, CGRect(x: 16, y: 13.5, width: 4.5, height: 7), 2)
+}
 
 // Template geometry (SF Symbols template, point size 100): cap height 70.459 above the baseline.
 /// 24 units span 1.2× the point size: at the 15pt toolbar size the 24-unit box is 18pt, like the Claude app.

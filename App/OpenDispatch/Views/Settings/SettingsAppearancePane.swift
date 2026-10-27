@@ -138,20 +138,21 @@ private struct SettingsTextSizePreview: View {
     }
 }
 
-/// Playback pane (PlaybackPane): autoplay and theater layout for YouTube sources.
+/// Playback pane (PlaybackPane): autoplay and theater layout for YouTube sources, then Read aloud.
 struct SettingsPlaybackPane: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
-            SettingsPaneHeading(title: "Playback", hint: "For YouTube sources.")
+            SettingsPaneHeading(title: "Playback", hint: "Video autoplay and layout for YouTube sources, and the voice for reading articles aloud.")
             SettingsRow(label: "Autoplay on select", hint: "Start playing when you open a video") {
                 toggle("Autoplay on select", isOn: $model.settings.autoplay)
             }
             SettingsRow(label: "Theater layout", hint: "Full-width player above the title") {
                 toggle("Theater layout", isOn: $model.settings.theater)
             }
+            SettingsReadAloudSection()
         }
     }
 
