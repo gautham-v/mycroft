@@ -491,7 +491,8 @@ struct ExtractionTweetTests {
         #expect(html.contains("href=\"https://x.com/bob\""))
         #expect(html.contains("href=\"https://example.com/post\""))
         #expect(html.contains(">example.com/post</a>"))
-        #expect(html.contains("<span>Oct 24, 2026</span>"))
+        let day = Date(timeIntervalSince1970: 1792865465).formatted(.dateTime.locale(Locale(identifier: "en_US_POSIX")).month(.abbreviated).day().year())
+        #expect(html.contains("<span>\(day)</span>"))
         #expect(html.contains("Open on X"))
     }
 
@@ -509,6 +510,14 @@ struct ExtractionTweetTests {
         #expect(html.contains("poster=\"https://pbs.twimg.com/amplify_video_thumb/2/img/B.jpg\""))
         #expect(html.contains("src=\"https://video.twimg.com/tweet_video/C.mp4\""))
         #expect(html.contains("loop"))
+    }
+
+    @Test func longQuotedPostSkipsCashtagText() throws {
+        let data = Self.escaped(#"{"core":{"name":"Kun","screen_name":"kun"},"details":{"full_text":"buyout"},"media_entities2":[],"quoted_tweet_results":{"rest_id":"9","result":{"core":{"name":"TKL","screen_name":"tkl"},"details":{"cashtag_entities":[{"indices":[0,5],"text":"MSFT"}],"full_text":"$MSFT buyouts. This"},"media_entities2":[],"note_tweet":{"note_tweet_results":{"result":{"__typename":"NoteTweet","entity_set":{"symbols":[{"indices":[0,5],"tag":{"info":{"info":{"ticker":"MSFT"}}},"text":"MSFT"}],"urls":[]},"rest_id":"8","text":"$MSFT buyouts. This reflects 27%."}}}}}}"#)
+        let raw = "<html><body><script>window.x=\"\(data)\"</script></body></html>"
+        let html = try #require(TweetExtraction.fromPage(raw: raw, canonical: "https://x.com/kun/status/1", user: "kun")?.contentHtml)
+        #expect(html.contains("<p>$MSFT buyouts. This reflects 27%.</p>"))
+        #expect(html.contains("https://x.com/tkl/status/9"))
     }
 
     @Test func mediaLinkDroppedButRealLinkKept() {

@@ -57,11 +57,30 @@ enum TweetExtraction {
         return n.substring(with: NSRange(location: lo, length: hi - lo))
     }
 
-    /// Post text within [from, to): long posts keep the full text under NoteTweet.
+    /// The UTF-16 offset of the bracket closing the one at `open` (URLs and ids hold none), or nil.
+    private static func closing(_ n: NSString, open: Int) -> Int? {
+        let o = n.character(at: open), c: unichar = o == 0x5B ? 0x5D : 0x7D
+        var depth = 0
+        for i in open..<n.length {
+            let ch = n.character(at: i)
+            if ch == o { depth += 1 } else if ch == c { depth -= 1; if depth == 0 { return i } }
+        }
+        return nil
+    }
+
+    /// Post text within [from, to): long posts keep the full text under NoteTweet, after an `entity_set` whose
+    /// cashtags and hashtags carry `text` keys of their own.
     static func tweetText(_ raw: String, from: Int, to: Int) -> String? {
         let region = slice(raw, from, to)
-        let note = ns(region).range(of: #"\"NoteTweet\""#)
-        let noteText = note.location != NSNotFound ? escapedJSONString(region, key: "text", from: note.location) : nil
+        let r = ns(region)
+        var noteText: String?
+        let note = r.range(of: #"\"NoteTweet\""#)
+        if note.location != NSNotFound {
+            var start = note.location
+            let set = r.range(of: #"\"entity_set\":{"#, range: NSRange(location: start, length: r.length - start))
+            if set.location != NSNotFound, let close = closing(r, open: set.location + set.length - 1) { start = close }
+            noteText = escapedJSONString(region, key: "text", from: start)
+        }
         return noteText ?? escapedJSONString(region, key: "full_text")
     }
 
@@ -76,12 +95,11 @@ enum TweetExtraction {
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "MMM d, yyyy"
         return f
     }()
 
-    /// `\"created_at_ms\":1792865465000` after `from`, as a date line ("Oct 25, 2026", UTC).
+    /// `\"created_at_ms\":1792865465000` after `from`, as a date line ("Oct 25, 2026") in the system time zone.
     static func tweetDate(_ raw: String, from: Int) -> String? {
         guard let m = datePattern.firstMatch(raw, from: from), let ms = m[1].flatMap({ Double($0) }) else { return nil }
         return dateFormatter.string(from: Date(timeIntervalSince1970: ms / 1000))
@@ -100,15 +118,8 @@ enum TweetExtraction {
         let n = ns(raw)
         let key = n.range(of: #"\"media_entities2\":["#, range: NSRange(location: from, length: max(0, min(to, n.length) - from)))
         guard key.location != NSNotFound else { return [] }
-        // The array runs to its matching bracket (URLs and ids hold none).
         let open = key.location + key.length - 1
-        var depth = 0
-        var close = -1
-        for i in open..<n.length {
-            let c = n.character(at: i)
-            if c == 0x5B { depth += 1 } else if c == 0x5D { depth -= 1; if depth == 0 { close = i; break } }
-        }
-        guard close > open,
+        guard let close = closing(n, open: open),
               let json = ExtractionPayload.jsonString("\"\(n.substring(with: NSRange(location: open, length: close - open + 1)))\""),
               let list = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [[String: Any]] else { return [] }
         return list.compactMap { m in
