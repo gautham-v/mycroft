@@ -152,11 +152,6 @@ struct ItemListView: View {
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
         return ScrollViewReader { proxy in
             List {
-                #if os(iOS)
-                if isPhone, model.selectedView == .saved, !model.isInSourceFeed {
-                    SavedTabs().plainListRow()
-                }
-                #endif
                 if items.isEmpty { ListStateRows() }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     let previous = index > 0 ? items[index - 1].id : nil

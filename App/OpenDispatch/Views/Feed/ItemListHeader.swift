@@ -263,45 +263,4 @@ private struct PhoneSearchField: View {
         .accessibilityLabel("Search")
     }
 }
-
-/// The big "Saved  Highlights" tabs at the top of the Saved and Highlights lists, 30pt: the inactive one
-/// faint, the active one ink with a marker swipe behind its lower half.
-struct SavedTabs: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 22) {
-            tab("Saved", isOn: !model.showsHighlights) { model.navigate(view: .saved) }
-            tab("Highlights", isOn: model.showsHighlights) { model.showHighlights() }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
-    }
-
-    private func tab(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            if !isOn { action() }
-        } label: {
-            Text(title)
-                .font(OFFont.ui(30, .semibold))
-                .tracking(-0.6)
-                .foregroundStyle(isOn ? Color.ofInk : Color.ofFaint)
-                .background(alignment: .bottom) {
-                    if isOn {
-                        UnevenRoundedRectangle(topLeadingRadius: 3, bottomLeadingRadius: 6, bottomTrailingRadius: 4, topTrailingRadius: 7, style: .continuous)
-                            .fill(Color.ofMarker)
-                            .frame(height: 12)
-                            .padding(.horizontal, -6)
-                            .rotationEffect(.degrees(-1.2))
-                            .offset(y: -3)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
-    }
-}
 #endif

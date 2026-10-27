@@ -96,9 +96,6 @@ struct HighlightsListView: View {
     private var list: some View {
         let groups = groups
         return List {
-            #if os(iOS)
-            if isPhone { SavedTabs().plainRow() }
-            #endif
             if groups.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity)

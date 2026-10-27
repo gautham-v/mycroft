@@ -90,8 +90,6 @@ extension Color {
     static let ofCardInset = Color(light: 0xEFEFEC, dark: 0x343431)
     /// The side drawer behind the Feed.
     static let ofDrawer = Color(light: 0xEFEFEC, dark: 0x232321)
-    /// The marker swipe under the active Saved / Highlights tab.
-    static let ofMarker = Color(light: 0xDCDCD6, dark: 0x3E3E39)
     #endif
     /// The one accent: links, active tab, saved state, focus ring.
     static let ofAccent = Color(light: 0x007AFF, dark: 0x0A84FF)
@@ -123,7 +121,6 @@ extension ShapeStyle where Self == Color {
     static var ofCard: Color { Color.ofCard }
     static var ofCardInset: Color { Color.ofCardInset }
     static var ofDrawer: Color { Color.ofDrawer }
-    static var ofMarker: Color { Color.ofMarker }
     #endif
 }
 
