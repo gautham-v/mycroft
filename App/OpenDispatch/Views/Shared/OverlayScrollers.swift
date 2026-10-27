@@ -188,6 +188,7 @@ struct FlushWindowChrome: NSViewRepresentable {
         window.toolbar?.isVisible = true
         window.toolbar?.showsBaselineSeparator = false
         TrafficLightsView.install(in: window)
+        TitlebarRightClicks.install(in: window)
         if let content = window.contentView { HairlineSplitView.adopt(in: content) }
     }
 }
@@ -264,6 +265,32 @@ final class TrafficLightsView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
+    }
+}
+
+/// Right-clicks on the title-bar row (the reader's tabs, the list header) reach the content below.
+/// The window's toolbar view sits over that row and takes right-clicks without showing a menu, so
+/// SwiftUI context menus there (Pin Tab, Close Tab) never opened; left clicks AppKit already passes on.
+@MainActor
+final class TitlebarRightClicks {
+    private static var windows = Set<ObjectIdentifier>()
+
+    static func install(in window: NSWindow) {
+        guard windows.insert(ObjectIdentifier(window)).inserted else { return }
+        NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak window] event in
+            let point = event.locationInWindow
+            let forwarded = MainActor.assumeIsolated { () -> Bool in
+                guard let window, event.window === window, let content = window.contentView,
+                      let frame = content.superview,
+                      let hit = frame.hitTest(frame.convert(point, from: nil)),
+                      !hit.isDescendant(of: content), !(hit is NSControl),
+                      let target = content.hitTest(content.convert(point, from: nil))
+                else { return false }
+                target.rightMouseDown(with: event)
+                return true
+            }
+            return forwarded ? nil : event
+        }
     }
 }
 
