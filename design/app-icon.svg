@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <!-- OpenDispatch app icon: a large circle with one quarter-circle wave around its top right, an ice
-       front with a green trail on the circle and a pink trail on the wave, on a deep night-sky blue.
+       front with a green trail on the circle and a pink trail on the wave, on near black.
        Source for the PNGs in App/OpenDispatch/Resources/Assets.xcassets; regenerate with scripts/render-icons.sh. -->
   <style>
     use { fill: none; stroke-linecap: round; }
@@ -11,8 +11,8 @@
     .b { stroke-width: 73; }
     .r.cp { stroke: #ff5ad8; } .b.cp { stroke: #5a0c4c; }
     .dr.cg { fill: #8dff5a; } .db.cg { fill: #1f5a0c; }
-    .fr .r { stroke: #eef4ff; } .fr .g { stroke: #16204a; } .fr .l { stroke: #d3e6ff; } .fr .b { stroke: url(#ice); }
-    .fr .dr { fill: #eef4ff; } .fr .dg { fill: #16204a; } .fr .dl { fill: #d3e6ff; } .fr .db { fill: url(#ice); }
+    .fr .r { stroke: #eef4ff; } .fr .g { stroke: #111113; } .fr .l { stroke: #d3e6ff; } .fr .b { stroke: url(#ice); }
+    .fr .dr { fill: #eef4ff; } .fr .dg { fill: #111113; } .fr .dl { fill: #d3e6ff; } .fr .db { fill: url(#ice); }
     .gl .b { stroke: url(#ice); } .gl .db { fill: url(#ice); }
   </style>
   <defs>
@@ -27,11 +27,6 @@
       <stop offset="0.6" stop-color="#b9c6f0"/>
       <stop offset="1" stop-color="#eadcf7"/>
     </linearGradient>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#15234a"/>
-      <stop offset="0.5" stop-color="#0c1533"/>
-      <stop offset="1" stop-color="#060a1c"/>
-    </linearGradient>
     <!-- Faint light along the top edge, like other macOS icons. -->
     <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.25"/>
@@ -41,7 +36,7 @@
       <feGaussianBlur stdDeviation="30"/>
     </filter>
   </defs>
-  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="#0b0b0c"/>
   <!-- Scaled up from the center so the mark fills about 78% of the tile, like the icons beside it in the Dock. -->
   <g transform="translate(512 512) scale(1.4) translate(-512 -512)">
   <g class="lay" opacity=".3" transform="translate(60 -36)">
