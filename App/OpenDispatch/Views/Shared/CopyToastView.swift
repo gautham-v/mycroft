@@ -62,10 +62,9 @@ private struct CopyToastView: View {
 }
 
 /// "Copy Last 24 Hours" and "Copy Last 7 Days" for a view, folder or source, to sit in its context menu
-/// (after a divider). `filter` is the list's hn100 / labs / blogs filter when the scope is the open list.
+/// (after a divider).
 struct CopyDigestButtons: View {
     let scope: DigestScope
-    var filter: FeedFilter? = nil
     /// Menus that show an icon on every item (the iPhone Sources tab).
     var icons = false
     @Environment(AppModel.self) private var model
@@ -77,7 +76,7 @@ struct CopyDigestButtons: View {
 
     @ViewBuilder private func button(_ title: String, days: Int) -> some View {
         Button {
-            model.copyDigest(scope, days: days, filter: filter)
+            model.copyDigest(scope, days: days)
         } label: {
             if icons {
                 Label(title, systemImage: "doc.on.doc")

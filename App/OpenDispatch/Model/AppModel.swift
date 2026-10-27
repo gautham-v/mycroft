@@ -95,8 +95,6 @@ final class AppModel {
     private(set) var selectedView: FeedView = .all
     private(set) var selectedSourceID: Int64?
     private(set) var selectedFolderID: Int64?
-    /// Legacy hn100/labs/blogs filter; nil = none. Set with setFilter(_:).
-    private(set) var filter: FeedFilter?
     /// The opened item: the focused pane's active tab. nil = nothing opened (see `selectedItem` for
     /// the default-selection rule).
     var selectedItemID: Int64? { panes[focusedPane].activeTab.itemID }
@@ -306,7 +304,7 @@ final class AppModel {
 
     /// The ItemQuery for the current navigation and search.
     var currentQuery: ItemQuery {
-        ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, filter: filter, search: searchQuery)
+        ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery)
     }
 
     var activeSource: Source? { selectedSourceID.flatMap { id in sources.first { $0.id == id } } }
@@ -428,13 +426,6 @@ final class AppModel {
 
     /// All, no source/folder (HOME).
     func goHome() { navigate(view: .all) }
-
-    func setFilter(_ f: FeedFilter?) {
-        guard f != filter else { return }
-        filter = f
-        setActiveItem(nil)
-        Task { await loadItems(reset: true) }
-    }
 
     /// Show the Highlights view: the articles with highlights, under Saved.
     func showHighlights() {
@@ -690,17 +681,16 @@ final class AppModel {
         return transcript
     }
 
-    /// Puts a digest of the scope's last `days` days on the clipboard as Markdown. `filter` is the
-    /// list's hn100 / labs / blogs filter, when the digest is of what the list shows.
-    func copyDigest(_ scope: DigestScope, days: Int, filter: FeedFilter? = nil) {
+    /// Puts a digest of the scope's last `days` days on the clipboard as Markdown.
+    func copyDigest(_ scope: DigestScope, days: Int) {
         let prompt = copyPrompt
         let now = Date()
         let since = now.addingTimeInterval(-Double(days) * 86_400)
         let query: ItemQuery
         switch scope {
-        case .view(let v): query = ItemQuery(view: v, filter: filter)
-        case .folder(let f): query = ItemQuery(folderId: f.id, filter: filter)
-        case .source(let s): query = ItemQuery(sourceId: s.id, filter: filter)
+        case .view(let v): query = ItemQuery(view: v)
+        case .folder(let f): query = ItemQuery(folderId: f.id)
+        case .source(let s): query = ItemQuery(sourceId: s.id)
         }
         let title = scope.title
         runCopy { [copy = services.copy] in

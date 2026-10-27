@@ -156,58 +156,80 @@ struct FeedSearchButton: View {
     }
 }
 
-/// iPhone filter toolbar button (replaces the old view chips): a Menu with the content type (All,
-/// Articles, Posts, Video, Podcasts; Feed tab only) and the hn100 / labs / blogs filter, both single
-/// selection, then Copy Last 24 Hours / 7 Days of what the list shows. The symbol fills while anything
-/// but All / no filter is active.
-struct FeedFilterMenu: View {
-    @Environment(AppModel.self) private var model
-    /// Show the content-type section (the Feed tab's home list, not Saved or a source/folder feed).
-    var showsContentTypes: Bool
 
-    static let contentTypes: [FeedView] = [.all, .articles, .posts, .video, .podcasts]
-    static let filters: [(FeedFilter, String)] = [(.hn100, "HN \u{2265} 100"), (.labs, "Labs"), (.blogs, "Blogs")]
-
-    private var isActive: Bool {
-        model.filter != nil || (showsContentTypes && model.selectedView != .all)
-    }
+#if os(iOS)
+/// The iPhone's list title as a menu, in the navigation bar's leading slot: the title with a chevron, which
+/// the system draws as a floating Liquid Glass bubble like the search item opposite. `items` are the menu's
+/// entries (FeedTitleMenu, SavedTitleMenu).
+struct PhoneTitleMenu<Items: View>: View {
+    let title: String
+    @ViewBuilder let items: Items
 
     var body: some View {
         Menu {
-            if showsContentTypes {
-                Section("Show") {
-                    ForEach(Self.contentTypes) { view in
-                        Toggle(view.title, isOn: contentTypeBinding(view))
-                    }
-                }
-            }
-            Section("Filter") {
-                ForEach(Self.filters, id: \.0) { filter, label in
-                    Toggle(label, isOn: filterBinding(filter))
-                }
-            }
-            Section("Copy as Markdown") {
-                CopyDigestButtons(scope: model.currentDigestScope, filter: model.filter, icons: true)
-            }
+            items
         } label: {
-            Label("Filter", systemImage: isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(OFFont.ui(17, .semibold))
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.ofMuted)
+            }
+            .padding(.horizontal, 4)
         }
-        // Monochrome like the system search item; accent only while a selection is active.
-        .tint(isActive ? Color.ofAccent : Color.primary)
-        .accessibilityLabel("Filter")
-        .accessibilityValue(isActive ? "On" : "Off")
-    }
-
-    /// Single selection: checking a type switches to it; unchecking the current one keeps it.
-    private func contentTypeBinding(_ view: FeedView) -> Binding<Bool> {
-        Binding(
-            get: { model.selectedView == view },
-            set: { on in if on, view != model.selectedView { model.navigate(view: view) } })
-    }
-
-    private func filterBinding(_ filter: FeedFilter) -> Binding<Bool> {
-        Binding(
-            get: { model.filter == filter },
-            set: { on in model.setFilter(on ? filter : (model.filter == filter ? nil : model.filter)) })
+        .menuIndicator(.hidden)
+        .accessibilityLabel("\(title), switch view")
     }
 }
+
+/// The Feed tab's title menu: the content-type views (All, Articles, Posts, Video, Podcasts, less the ones hidden
+/// in Settings; Saved and Highlights live in the Saved tab), then the folders, the current one checked (none
+/// while a source shows), then Copy Last 24 Hours / 7 Days of what the list shows.
+struct FeedTitleMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        PhoneTitleMenu(title: model.listTitle) {
+            ForEach(Self.views.filter { !model.isSidebarViewHidden(.view($0)) }) { view in
+                Toggle(view.title, isOn: Binding(
+                    get: { model.selectedView == view && !model.isInSourceFeed },
+                    set: { _ in model.navigate(view: view) }))
+            }
+            if !model.orderedFolders.isEmpty {
+                Divider()
+                ForEach(model.orderedFolders) { folder in
+                    Toggle(folder.title, isOn: Binding(
+                        get: { model.selectedFolderID == folder.id && model.selectedSourceID == nil },
+                        set: { _ in model.navigate(folderID: folder.id) }))
+                }
+            }
+            Divider()
+            CopyDigestButtons(scope: model.currentDigestScope)
+        }
+    }
+
+    /// The sidebar's views that belong on the Feed tab.
+    private static let views: [FeedView] = SidebarViewItem.ordered.compactMap {
+        if case .view(let view) = $0, view != .saved { view } else { nil }
+    }
+}
+
+/// The Saved tab's title menu: Saved or Highlights.
+struct SavedTitleMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        PhoneTitleMenu(title: model.showsHighlights ? "Highlights" : "Saved") {
+            Toggle("Saved", isOn: Binding(
+                get: { !model.showsHighlights },
+                set: { _ in if model.showsHighlights { model.navigate(view: .saved) } }))
+            Toggle("Highlights", isOn: Binding(
+                get: { model.showsHighlights },
+                set: { _ in if !model.showsHighlights { model.showHighlights() } }))
+        }
+    }
+}
+#endif
