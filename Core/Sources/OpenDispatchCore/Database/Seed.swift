@@ -2,6 +2,9 @@ import Foundation
 import GRDB
 
 /// Built-in sources and default folders (port of src/db/seed.ts and seedFolders in src/lib/folders.ts).
+/// New installs no longer get them: the app opens its database unseeded and starts empty. The list
+/// stays for SyncStore.pruneSeedForJoin (a device from an older build, still as seeded, joining
+/// iCloud) and as the library tests and previews seed.
 public enum Seed {
     public struct SeedSource: Sendable, Hashable {
         public var title: String
