@@ -11,6 +11,10 @@
 	<array>
 		<string>CloudKit</string>
 	</array>
+	<!-- Every build, local and released, uses Production, so a Mac built from this checkout and a
+	     TestFlight iPhone see the same data. Schema changes must be deployed before they work anywhere. -->
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Production</string>
 	<key>aps-environment</key>
 	<string>development</string>
 </dict>
