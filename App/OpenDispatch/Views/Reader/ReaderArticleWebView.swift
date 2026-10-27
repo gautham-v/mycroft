@@ -95,7 +95,8 @@ enum ReaderHTML {
 /// The article body: a WKWebView sized to its content so it scrolls with the native header inside the
 /// reader's ScrollView. Links open in the system browser; text is selectable; follows dark mode.
 /// On the Mac its right-click menu adds Open Original, Copy Link, Copy as Markdown (`onCopyMarkdown`) and
-/// Reload Article (`onReload`), and the highlight colors above them (ReaderHighlights.swift).
+/// Reload Article (`onReload`), and the highlight colors above them (ReaderHighlights.swift). A click on
+/// a highlight or its note marker opens `HighlightPopover` under it.
 struct ReaderArticleWebView: View {
     let html: String
     let hero: String?
@@ -112,6 +113,12 @@ struct ReaderArticleWebView: View {
     @State private var bridge = ReaderHighlightBridge()
     /// Where the scroll marker sits in the article, for scrolling the reader to a highlight.
     @State private var markerY: CGFloat = 0
+
+    /// This pane's popover, if a highlight in this article was clicked.
+    private var popover: HighlightStore.Popover? {
+        guard let article, let p = highlights.popover, p.pane == article.pane else { return nil }
+        return p
+    }
 
     var body: some View {
         ReaderArticleWebViewRepresentable(
@@ -142,8 +149,24 @@ struct ReaderArticleWebView: View {
                 guard let y else { return }
                 markerY = y
                 highlights.scrollIsReady(request)
+                // Once the reader's scroll has landed.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(450))
+                    bridge.flash(request.id)
+                }
             }
         }
+        // The popover under a clicked highlight. The page reports the clicked line's rect in its own
+        // coordinates, which are this view's: the web view is fitted to the article, so the reader's
+        // ScrollView moves it and nothing inside scrolls.
+        .popover(isPresented: Binding(
+            get: { popover != nil },
+            set: { if !$0 { highlights.closePopover() } }
+        ), attachmentAnchor: .rect(.rect(popover?.rect ?? .zero)), arrowEdge: .bottom) {
+            if let popover { HighlightPopover(id: popover.id, pane: popover.pane) }
+        }
+        // It is anchored to a spot in the page: scrolling the reader or resizing the pane moves that.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { _ in highlights.closePopover() }
         .accessibilityLabel("Article")
     }
 }

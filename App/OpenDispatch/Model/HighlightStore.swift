@@ -16,9 +16,9 @@ struct HighlightAnchor: Equatable, Sendable {
 }
 
 /// Highlights and notes: the list of every highlight (kept current by observing the database, so
-/// iCloud changes and Readwise ids show up too), what the reader's panel and sheet are doing, and the
-/// edits the reader and the panel make. A store of its own, injected through the environment, so AppModel
-/// stays about feeds. Edits go to the database and come back through the observation.
+/// iCloud changes and Readwise ids show up too), what the reader's popover and sheets are showing, and the
+/// edits the reader makes. A store of its own, injected through the environment, so AppModel stays about
+/// feeds. Edits go to the database and come back through the observation.
 @MainActor
 @Observable
 final class HighlightStore {
@@ -37,6 +37,20 @@ final class HighlightStore {
         var nonce: Int
     }
 
+    /// A highlight clicked in the article, for the popover under it. `rect` is where the page drew the
+    /// clicked line (or the note marker's line), in the web view's own coordinates.
+    struct Popover: Equatable {
+        var id: String
+        var pane: Int
+        var rect: CGRect
+    }
+
+    /// A highlight whose note the note sheet is editing, in the pane that asked.
+    struct NoteRequest: Equatable, Identifiable {
+        var id: String
+        var pane: Int
+    }
+
     enum ReadwiseState: Equatable {
         case idle
         case sending
@@ -46,16 +60,12 @@ final class HighlightStore {
     /// Every highlight by article, the article with the newest activity first.
     private(set) var groups: [HighlightGroup] = []
     private(set) var resolutions: [String: Resolution] = [:]
-    /// Mac: the reader panes whose Highlights & Notes panel is open.
-    private(set) var openPanes: Set<Int> = []
-    /// iPhone: the Highlights sheet is up.
+    /// iPhone: the Highlights & Notes list sheet is up (the Mac and iPad list is a popover of its button).
     var isSheetPresented = false
-    /// The highlight whose note field takes focus (Add Note…, Edit Note…).
-    var focusNote: String?
-    /// The panel's entry to point out after a click on the highlight in the article.
-    private(set) var selected: String?
-    /// iPhone: the highlight the tap menu (change color, edit note, remove) is about.
-    var actionTarget: String?
+    /// The popover under a clicked highlight; nil when none is open.
+    private(set) var popover: Popover?
+    /// The note sheet's highlight; nil when it is closed.
+    var noteRequest: NoteRequest?
     private(set) var scrollRequest: ScrollRequest?
     /// The page has put the scroll marker at the highlight; the reader may scroll to it.
     private(set) var scrollReady: ScrollRequest?
@@ -66,7 +76,6 @@ final class HighlightStore {
     @ObservationIgnored private let model: AppModel
     @ObservationIgnored private let readwise: ReadwiseHighlightSync
     @ObservationIgnored private var observation: Task<Void, Never>?
-    @ObservationIgnored private var selectedReset: Task<Void, Never>?
     @ObservationIgnored private var nonce = 0
     @ObservationIgnored private var readwiseWasOn = false
     /// `groups` by article, so a reader looks its highlights up without scanning (observed with `groups`).
@@ -81,7 +90,7 @@ final class HighlightStore {
                     self?.apply(groups)
                 }
             } catch {
-                // The panel and list keep what they had.
+                // The lists keep what they had.
             }
         }
         watchReadwiseSettings()
@@ -126,43 +135,36 @@ final class HighlightStore {
         if resolutions[key] != r { resolutions[key] = r }
     }
 
-    // MARK: Panel
+    // MARK: Popover and note sheet
 
-    func isPanelOpen(pane: Int) -> Bool { openPanes.contains(pane) }
-
-    func setPanel(pane: Int, open: Bool) {
-        if open { openPanes.insert(pane) } else { openPanes.remove(pane) }
+    /// A click on a highlight (or its note marker) in the article: its popover opens under `rect`.
+    func showPopover(_ id: String, rect: CGRect, pane: Int) {
+        popover = Popover(id: id, pane: pane, rect: rect)
     }
 
-    func togglePanel(pane: Int) { setPanel(pane: pane, open: !isPanelOpen(pane: pane)) }
-
-    /// Shows the panel in a pane, or the sheet on iPhone (`compact`).
-    func showPanel(pane: Int, compact: Bool) {
-        if compact { isSheetPresented = true } else { setPanel(pane: pane, open: true) }
+    func closePopover() {
+        if popover != nil { popover = nil }
     }
 
-    /// A click on a highlight in the article: the panel opens at its entry; on iPhone a menu offers what to
-    /// do with it.
-    func tapped(_ id: String, pane: Int, compact: Bool) {
-        if compact {
-            actionTarget = id
-        } else {
-            setPanel(pane: pane, open: true)
-            point(at: id)
+    /// Opens the note sheet on a highlight (Add Note…, Edit Note…, the popover's note). A popover that is
+    /// still up closes first and the sheet follows a moment later: presenting a sheet from under a
+    /// dismissing popover is dropped. A highlight just made reaches `groups` through the database
+    /// observation a moment after it is inserted, so the sheet waits for it.
+    func editNote(_ id: String, pane: Int) {
+        let hadPopover = popover != nil
+        closePopover()
+        Task { [weak self] in
+            if hadPopover { try? await Task.sleep(for: .milliseconds(200)) }
+            var polls = 0
+            while let self, self.highlight(id: id) == nil, polls < 40 {
+                try? await Task.sleep(for: .milliseconds(25))
+                polls += 1
+            }
+            self?.noteRequest = NoteRequest(id: id, pane: pane)
         }
     }
 
-    /// Marks an entry for a moment and has the panel scroll to it.
-    func point(at id: String) {
-        selected = id
-        selectedReset?.cancel()
-        selectedReset = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            if !Task.isCancelled { self?.selected = nil }
-        }
-    }
-
-    /// The panel or sheet asks the reader to scroll to a highlight.
+    /// The list asks the reader to scroll to a highlight.
     func scroll(to id: String, pane: Int) {
         nonce += 1
         scrollRequest = ScrollRequest(id: id, pane: pane, nonce: nonce)
@@ -217,8 +219,7 @@ final class HighlightStore {
 
     // MARK: Opening an article from the Highlights view
 
-    /// Opens the article a group of highlights came from in the reader, with the panel open on the Mac.
-    /// The item is added from the highlights' own data when only its source is here; when the source is
+    /// Opens the article a group of highlights came from in the reader. The item is added from the highlights' own data when only its source is here; when the source is
     /// gone too, the original URL opens in the browser.
     func open(_ group: HighlightGroup, inNewTab: Bool = false) async {
         guard let item = try? await model.database.itemForHighlights(sourceFeedUrl: group.sourceFeedUrl, itemGuid: group.itemGuid) else {
@@ -226,9 +227,6 @@ final class HighlightStore {
             return
         }
         if inNewTab { model.openInNewTab(item) } else { model.open(item) }
-        #if os(macOS)
-        setPanel(pane: model.focusedPane, open: true)
-        #endif
     }
 
     // MARK: Markdown
@@ -265,7 +263,7 @@ final class HighlightStore {
     /// "Send highlights to Readwise" is on and a token is set.
     var readwiseOn: Bool { sendsToReadwise }
 
-    /// The panel footer's line, nil when Readwise is off.
+    /// The list footer's line, nil when Readwise is off.
     var readwiseLine: String? {
         guard readwiseOn else { return nil }
         switch readwiseState {

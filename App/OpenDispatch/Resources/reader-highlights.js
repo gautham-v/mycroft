@@ -7,10 +7,18 @@
    from, which turns a quote back into a DOM Range.
 
    Painting: one CSS Custom Highlight per color (`CSS.highlights`, styled by ::highlight(od-hl-<color>)
-   in reader.css). Nothing is added to the DOM, so the fitted height of the web view never changes.
+   in reader.css). Nothing is added to the article, so the fitted height of the web view never changes.
 
-   Swift calls window.__odHL.set(list), .selectionAnchor(), .hit(x, y), .locate(id) and .clearSelection();
-   the page posts {type: resolved | tap | context} to the openDispatchHighlights message handler. */
+   Note markers: a highlight with a note gets a small button (circle with a square, in its color) in the
+   left margin of the text column, level with the highlight's first line. They live in one absolutely
+   positioned, zero-size host appended to <body> after the article, so they take no part in layout (the
+   article's height, and the text index and read-aloud, never see them), and are placed again whenever
+   the article's size changes. Clicking one reports a tap like clicking the highlight.
+
+   Swift calls window.__odHL.set(list), .selectionAnchor(), .hit(x, y), .locate(id), .flash(id) and
+   .clearSelection(); the page posts {type: resolved | tap | context} to the openDispatchHighlights
+   message handler. A tap carries the rect (client coordinates) of the line that was clicked, which the
+   popover is anchored to. */
 (function () {
   if (window.__odHL) return;
 
@@ -19,8 +27,9 @@
   var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, SVG: 1 };
 
   var idx = null;     // { text, nodes[], offs[], mapped[] }: built once per document
-  var items = [];     // [{ id, text, prefix, suffix, color }]
+  var items = [];     // [{ id, text, prefix, suffix, color, note }]
   var ranges = {};    // id -> Range
+  var flashTimer = 0;
 
   function post(msg) {
     try { window.webkit.messageHandlers.openDispatchHighlights.postMessage(msg); } catch (e) {}
@@ -209,7 +218,93 @@
     }
     found.sort(function (a, b) { return ranges[a].compareBoundaryPoints(Range.START_TO_START, ranges[b]); });
     post({ type: 'resolved', order: found, missing: missing, supported: !!supported });
+    placeMarkers();
   }
+
+  // MARK: Note markers
+
+  var MARK = 14;       // marker diameter
+  var host = null;     // the zero-size container, created on first use
+  var placing = false;
+
+  function markerHost() {
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'od-note-markers';
+      host.setAttribute('role', 'group');
+      host.setAttribute('aria-label', 'Notes');
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+
+  // The first line box of a highlight, in client coordinates.
+  function firstRect(id) {
+    var r = ranges[id];
+    if (!r) return null;
+    var rects = r.getClientRects();
+    var b = rects.length ? rects[0] : r.getBoundingClientRect();
+    return { x: b.left, y: b.top, w: b.width, h: b.height };
+  }
+
+  function placeMarkers() {
+    if (placing) return;
+    placing = true;
+    requestAnimationFrame(function () {
+      placing = false;
+      var withNotes = items.filter(function (h) { return h.note && ranges[h.id]; });
+      if (!withNotes.length && !host) return;
+      var h = markerHost();
+      var article = document.querySelector('article');
+      if (!article) return;
+      var box = article.getBoundingClientRect();
+      var padLeft = parseFloat(getComputedStyle(article).paddingLeft) || 0;
+      // Level with the text column's left edge, in the padding beside it.
+      var baseX = box.left + padLeft - MARK - 3 + window.scrollX;
+      var taken = [];
+      var existing = {};
+      Array.prototype.forEach.call(h.children, function (el) { existing[el.getAttribute('data-id')] = el; });
+      withNotes.forEach(function (item) {
+        var f = firstRect(item.id);
+        if (!f) return;
+        var el = existing[item.id];
+        delete existing[item.id];
+        if (!el) {
+          el = document.createElement('button');
+          el.type = 'button';
+          el.className = 'od-note-marker';
+          el.setAttribute('data-id', item.id);
+          el.setAttribute('aria-label', 'Note');
+          el.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var r = firstRect(item.id);
+            if (r) post({ type: 'tap', id: item.id, rect: r });
+          });
+          h.appendChild(el);
+        }
+        el.setAttribute('data-color', item.color);
+        var top = f.y + (f.h - MARK) / 2 + window.scrollY;
+        var x = baseX;
+        // Two notes on one line: the later marker sits further out.
+        while (x > 1 && taken.some(function (t) { return Math.abs(t.top - top) < MARK && Math.abs(t.x - x) < MARK; })) x -= MARK + 2;
+        x = Math.max(x, 1);
+        taken.push({ top: top, x: x });
+        el.style.left = Math.round(x) + 'px';
+        el.style.top = Math.round(top) + 'px';
+      });
+      Object.keys(existing).forEach(function (id) { h.removeChild(existing[id]); });
+    });
+  }
+
+  if (window.ResizeObserver) {
+    var watched = document.querySelector('article');
+    if (watched) new ResizeObserver(placeMarkers).observe(watched);
+  }
+  window.addEventListener('resize', placeMarkers);
+  window.addEventListener('load', placeMarkers);
+  document.addEventListener('load', placeMarkers, true);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeMarkers);
 
   // MARK: Hit testing
 
@@ -253,13 +348,25 @@
 
   // MARK: Page events
 
+  // The rect of the line of `id` under the point (or its first line), for anchoring the popover.
+  function lineRect(id, x, y) {
+    var rects = ranges[id].getClientRects();
+    for (var i = 0; i < rects.length; i++) {
+      var b = rects[i];
+      if (x >= b.left - 1 && x <= b.right + 1 && y >= b.top - 1 && y <= b.bottom + 1) {
+        return { x: b.left, y: b.top, w: b.width, h: b.height };
+      }
+    }
+    return firstRect(id);
+  }
+
   document.addEventListener('click', function (e) {
-    if (e.button !== 0 || e.defaultPrevented) return;
+    if (e.button !== 0 || e.ctrlKey || e.defaultPrevented) return;
     var sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
-    if (e.target && e.target.closest && e.target.closest('a')) return;
+    if (e.target && e.target.closest && e.target.closest('a,.od-note-marker')) return;
     var id = hit(e.clientX, e.clientY);
-    if (id) post({ type: 'tap', id: id, y: ranges[id].getBoundingClientRect().top + window.scrollY });
+    if (id) post({ type: 'tap', id: id, rect: lineRect(id, e.clientX, e.clientY) });
   }, true);
 
   // Sent before the native menu is built (Mac), so Swift knows what the menu is about.
@@ -279,6 +386,21 @@
       var rects = r.getClientRects();
       var top = rects.length ? rects[0].top : r.getBoundingClientRect().top;
       return top + window.scrollY;
+    },
+    // Blinks a highlight twice (a CSS Custom Highlight above its color; no DOM change).
+    flash: function (id) {
+      var r = ranges[id];
+      if (!r || !(window.CSS && CSS.highlights && typeof Highlight !== 'undefined')) return;
+      clearTimeout(flashTimer);
+      var hl = new Highlight(r);
+      hl.priority = 10;
+      var gaps = [260, 140, 260];
+      var step = 0;
+      (function tick() {
+        if (step % 2 === 0) CSS.highlights.set('od-hl-flash', hl); else CSS.highlights.delete('od-hl-flash');
+        if (step < gaps.length) flashTimer = setTimeout(tick, gaps[step]);
+        step++;
+      })();
     },
     clearSelection: function () {
       var sel = window.getSelection();
