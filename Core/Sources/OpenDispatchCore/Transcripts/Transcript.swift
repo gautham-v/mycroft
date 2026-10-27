@@ -7,12 +7,15 @@ public struct Transcript: Sendable, Hashable {
         case youtubeCaptions
         /// The episode's `<podcast:transcript>` file from the feed.
         case podcastFeed
+        /// Substack's transcript of a podcast or video post (`SubstackTranscript`).
+        case substack
 
         /// Shown after the "Transcript" heading: "## Transcript (YouTube captions)".
         public var label: String {
             switch self {
             case .youtubeCaptions: "YouTube captions"
             case .podcastFeed: "from the podcast feed"
+            case .substack: "from Substack"
             }
         }
     }

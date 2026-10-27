@@ -1,6 +1,7 @@
 import Foundation
 
-/// YouTube captions for youtube sources (see `YouTubeCaptions`); for podcast episodes, the feed's `<podcast:transcript>`.
+/// YouTube captions for youtube sources (see `YouTubeCaptions`); for podcast episodes, Substack's transcript
+/// (`SubstackTranscript`) or the feed's `<podcast:transcript>`.
 /// Items aren't stored with a transcript URL, so the source's feed is fetched again at copy time and the episode found by guid.
 public struct DefaultTranscriptFetcher: TranscriptFetching {
     let parser: any FeedParser
@@ -28,9 +29,11 @@ public struct DefaultTranscriptFetcher: TranscriptFetching {
         case .youtube:
             guard let videoID = item.videoId, !videoID.isEmpty else { return nil }
             return try await YouTubeCaptions.transcript(videoID: videoID, language: language, session: session)
-        case .podcast:
-            return try await podcastTranscript(for: item, source: source)
-        case .rss where item.audioUrl != nil:
+        case .podcast, .rss where item.audioUrl != nil:
+            // Substack feeds never carry <podcast:transcript>; its own transcript is in the post's JSON.
+            if SubstackTranscript.isSubstack(item), let t = try? await SubstackTranscript.transcript(for: item, session: session) {
+                return t
+            }
             return try await podcastTranscript(for: item, source: source)
         case .rss, .page:
             return nil
