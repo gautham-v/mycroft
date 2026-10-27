@@ -29,6 +29,7 @@
   var idx = null;     // { text, nodes[], offs[], mapped[] }: built once per document
   var items = [];     // [{ id, text, prefix, suffix, color, note }]
   var ranges = {};    // id -> Range
+  var painted = {};   // color -> the Highlight registered for it
   var flashTimer = 0;
 
   function post(msg) {
@@ -211,9 +212,14 @@
       }
     });
     if (supported) {
-      COLORS.forEach(function (c) { CSS.highlights.delete('od-hl-' + c); });
-      Object.keys(groups).forEach(function (c) {
-        CSS.highlights.set('od-hl-' + c, new Highlight(...groups[c]));
+      // One Highlight per color stays registered and is refilled. WebKit doesn't repaint text whose
+      // Highlight is deleted from (or replaced in) the registry, so a removed highlight stayed tinted on
+      // screen until something else repainted it; emptying the registered Highlight does repaint.
+      COLORS.forEach(function (c) {
+        var hl = painted[c];
+        if (!hl) { hl = painted[c] = new Highlight(); CSS.highlights.set('od-hl-' + c, hl); }
+        hl.clear();
+        (groups[c] || []).forEach(function (r) { hl.add(r); });
       });
     }
     found.sort(function (a, b) { return ranges[a].compareBoundaryPoints(Range.START_TO_START, ranges[b]); });
@@ -392,12 +398,14 @@
       var r = ranges[id];
       if (!r || !(window.CSS && CSS.highlights && typeof Highlight !== 'undefined')) return;
       clearTimeout(flashTimer);
-      var hl = new Highlight(r);
-      hl.priority = 10;
+      // Registered once and emptied between blinks: deleting it from the registry wouldn't repaint (paint()).
+      var hl = painted.flash;
+      if (!hl) { hl = painted.flash = new Highlight(); hl.priority = 10; CSS.highlights.set('od-hl-flash', hl); }
       var gaps = [260, 140, 260];
       var step = 0;
       (function tick() {
-        if (step % 2 === 0) CSS.highlights.set('od-hl-flash', hl); else CSS.highlights.delete('od-hl-flash');
+        hl.clear();
+        if (step % 2 === 0) hl.add(r);
         if (step < gaps.length) flashTimer = setTimeout(tick, gaps[step]);
         step++;
       })();

@@ -126,14 +126,22 @@ enum ReaderSpeechScript {
         return sentences.map(function (s) { return [s.text, s.endsBlock ? 1 : 0]; });
       }
 
+      // One Highlight stays registered and is emptied or refilled: WebKit doesn't repaint text whose
+      // Highlight is deleted from the registry, so the last sentence stayed tinted after Stop.
+      var spoken = null;
+      function painter() {
+        if (!spoken) { spoken = new Highlight(); CSS.highlights.set('\(highlightName)', spoken); }
+        return spoken;
+      }
+
       function clear() {
-        try { CSS.highlights.delete('\(highlightName)'); } catch (e) {}
+        try { painter().clear(); } catch (e) {}
       }
 
       function show(i) {
         var s = sentences[i];
         if (!s) { clear(); return null; }
-        try { CSS.highlights.set('\(highlightName)', new Highlight(s.range)); } catch (e) {}
+        try { var h = painter(); h.clear(); h.add(s.range); } catch (e) {}
         var r = s.range.getBoundingClientRect();
         var rects = s.range.getClientRects();
         var first = rects.length ? rects[0] : r;
