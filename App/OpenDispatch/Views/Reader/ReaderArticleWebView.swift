@@ -92,18 +92,20 @@ enum ReaderHTML {
 
 /// The article body: a WKWebView sized to its content so it scrolls with the native header inside the
 /// reader's ScrollView. Links open in the system browser; text is selectable; follows dark mode.
-/// On the Mac its right-click menu adds Open Original, Copy Link and Reload Article (`onReload`).
+/// On the Mac its right-click menu adds Open Original, Copy Link, Copy as Markdown (`onCopyMarkdown`) and
+/// Reload Article (`onReload`).
 struct ReaderArticleWebView: View {
     let html: String
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     var onReload: (() -> Void)? = nil
+    var onCopyMarkdown: (() -> Void)? = nil
 
     @State private var height: CGFloat = 0
 
     var body: some View {
-        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload) { h in
+        ReaderArticleWebViewRepresentable(html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload, onCopyMarkdown: onCopyMarkdown) { h in
             if abs(h - height) > 0.5 { height = h }
         }
         .frame(height: max(height, 1))
@@ -119,6 +121,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     var appearance: ReaderHTML.Appearance?
     var documentURL: URL?
     var onReload: (() -> Void)?
+    var onCopyMarkdown: (() -> Void)?
 
     init(onHeight: @escaping (CGFloat) -> Void) { self.onHeight = onHeight }
 
@@ -179,6 +182,12 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
             items.append(ReaderMenuItem("Open Original") { ReaderWebSupport.openExternally(url) })
             items.append(ReaderMenuItem("Copy Link") { ReaderPasteboard.copy(url) })
         }
+        if let onCopyMarkdown {
+            let copy = ReaderMenuItem("Copy as Markdown", action: onCopyMarkdown)
+            copy.keyEquivalent = "c"
+            copy.keyEquivalentModifierMask = [.command, .shift]
+            items.append(copy)
+        }
         if let onReload {
             let reload = ReaderMenuItem("Reload Article", action: onReload)
             reload.keyEquivalent = "r"
@@ -211,6 +220,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     let onReload: (() -> Void)?
+    let onCopyMarkdown: (() -> Void)?
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
@@ -220,6 +230,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
+        context.coordinator.onCopyMarkdown = onCopyMarkdown
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
 
@@ -236,6 +247,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
     let onReload: (() -> Void)?
+    let onCopyMarkdown: (() -> Void)?
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight) }
@@ -245,6 +257,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
+        context.coordinator.onCopyMarkdown = onCopyMarkdown
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
     }
 

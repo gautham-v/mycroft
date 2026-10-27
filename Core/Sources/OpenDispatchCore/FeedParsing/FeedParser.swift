@@ -21,4 +21,28 @@ public protocol FeedParser: Sendable {
     /// findFeedItemHtml(xml, {guid, url}): the matching entry's full HTML (content:encoded, then description/summary),
     /// or nil. Used by the extractor's feed fallback and podcast show notes.
     func itemHTML(in data: Data, guid: String, url: String) -> String?
+
+    /// The matching entry's `<podcast:transcript>` tracks (same matching as `itemHTML`), in feed order; empty when none.
+    func itemTranscripts(in data: Data, guid: String, url: String) -> [FeedTranscriptTrack]
+}
+
+extension FeedParser {
+    /// Parsers that don't read transcripts (test stand-ins) report none.
+    public func itemTranscripts(in data: Data, guid: String, url: String) -> [FeedTranscriptTrack] { [] }
+}
+
+/// One `<podcast:transcript url= type= language= rel=>` element on an episode (Podcasting 2.0).
+public struct FeedTranscriptTrack: Sendable, Hashable {
+    public var url: String
+    public var type: String?
+    public var language: String?
+    /// "captions" marks a closed-caption track; absent for a plain transcript.
+    public var rel: String?
+
+    public init(url: String, type: String? = nil, language: String? = nil, rel: String? = nil) {
+        self.url = url
+        self.type = type
+        self.language = language
+        self.rel = rel
+    }
 }

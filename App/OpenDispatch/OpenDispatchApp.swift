@@ -64,6 +64,12 @@ struct OpenDispatchCommands: Commands {
             Button("Add Source…") { model.isAddSourcePresented = true }
                 .keyboardShortcut("n", modifiers: .command)
         }
+        // Copies the focused reader's item (or its transcript) as Markdown for pasting into an AI.
+        CommandGroup(after: .pasteboard) {
+            Button("Copy as Markdown") { if let item = model.selectedItem { model.copyMarkdown(item: item) } }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(model.selectedItem == nil)
+        }
         CommandMenu("Feed") {
             Button("Refresh") { Task { await model.refresh(force: true) } }
                 .keyboardShortcut("r", modifiers: .command)

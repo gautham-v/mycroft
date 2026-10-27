@@ -3,12 +3,13 @@ import SwiftUI
 
 /// Integrations pane (IntegrationsPane): Readwise Reader token and webhook URL, saved together with
 /// Save; each configured target has a test button and Remove. The token never comes back from the
-/// Keychain: the field starts empty and the status shows its hint ("Token …abcd").
+/// Keychain: the field starts empty and the status shows its hint ("Token …abcd"). Below them, the
+/// Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field.
 struct SettingsIntegrationsPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
 
-    private enum Field: Hashable { case token, webhook }
+    private enum Field: Hashable { case token, webhook, copyPrompt }
     private enum TestState: Equatable {
         case running
         case ok(String)
@@ -18,6 +19,8 @@ struct SettingsIntegrationsPane: View {
     @State private var token = ""
     /// nil = untouched (the field shows the saved URL).
     @State private var webhookDraft: String?
+    /// nil = untouched (the field shows the saved prompt).
+    @State private var promptDraft: String?
     @State private var saving = false
     @State private var saved = false
     @State private var error: String?
@@ -42,8 +45,13 @@ struct SettingsIntegrationsPane: View {
             readwiseSection
             webhookSection
             footer
+            copySection
         }
-        .onDisappear { savedFlash?.cancel() }
+        .onChange(of: focus) { old, _ in if old == .copyPrompt { commitPrompt() } }
+        .onDisappear {
+            savedFlash?.cancel()
+            commitPrompt()
+        }
     }
 
     // MARK: Sections
@@ -144,6 +152,30 @@ struct SettingsIntegrationsPane: View {
         .animation(.easeOut(duration: 0.15), value: saved)
     }
 
+    private var copySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Copy as Markdown")
+                .font(OFFont.ui(14))
+                .foregroundStyle(.ofInk)
+            TextField("Start copied text with", text: Binding(
+                get: { promptDraft ?? model.settings.copyPrompt },
+                set: { promptDraft = $0 }
+            ), prompt: Text("e.g. Summarize this in 5 bullets"))
+            .focused($focus, equals: .copyPrompt)
+            .settingsFieldChrome(focused: focus == .copyPrompt)
+            .onSubmit { commitPrompt() }
+            .padding(.top, 6)
+            Text("Added above the copied text, for when you always ask your AI the same thing.")
+                .font(OFFont.ui(12))
+                .foregroundStyle(.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+        }
+        .padding(.vertical, 12)
+        .padding(.top, 12)
+        .overlay(alignment: .top) { SettingsHairline() }
+    }
+
     private func header(_ title: String, on: Bool, status: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(title)
@@ -186,6 +218,13 @@ struct SettingsIntegrationsPane: View {
         token = ""
         webhookDraft = nil
         tests = [:]
+    }
+
+    /// Stores the prompt field's text (trimmed) in the settings.
+    private func commitPrompt() {
+        guard let draft = promptDraft else { return }
+        promptDraft = nil
+        model.settings.copyPrompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func save() async {

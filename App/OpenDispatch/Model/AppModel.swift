@@ -31,6 +31,32 @@ enum PhoneTab: String, Hashable, CaseIterable, Sendable {
     case feed, sources, saved, settings
 }
 
+/// What a digest covers: a view (All, Saved, ...), a folder or a source (Copy Last 24 Hours / 7 Days).
+enum DigestScope: Equatable, Sendable {
+    case view(FeedView)
+    case folder(Folder)
+    case source(Source)
+
+    /// Names the scope in the digest heading.
+    var title: String {
+        switch self {
+        case .view(let v): v.title
+        case .folder(let f): f.title
+        case .source(let s): s.title
+        }
+    }
+}
+
+/// The small confirmation at the bottom of the window after Copy as Markdown (`CopyToastView`).
+struct CopyToast: Equatable, Identifiable, Sendable {
+    enum Kind: Equatable, Sendable { case working, done, failed }
+    let id = UUID()
+    var kind: Kind
+    var message: String
+    /// Second line, e.g. "No transcript, so this has the show notes."
+    var note: String?
+}
+
 /// App state and actions shared by every view. Port of the state in src/components/openfeed-app.tsx,
 /// src/hooks/use-data.ts, use-search.ts and use-settings.ts. Everything is local (AppDatabase).
 ///
@@ -128,6 +154,8 @@ final class AppModel {
     private(set) var integrations = IntegrationsState()
     /// Bumped per item by Reload Article; the reader showing that item re-extracts when it changes.
     private(set) var articleReloads: [Int64: Int] = [:]
+    /// The Copy as Markdown confirmation while it shows; nil otherwise.
+    private(set) var copyToast: CopyToast?
 
     /// Reader settings, theme, playback. Persisted on change, and mirrored into the database for iCloud sync.
     var settings: AppSettings {
@@ -166,6 +194,9 @@ final class AppModel {
     /// The sidebar's state before split view folded it away; restored when the split closes.
     @ObservationIgnored private var sidebarCollapsedBeforeSplit: Bool?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    /// The copy in flight and the timer that clears its toast; a newer copy replaces both.
+    @ObservationIgnored private var copyTask: Task<Void, Never>?
+    @ObservationIgnored private var toastTimer: Task<Void, Never>?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var applyingSyncedSettings = false
     @ObservationIgnored private var syncToggle: Task<Void, Never>?
@@ -549,6 +580,113 @@ final class AppModel {
 
     func loadStats() async {
         lastRefreshAt = (try? await database.lastRefreshAt()) ?? lastRefreshAt
+    }
+
+    // MARK: Copy as Markdown
+
+    /// Puts one item's full text (a video's or podcast's transcript) on the clipboard as Markdown.
+    func copyMarkdown(item: FeedItem) {
+        let prompt = copyPrompt
+        runCopy { [copy = services.copy] in
+            let copied = try await copy.markdown(forItem: item.id, prompt: prompt)
+            return (copied, "Copied as Markdown" + (copied.wordCount > 0 ? " \u{00B7} \(copied.wordCount.formatted()) words" : ""))
+        }
+    }
+
+    /// Puts a digest of the scope's last `days` days on the clipboard as Markdown. `filter` is the
+    /// list's hn100 / labs / blogs filter, when the digest is of what the list shows.
+    func copyDigest(_ scope: DigestScope, days: Int, filter: FeedFilter? = nil) {
+        let prompt = copyPrompt
+        let now = Date()
+        let since = now.addingTimeInterval(-Double(days) * 86_400)
+        let query: ItemQuery
+        switch scope {
+        case .view(let v): query = ItemQuery(view: v, filter: filter)
+        case .folder(let f): query = ItemQuery(folderId: f.id, filter: filter)
+        case .source(let s): query = ItemQuery(sourceId: s.id, filter: filter)
+        }
+        let title = scope.title
+        runCopy { [copy = services.copy] in
+            let copied = try await copy.digest(query, title: title, since: since, now: now, prompt: prompt)
+            let span = days == 1 ? "the last 24 hours" : "the last \(days) days"
+            if copied.itemCount == 0 {
+                // Nothing to paste: leave the clipboard alone.
+                return (nil, "Nothing in \(title) from \(span)")
+            }
+            return (copied, "Copied \(copied.itemCount.formatted()) \(copied.itemCount == 1 ? "item" : "items") as Markdown")
+        }
+    }
+
+    /// What the list shows, as a digest scope: the source, the folder, else the view.
+    var currentDigestScope: DigestScope {
+        if let source = activeSource { return .source(source) }
+        if let folder = activeFolder { return .folder(folder) }
+        return .view(selectedView)
+    }
+
+    /// The prompt setting, trimmed; nil when empty.
+    private var copyPrompt: String? {
+        let text = settings.copyPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    /// Runs a copy: "Copying…" if it takes more than a moment (a transcript fetch), then the clipboard
+    /// and a confirmation, or the reason it failed. A result of nil text only shows the message.
+    private func runCopy(_ work: @escaping @Sendable () async throws -> (CopiedText?, String)) {
+        copyTask?.cancel()
+        toastTimer?.cancel()
+        copyToast = nil
+        copyTask = Task { [weak self] in
+            let slow = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                self?.showToast(CopyToast(kind: .working, message: "Copying\u{2026}"), for: nil)
+            }
+            defer { slow.cancel() }
+            do {
+                let (copied, message) = try await work()
+                guard !Task.isCancelled else { return }
+                slow.cancel()
+                guard let copied else {
+                    self?.showToast(CopyToast(kind: .done, message: message), for: .seconds(2))
+                    return
+                }
+                guard !copied.markdown.isEmpty else {
+                    self?.showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t copy: nothing to copy"), for: .seconds(3.5))
+                    return
+                }
+                ReaderPasteboard.copy(copied.markdown)
+                self?.showToast(CopyToast(kind: .done, message: message, note: copied.note), for: copied.note == nil ? .seconds(2) : .seconds(3.5))
+            } catch {
+                guard !Task.isCancelled else { return }
+                slow.cancel()
+                self?.showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t copy: \(HTTP.message(error))"), for: .seconds(3.5))
+            }
+        }
+    }
+
+    /// Shows the toast, announces it to VoiceOver, and clears it after `duration` (nil = until replaced).
+    private func showToast(_ toast: CopyToast, for duration: Duration?) {
+        toastTimer?.cancel()
+        copyToast = toast
+        announce([toast.message, toast.note].compactMap { $0 }.joined(separator: ". "))
+        guard let duration else { return }
+        let id = toast.id
+        toastTimer = Task { [weak self] in
+            try? await Task.sleep(for: duration)
+            if !Task.isCancelled, self?.copyToast?.id == id { self?.copyToast = nil }
+        }
+    }
+
+    private func announce(_ text: String) {
+        #if os(macOS)
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: text,
+            .priority: NSAccessibilityPriorityLevel.high.rawValue,
+        ])
+        #else
+        UIAccessibility.post(notification: .announcement, argument: text)
+        #endif
     }
 
     // MARK: Sources & folders

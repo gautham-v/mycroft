@@ -21,6 +21,7 @@ struct RootView: View {
     var body: some View {
         @Bindable var model = model
         layout
+            .copyToastOverlay()
             .tint(.ofAccent)
             .preferredColorScheme(model.settings.theme.colorScheme)
             .task { await model.start() }

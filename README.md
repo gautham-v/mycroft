@@ -27,6 +27,11 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Search across titles, summaries, authors and article text (/ or ⌘F).
 - Save, Open original, Share and Send to from the reader.
 
+**Copy as Markdown**
+- Copy an item as Markdown to paste into whatever AI you use (or anywhere else): title, source, date, link and the full article text. Videos get their description and YouTube's captions; podcasts get their show notes and the episode's transcript when the feed has one (`<podcast:transcript>`). It's in the reader's Share menu, a row's right-click menu and Edit → Copy as Markdown (⇧⌘C); on iPhone, in the share sheet.
+- Right-click a view, folder or source in the sidebar (or use the filter menu on iPhone) for Copy Last 24 Hours / Copy Last 7 Days: each item's title, source, time, link and a short summary, ready to paste with "brief me on this".
+- Settings → Integrations can add a line above everything you copy, such as "Summarize this in 5 bullets". The app itself has no AI. YouTube captions come from unofficial endpoints and may stop working when YouTube changes them.
+
 **Send to**
 - Readwise Reader (paste an access token from readwise.io/access_token) and/or a webhook of your own, set up in Settings → Integrations. With one target the send button sends straight away; with both it asks which.
 - The webhook gets a JSON POST with `id`, `url`, `title`, `author`, `published_at`, `summary` and `source { title, host }`. Each target has a test button: the webhook gets a sample payload marked `"test": true`, and the Readwise token is only checked.
@@ -54,6 +59,7 @@ Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
 | o or Enter | Open the original in the browser |
 | s | Save or unsave |
 | ⇧⌘R | Reload the article (extract it again) |
+| ⇧⌘C | Copy the item as Markdown |
 | g then a / s / v / p | All / Saved / Video / Podcasts |
 | ⌘-click | Open in a new tab |
 | ⌥-click | Open in split view |

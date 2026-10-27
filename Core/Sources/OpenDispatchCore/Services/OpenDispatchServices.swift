@@ -18,6 +18,7 @@ public struct OpenDispatchServices: Sendable {
     public let integrations: any IntegrationService
     public let refresh: any RefreshService
     public let content: ContentService
+    public let copy: CopyService
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
@@ -32,6 +33,7 @@ public struct OpenDispatchServices: Sendable {
         self.integrations = integrations
         self.refresh = refresh
         self.content = ContentService(database: database, extractor: extractor)
+        self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }
 
     public static func live(database: AppDatabase) -> OpenDispatchServices {

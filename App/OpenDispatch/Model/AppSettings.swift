@@ -72,6 +72,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var autoplay: Bool = true
     /// Full-width player above the title.
     var theater: Bool = true
+    /// Copy as Markdown: a line put above the copied text (Settings → Integrations). Empty = none.
+    var copyPrompt: String = ""
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -89,6 +91,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
+        copyPrompt = (try? c.decode(String.self, forKey: .copyPrompt)) ?? ""
     }
 
     init() {}

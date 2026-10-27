@@ -195,7 +195,9 @@ struct ReaderItemView: View {
                     Label("Open original", systemImage: OFIcon.external.rawValue)
                 }
                 .tint(Color.primary)
-                ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
+                Button {
+                    ItemShareSheet.present(url: url, title: item.item.title) { model.copyMarkdown(item: item) }
+                } label: {
                     Label("Share", systemImage: OFIcon.share.rawValue)
                 }
                 .tint(Color.primary)
@@ -286,7 +288,8 @@ struct ReaderItemView: View {
             switch content {
             case .ok:
                 ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
-                                     onReload: { model.reloadArticle(item) })
+                                     onReload: { model.reloadArticle(item) },
+                                     onCopyMarkdown: { model.copyMarkdown(item: item) })
             case .loading:
                 VStack(alignment: .leading, spacing: 0) {
                     heroImage
@@ -382,8 +385,9 @@ struct ReaderItemView: View {
         if let url = itemURL {
             Button("Open Original") { openURL(url) }
             Button("Copy Link") { ReaderPasteboard.copy(url) }
-            Divider()
         }
+        Button("Copy as Markdown") { model.copyMarkdown(item: item) }
+        Divider()
         Button("Reload Article") { model.reloadArticle(item) }
             .disabled(content == .loading)
     }
