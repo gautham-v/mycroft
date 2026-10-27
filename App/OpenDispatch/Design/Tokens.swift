@@ -39,8 +39,12 @@ extension Color {
 
     /// Window background; sidebar background on desktop.
     static let ofGround = Color(light: 0xF2F2F4, dark: 0x2A2A2C)
-    /// List and reader panels, sheets, cards.
+    /// List and reader panels, sheets, cards. iOS: a warm off-white (Duet's) that white cards sit on.
+    #if os(iOS)
+    static let ofSurface = Color(light: 0xF8F8F6, dark: 0x1C1C1B)
+    #else
     static let ofSurface = Color(light: 0xFFFFFF, dark: 0x212121)
+    #endif
     /// Selected list row.
     static let ofSelection = Color(light: 0xE8E8EC, dark: 0x383839)
     /// Hovered list row / button.
@@ -62,8 +66,12 @@ extension Color {
     static let ofFaint = Color(light: 0xAEAEB2, dark: 0x636366)
     /// Control borders.
     static let ofBorder = Color(light: 0xD2D2D7, dark: 0x454545)
-    /// Dividers between rows and sections.
+    /// Dividers between rows and sections (warmer on iOS, to match its ground).
+    #if os(iOS)
+    static let ofHairline = Color(light: 0xE4E4E0, dark: 0x34342F)
+    #else
     static let ofHairline = Color(light: 0xE5E5EA, dark: 0x373737)
+    #endif
     /// Scroller knob (macOS), Claude desktop's grey.
     static let ofScroller = Color(light: 0xBDBDC2, dark: 0x767676)
     /// Search box on the sidebar (Claude Code's: lighter than the sidebar behind it). Translucent on
@@ -75,6 +83,16 @@ extension Color {
     #endif
     /// Code background, chips, skeletons, thumbnail placeholders.
     static let ofCode = Color(light: 0xF0F0F3, dark: 0x2E2E30)
+    #if os(iOS)
+    /// iPhone grouped cards (Settings, Sources) on ofSurface; 26pt corners (`Metrics.cardRadius`).
+    static let ofCard = Color(light: 0xFFFFFF, dark: 0x282826)
+    /// Inside a card: the search/paste field, the square behind a row's leading icon.
+    static let ofCardInset = Color(light: 0xEFEFEC, dark: 0x343431)
+    /// The side drawer behind the Feed.
+    static let ofDrawer = Color(light: 0xEFEFEC, dark: 0x232321)
+    /// The marker swipe under the active Saved / Highlights tab.
+    static let ofMarker = Color(light: 0xDCDCD6, dark: 0x3E3E39)
+    #endif
     /// The one accent: links, active tab, saved state, focus ring.
     static let ofAccent = Color(light: 0x007AFF, dark: 0x0A84FF)
     static let ofDanger = Color(light: 0xFF3B30, dark: 0xFF453A)
@@ -101,6 +119,12 @@ extension ShapeStyle where Self == Color {
     static var ofAccent: Color { Color.ofAccent }
     static var ofDanger: Color { Color.ofDanger }
     static var ofOK: Color { Color.ofOK }
+    #if os(iOS)
+    static var ofCard: Color { Color.ofCard }
+    static var ofCardInset: Color { Color.ofCardInset }
+    static var ofDrawer: Color { Color.ofDrawer }
+    static var ofMarker: Color { Color.ofMarker }
+    #endif
 }
 
 extension View {
@@ -194,4 +218,6 @@ enum Metrics {
     static let phoneThumb: CGFloat = 80
     static let phoneThumbRadius: CGFloat = 10
     static let phoneVideoRadius: CGFloat = 14
+    /// iPhone grouped cards (Settings, Sources).
+    static let cardRadius: CGFloat = 26
 }

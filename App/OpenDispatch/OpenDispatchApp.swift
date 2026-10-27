@@ -27,6 +27,8 @@ struct OpenDispatchApp: App {
         // the right of every scroll view, so rows stop short of the right edge. overlayScrollers() then
         // shows each scroller only while the pointer is over its pane.
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+        #else
+        OFFont.registerBundledFonts()
         #endif
     }
 

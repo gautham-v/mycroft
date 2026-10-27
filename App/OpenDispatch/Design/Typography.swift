@@ -1,13 +1,41 @@
 import SwiftUI
+#if os(iOS)
+import CoreText
+#endif
 
-// System fonts only, no bundled font files: SF (the default design) for all UI and metadata; article
-// text in SF, New York (`.serif`), Charter or Iowan Old Style (all installed on macOS and iOS). No
+// UI and metadata: SF on the Mac; Figtree on iOS, bundled (Resources/Fonts, SIL Open Font License) in
+// four static weights and registered at launch (`OFFont.registerBundledFonts`). Article text in the
+// reader font setting: SF (Figtree on iOS), New York (`.serif`), Charter or Iowan Old Style. No
 // monospace anywhere outside code blocks in articles (reader.css).
 
 enum OFFont {
     static func ui(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        #if os(iOS)
+        .custom(figtree(weight), fixedSize: size)
+        #else
         .system(size: size, weight: weight)
+        #endif
     }
+
+    #if os(iOS)
+    /// The bundled weight nearest `weight`.
+    private static func figtree(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .medium: "Figtree-Medium"
+        case .semibold: "Figtree-SemiBold"
+        case .bold, .heavy, .black: "Figtree-Bold"
+        default: "Figtree-Regular"
+        }
+    }
+
+    /// Registers the bundled Figtree faces for this process (no Info.plist font list needed).
+    static func registerBundledFonts() {
+        let urls = ["Regular", "Medium", "SemiBold", "Bold"].compactMap {
+            Bundle.main.url(forResource: "Figtree-\($0)", withExtension: "ttf")
+        }
+        CTFontManagerRegisterFontURLs(urls as CFArray, .process, true, nil)
+    }
+    #endif
 
     static func serif(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .serif)
