@@ -188,4 +188,13 @@ enum Metrics {
     static let thumbWidth: CGFloat = 64
     static let thumbHeight: CGFloat = 42
     static let thumbRadius: CGFloat = 3
+
+    // iPhone rows: headline first, more air than the desktop list.
+    /// Row padding inside the list's 8pt inset (20pt from the screen edge); the hairline is inset the same.
+    static let phoneRowPaddingH: CGFloat = 12
+    static let phoneRowPaddingV: CGFloat = 18
+    /// Square thumbnail beside the headline, and the corner radius of the full-width video frame.
+    static let phoneThumb: CGFloat = 80
+    static let phoneThumbRadius: CGFloat = 10
+    static let phoneVideoRadius: CGFloat = 14
 }

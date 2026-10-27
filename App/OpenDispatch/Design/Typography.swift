@@ -32,6 +32,12 @@ enum OFFont {
     static let itemSnippet = ui(13)
     /// Duration badge on thumbnails: 10 / 500, tabular.
     static let thumbBadge = ui(10, .medium).monospacedDigit()
+    /// iPhone rows: 17 semibold headline (posts' text 17 regular) over a 13.5 meta line.
+    static let phoneItemTitle = ui(17, .semibold)
+    static let phonePostText = ui(17)
+    static let phoneItemMeta = ui(13.5)
+    /// Duration badge on the full-width video frame.
+    static let videoThumbBadge = ui(12, .semibold).monospacedDigit()
 
     // Headers (openfeed-app.tsx)
     /// Desktop list header: title ink, "updated 5m ago" muted, both regular at the sidebar's row size

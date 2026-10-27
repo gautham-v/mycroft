@@ -6,8 +6,11 @@ import SwiftUI
 /// Article/video/podcast rows: 16pt badge + "Source · 3h", then the title (14.5/500) with an optional
 /// 64×42 thumbnail on the right. Posts on X lead with the author ("Name @handle · 3h"), then up to two
 /// lines of text and (macOS/iPad) a one-line snippet, or for a quote post the quoted account and text
-/// (QuoteLine), with the post's first photo or video as the thumbnail. iPhone rows are headline only: no snippet, and
-/// the meta line adds HN points and comments when present.
+/// (QuoteLine), with the post's first photo or video as the thumbnail.
+///
+/// iPhone rows put the headline first (17 semibold, a post's text 17 regular, up to three lines) and the
+/// badge with "Source · 3h" under it, beside an 80pt square thumbnail; a YouTube video with a thumbnail
+/// instead leads with it full width at 16:9. No snippet, and no HN points or comments.
 ///
 /// The row draws its own rounded background (selected / the other pane's item / hovered) and leaves
 /// the inset hairline to `ItemListView`, which knows the neighbours. Equatable so a hover or selection
@@ -20,20 +23,22 @@ struct ItemRowView: View, Equatable {
     /// Open in a background tab (and not shown in either pane): a dot at the end of the meta line.
     var isOpenInTab = false
     var isHovered = false
-    /// iPhone: headline-only rows (no snippet) with HN points/comments in the meta line.
+    /// iPhone: the roomier headline-first layout (`phoneRow`).
     var isPhone = false
 
     var body: some View {
         Group {
-            if TextFormat.isSocialPost(item.item.url) {
+            if isPhone {
+                phoneRow
+            } else if TextFormat.isSocialPost(item.item.url) {
                 postRow
             } else {
                 articleRow
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Metrics.rowPaddingH)
-        .padding(.vertical, Metrics.rowPaddingV)
+        .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
+        .padding(.vertical, isPhone ? Metrics.phoneRowPaddingV : Metrics.rowPaddingV)
         .background(
             RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
                 .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
@@ -96,6 +101,34 @@ struct ItemRowView: View, Equatable {
         }
     }
 
+    /// iPhone: headline, then the meta line; beside a square thumbnail, or under a full-width video frame.
+    @ViewBuilder private var phoneRow: some View {
+        let isPost = TextFormat.isSocialPost(item.item.url)
+        let (name, handle) = isPost ? TextFormat.splitHandle(item.item.author) : ("", nil)
+        let text = VStack(alignment: .leading, spacing: 8) {
+            Text(item.item.title)
+                .font(isPost ? OFFont.phonePostText : OFFont.phoneItemTitle)
+                .tracking(isPost ? -0.2 : -0.3)
+                .lineSpacing(2)
+                .foregroundStyle(.ofInk)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if !isPost && item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false {
+            VStack(alignment: .leading, spacing: 12) {
+                ItemThumbnail(item: item, style: .wide)
+                text
+            }
+        } else {
+            HStack(alignment: .top, spacing: 14) {
+                text
+                ItemThumbnail(item: item, style: .square)
+            }
+        }
+    }
+
     /// Badge, then the source (or author) and the rest, all muted, truncated on one line.
     private func metaLine(name: String, handle: String?) -> some View {
         HStack(spacing: 6) {
@@ -114,12 +147,8 @@ struct ItemRowView: View, Equatable {
     }
 
     private func metaText(name: String, handle: String?) -> Text {
-        var line = name + (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt)
-        if isPhone {
-            if let points = item.item.hnPoints { line += " · \(points) points" }
-            if let comments = item.item.hnComments { line += " · \(comments) comments" }
-        }
-        return Text(verbatim: line).font(OFFont.itemMeta).foregroundStyle(Color.ofMuted)
+        let line = name + (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt)
+        return Text(verbatim: line).font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
     }
 
     private var snippet: String? {
@@ -191,11 +220,14 @@ struct QuoteLine: View {
     }
 }
 
-/// The 64×42 thumbnail (item-row.tsx `Thumb`). Podcast rows keep one without art so the audio
-/// indicator and duration still show; YouTube gets a play glyph; videos and podcasts show the
-/// duration badge.
+/// The 64×42 thumbnail (item-row.tsx `Thumb`), or on iPhone an 80pt square or a full-width 16:9 video
+/// frame. Podcast rows keep one without art so the audio indicator and duration still show; YouTube gets
+/// a play glyph; videos and podcasts show the duration badge.
 struct ItemThumbnail: View {
+    enum Style { case compact, square, wide }
+
     let item: FeedItem
+    var style: Style = .compact
     @Environment(\.displayScale) private var displayScale
 
     private var isPodcast: Bool { item.source.kind == .podcast }
@@ -205,6 +237,23 @@ struct ItemThumbnail: View {
         return URL(string: s)
     }
 
+    private var isWide: Bool { style == .wide }
+    /// Largest side drawn, in points (the wide frame is at most a phone's width less the row padding).
+    private var pointSize: CGFloat {
+        switch style {
+        case .compact: Metrics.thumbWidth
+        case .square: Metrics.phoneThumb
+        case .wide: 400
+        }
+    }
+    private var radius: CGFloat {
+        switch style {
+        case .compact: Metrics.thumbRadius
+        case .square: Metrics.phoneThumbRadius
+        case .wide: Metrics.phoneVideoRadius
+        }
+    }
+
     var body: some View {
         if thumbURL != nil || isPodcast {
             thumb
@@ -212,10 +261,10 @@ struct ItemThumbnail: View {
     }
 
     private var thumb: some View {
-        ZStack {
-            Color.ofCode
+        sized(Color.ofCode)
+        .overlay {
             if let url = thumbURL {
-                CachedAsyncImage(url: url, maxPixelSize: Metrics.thumbWidth * max(displayScale, 2)) { image in
+                CachedAsyncImage(url: url, maxPixelSize: pointSize * max(displayScale, 2)) { image in
                     image.resizable().scaledToFill()
                 } placeholder: { failed in
                     if failed && isPodcast { headphonesPlaceholder } else { Color.ofCode }
@@ -223,19 +272,22 @@ struct ItemThumbnail: View {
             } else {
                 headphonesPlaceholder
             }
+        }
+        .overlay {
             if isVideo {
+                let d: CGFloat = isWide ? 48 : style == .square ? 26 : 20
                 Circle()
                     .fill(Color.black.opacity(0.55))
-                    .frame(width: 20, height: 20)
+                    .frame(width: d, height: d)
                     .overlay(
                         OFIcon.play.image
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: d * 0.4, weight: .bold))
                             .foregroundStyle(.white)
-                            .offset(x: 0.5)
+                            .offset(x: d * 0.025)
                     )
             }
         }
-        .frame(width: Metrics.thumbWidth, height: Metrics.thumbHeight)
+        .clipped()
         .overlay(alignment: .bottomLeading) {
             if isPodcast && thumbURL != nil {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -253,15 +305,24 @@ struct ItemThumbnail: View {
         .overlay(alignment: .bottomTrailing) {
             if (isVideo || isPodcast), let dur = TextFormat.duration(item.item.durationSec) {
                 Text(dur)
-                    .font(OFFont.thumbBadge)
+                    .font(isWide ? OFFont.videoThumbBadge : OFFont.thumbBadge)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .frame(height: 14)
-                    .background(Color.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    .padding(2)
+                    .padding(.horizontal, isWide ? 6 : 4)
+                    .frame(height: isWide ? 20 : 14)
+                    .background(Color.black.opacity(0.75), in: RoundedRectangle(cornerRadius: isWide ? 6 : 4, style: .continuous))
+                    .padding(isWide ? 8 : 2)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: Metrics.thumbRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+    }
+
+    /// The frame the art fills: 64×42, an 80pt square, or full width at 16:9.
+    @ViewBuilder private func sized(_ base: some View) -> some View {
+        switch style {
+        case .compact: base.frame(width: Metrics.thumbWidth, height: Metrics.thumbHeight)
+        case .square: base.frame(width: Metrics.phoneThumb, height: Metrics.phoneThumb)
+        case .wide: base.aspectRatio(16 / 9, contentMode: .fit).frame(maxWidth: .infinity)
+        }
     }
 
     private var headphonesPlaceholder: some View {
