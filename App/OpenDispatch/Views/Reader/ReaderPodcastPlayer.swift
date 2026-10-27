@@ -17,6 +17,7 @@ struct ReaderPodcastPlayer: View {
     let wide: Bool
 
     @State private var player: ReaderPodcastPlayback
+    @Environment(\.displayScale) private var displayScale
 
     init(item: FeedItem, art: String?, wide: Bool) {
         self.item = item
@@ -29,12 +30,10 @@ struct ReaderPodcastPlayer: View {
     var body: some View {
         HStack(spacing: 14) {
             if let art, let url = URL(string: art) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
-                        Color.ofCode
-                    }
+                CachedAsyncImage(url: url, maxPixelSize: 72 * max(displayScale, 2)) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { _ in
+                    Color.ofCode
                 }
                 .frame(width: wide ? 72 : 64, height: wide ? 72 : 64)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

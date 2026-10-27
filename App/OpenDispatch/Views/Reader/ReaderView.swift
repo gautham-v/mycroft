@@ -56,6 +56,7 @@ struct ReaderItemView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
 
+    @Environment(\.displayScale) private var displayScale
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -421,15 +422,18 @@ struct ReaderItemView: View {
             .disabled(content == .loading)
     }
 
+    /// Shown while the article loads and when extraction failed (the web view draws its own). Through
+    /// `CachedAsyncImage` so it is decoded off the main thread at the column's size; `AsyncImage`
+    /// decoded the full-size original on the main thread as each article opened.
     @ViewBuilder private var heroImage: some View {
         if let hero = visibleHero, let url = URL(string: hero) {
-            AsyncImage(url: url) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 24)
-                }
+            CachedAsyncImage(url: url, maxPixelSize: (settings.readerColumnWidth ?? 1200) * max(displayScale, 2)) { image in
+                image.resizable().scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 24)
+            } placeholder: { _ in
+                EmptyView()
             }
         }
     }
