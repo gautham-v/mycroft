@@ -253,8 +253,8 @@ struct PhonePageOffset: ViewModifier {
 
 /// One UIKit pan recognizer on the screen's hosting view for every sideways swipe on the iPhone home list.
 /// It begins only for a horizontal-dominant drag that `begin` accepts (so vertical scrolling and row taps
-/// are untouched), runs alongside the list's scroll view, and cancels the touch in the views under the
-/// finger once it takes over, so the row it ends on isn't opened.
+/// are untouched), holds the list's scroll view off while it runs, and cancels the touch in the views under
+/// the finger once it takes over, so the row it ends on isn't opened.
 private struct PhoneSwipeBridge: UIViewRepresentable {
     /// Starting x in the hosting view and horizontal velocity; the mode, or nil to not begin.
     let begin: (CGFloat, CGFloat) -> PhoneSwipeMode?
@@ -345,8 +345,21 @@ private struct PhoneSwipeBridge: UIViewRepresentable {
             return mode != nil
         }
 
+        /// Scroll views' pans wait for this one to fail, so a drag is either a swipe or a scroll, never both:
+        /// otherwise a diagonal swipe also scrolled (and pulled to refresh) the list while it slid sideways,
+        /// and the page floated around under the finger. A vertical drag fails this recognizer at once
+        /// (`gestureRecognizerShouldBegin`), so scrolling starts as soon as it would have anyway.
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            isScrollPan(other)
+        }
+
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            true
+            !isScrollPan(other)
+        }
+
+        private func isScrollPan(_ other: UIGestureRecognizer) -> Bool {
+            guard let scrollView = other.view as? UIScrollView else { return false }
+            return other === scrollView.panGestureRecognizer
         }
     }
 }
