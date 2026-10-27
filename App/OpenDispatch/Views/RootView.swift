@@ -12,8 +12,10 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     #if os(macOS)
-    /// The detail column's frame in window coordinates; the reader is drawn over it (see `macReader`).
-    @State private var detailFrame: CGRect = .zero
+    /// Where the reader is drawn (see `MacReaderOverlay`). An observed object, not @State here: the
+    /// frame changes on every step of a window resize, and only the overlay should re-render for it,
+    /// not this view and with it the sidebar and item list.
+    @State private var detailFrame = DetailColumnFrame()
     #endif
 
     var body: some View {
@@ -72,7 +74,7 @@ struct RootView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .windowToolbar)
-            .overlay { macReader }
+            .overlay { MacReaderOverlay(detailFrame: detailFrame) }
             // Settings: a panel over the dimmed window (`model.showSettings(_:)`, ⌘,), not a window.
             .overlay {
                 ZStack {
@@ -84,23 +86,6 @@ struct RootView: View {
             .frame(minWidth: 900, minHeight: 560)
         #endif
     }
-
-    #if os(macOS)
-    /// The one reader view, drawn over the detail column, or over the whole window in the full-screen
-    /// reader. macOS NavigationSplitView doesn't hide the content column for `.detailOnly`, and moving
-    /// the reader between the column and a full-window overlay rebuilt it, restarting a playing video;
-    /// resizing the same view keeps it (and its web view) alive.
-    private var macReader: some View {
-        GeometryReader { proxy in
-            let window = proxy.frame(in: .global)
-            let frame = model.isFocused ? window : detailFrame
-            ReaderView()
-                .frame(width: frame.width, height: frame.height)
-                .offset(x: frame.minX - window.minX, y: frame.minY - window.minY)
-        }
-        .ignoresSafeArea()
-    }
-    #endif
 
     private var splitLayout: some View {
         NavigationSplitView(columnVisibility: columnVisibility) {
@@ -119,9 +104,9 @@ struct RootView: View {
         } detail: {
             Group {
                 #if os(macOS)
-                // The reader itself is drawn over this column (`macReader`); this marks where.
+                // The reader itself is drawn over this column (`MacReaderOverlay`); this marks where.
                 Color.ofSurface
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { detailFrame = $0 }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { detailFrame.rect = $0 }
                 #else
                 ReaderView()
                 #endif
@@ -182,6 +167,35 @@ struct RootView: View {
     }
     #endif
 }
+
+#if os(macOS)
+/// The detail column's frame in window coordinates.
+@MainActor
+@Observable
+final class DetailColumnFrame {
+    var rect: CGRect = .zero
+}
+
+/// The one reader view, drawn over the detail column, or over the whole window in the full-screen
+/// reader. macOS NavigationSplitView doesn't hide the content column for `.detailOnly`, and moving
+/// the reader between the column and a full-window overlay rebuilt it, restarting a playing video;
+/// resizing the same view keeps it (and its web view) alive.
+private struct MacReaderOverlay: View {
+    let detailFrame: DetailColumnFrame
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        GeometryReader { proxy in
+            let window = proxy.frame(in: .global)
+            let frame = model.isFocused ? window : detailFrame.rect
+            ReaderView()
+                .frame(width: frame.width, height: frame.height)
+                .offset(x: frame.minX - window.minX, y: frame.minY - window.minY)
+        }
+        .ignoresSafeArea()
+    }
+}
+#endif
 
 #Preview {
     RootView().environment(AppModel.preview())
