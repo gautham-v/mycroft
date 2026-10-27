@@ -213,9 +213,9 @@ struct ReaderBar<Actions: View>: View {
     }
 }
 
-/// The reader bar's tabs, shown even when there's only one: badge and title, the active tab on the
-/// selection grey, × on the active or hovered tab, then + for a new tab. Tabs share the width up to
-/// 196pt each.
+/// The reader bar's tabs, shown even when there's only one: pinned tabs first as 32pt source badges,
+/// a hairline, then badge and title, the active tab on the selection grey, × on the active or hovered
+/// tab, then + for a new tab. Unpinned tabs share the width up to 196pt each.
 struct ReaderTabStrip: View {
     let pane: Int
     @Environment(AppModel.self) private var model
@@ -226,8 +226,10 @@ struct ReaderTabStrip: View {
         HStack(spacing: 2) {
             ForEach(Array(p.tabs.enumerated()), id: \.element.id) { index, tab in
                 let quiet = { (i: Int) in i != p.active && p.tabs[i].id != hovered }
+                // The hairline after the pins stays put; between tabs it hides beside the active or hovered one.
+                let afterPins = index > 0 && index == p.pinnedCount
                 tabView(tab, index: index, count: p.tabs.count, active: index == p.active,
-                        divider: index > 0 && quiet(index) && quiet(index - 1))
+                        divider: afterPins || (index > 0 && quiet(index) && quiet(index - 1)))
             }
             Button { model.focusPane(pane); model.openNewTab() } label: {
                 OFIcon.plus.image
@@ -248,31 +250,40 @@ struct ReaderTabStrip: View {
         let title = tab.isNew ? "New Tab" : item?.item.title ?? "Nothing selected"
         // The window's only tab, already empty, has nothing to close.
         let closable = count > 1 || model.isSplit || !tab.isNew
-        return HStack(spacing: 7) {
-            if let item {
-                SourceBadge(host: item.source.host, title: item.source.title, size: 14)
+        return Group {
+            if tab.isPinned {
+                Group {
+                    if let item { SourceBadge(host: item.source.host, title: item.source.title, size: 14) }
+                }
+                .frame(width: 32, height: 28)
+            } else {
+                HStack(spacing: 7) {
+                    if let item {
+                        SourceBadge(host: item.source.host, title: item.source.title, size: 14)
+                    }
+                    Text(title)
+                        .font(OFFont.ui(13))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button { model.closeTab(pane: pane, index: index) } label: {
+                        OFIcon.close.image
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 18, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(TabCloseButtonStyle())
+                    .opacity(closable && (active || isHovered) ? 1 : 0)
+                    .disabled(!closable)
+                    .help("Close tab (⌘W)")
+                    .accessibilityLabel("Close tab")
+                }
+                .padding(.leading, 8)
+                .padding(.trailing, 4)
+                .frame(minWidth: 36, maxWidth: 196, minHeight: 28, maxHeight: 28)
             }
-            Text(title)
-                .font(OFFont.ui(13))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button { model.closeTab(pane: pane, index: index) } label: {
-                OFIcon.close.image
-                    .font(.system(size: 9, weight: .semibold))
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(TabCloseButtonStyle())
-            .opacity(closable && (active || isHovered) ? 1 : 0)
-            .disabled(!closable)
-            .help("Close tab (⌘W)")
-            .accessibilityLabel("Close tab")
         }
         .foregroundStyle(active ? Color.ofInk : Color.ofMuted)
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
-        .frame(minWidth: 36, maxWidth: 196, minHeight: 28, maxHeight: 28)
         .background(
             RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
                 .fill(active ? Color.ofSelection : isHovered ? Color.ofHover : Color.clear)
@@ -288,12 +299,16 @@ struct ReaderTabStrip: View {
             if inside { hovered = tab.id } else if hovered == tab.id { hovered = nil }
         }
         .contextMenu {
+            Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { model.togglePinned(pane: pane, index: index) }
+                .disabled(item == nil)
+            Divider()
             Button("Close Tab") { model.closeTab(pane: pane, index: index) }
             Button("Close Other Tabs") { model.closeOtherTabs(pane: pane, index: index) }
                 .disabled(count < 2)
         }
-        .help(title)
+        .help(tab.isPinned ? "Pinned: \(title)" : title)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(tab.isPinned ? "Pinned: \(title)" : title)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
     }
 }

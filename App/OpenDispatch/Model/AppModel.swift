@@ -9,10 +9,12 @@ import UIKit
 
 /// One reader tab. `itemID` nil follows the list's first item (the desktop default selection), unless
 /// the tab is a new, empty one (`isNew`, from + or ⌘T) waiting for something to be opened in it.
+/// Pinned tabs (`isPinned`) sit leftmost in their pane, keep their item and come back on relaunch.
 struct ReaderTab: Identifiable, Equatable, Sendable {
     let id = UUID()
     var itemID: Int64?
     var isNew = false
+    var isPinned = false
 }
 
 /// A reader column (split view has two): its tabs and the one showing.
@@ -20,6 +22,8 @@ struct ReaderPane: Equatable, Sendable {
     var tabs: [ReaderTab] = [ReaderTab()]
     var active = 0
     var activeTab: ReaderTab { tabs[active] }
+    /// Pinned tabs come first, so this is also the index of the first unpinned one.
+    var pinnedCount: Int { tabs.prefix { $0.isPinned }.count }
 }
 
 /// Phone tab bar (openfeed-app.tsx): Feed / Sources / Saved / Settings.
@@ -173,6 +177,7 @@ final class AppModel {
         static let sidebarCollapsed = "openfeed.sidebar-collapsed"
         static let collapsedFolders = "openfeed.sidebar.collapsed"
         static let syncEnabled = "openfeed.icloud-sync"
+        static let pinnedTabs = "openfeed.pinned-tabs"
     }
 
     init(services: OpenDispatchServices) {
@@ -214,6 +219,7 @@ final class AppModel {
         started = true
         await loadSources()
         await loadItems(reset: true)
+        await restorePinnedTabs()
         await loadStats()
         await loadIntegrations()
         // Not awaited: the first fetch from iCloud must not hold up the first refresh.
@@ -856,15 +862,16 @@ final class AppModel {
             open(item)
             return
         }
-        pinFocusedTab()
+        settleFocusedTab()
         openItems[item.id] = item
-        panes[p].tabs.insert(ReaderTab(itemID: item.id), at: panes[p].active + 1)
-        panes[p].active += 1
+        let at = max(panes[p].active + 1, panes[p].pinnedCount)
+        panes[p].tabs.insert(ReaderTab(itemID: item.id), at: at)
+        panes[p].active = at
     }
 
     /// ⌥-click: show the item in the other pane, opening split view if it is closed.
     func openInSplit(_ item: FeedItem) {
-        pinFocusedTab()
+        settleFocusedTab()
         openItems[item.id] = item
         if isSplit {
             focusedPane = 1 - focusedPane
@@ -891,7 +898,9 @@ final class AppModel {
     /// Close one pane of a split with its tabs; the sidebar comes back if the split hid it.
     func closePane(_ pane: Int) {
         guard isSplit, panes.indices.contains(pane) else { return }
+        let hadPins = panes[pane].pinnedCount > 0
         panes.remove(at: pane)
+        if hadPins { savePinnedTabs() }
         focusedPane = 0
         if let was = sidebarCollapsedBeforeSplit { sidebarCollapsed = was }
         sidebarCollapsedBeforeSplit = nil
@@ -900,13 +909,13 @@ final class AppModel {
 
     func focusPane(_ pane: Int) {
         guard pane != focusedPane, panes.indices.contains(pane) else { return }
-        pinFocusedTab()
+        settleFocusedTab()
         focusedPane = pane
     }
 
     func activateTab(pane: Int, index: Int) {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
-        pinFocusedTab()
+        settleFocusedTab()
         focusedPane = pane
         panes[pane].active = index
     }
@@ -914,9 +923,28 @@ final class AppModel {
     /// + / ⌘T: an empty tab after the active one in the focused pane; the next item opened fills it.
     func openNewTab() {
         let p = focusedPane
-        pinFocusedTab()
-        panes[p].tabs.insert(ReaderTab(isNew: true), at: panes[p].active + 1)
-        panes[p].active += 1
+        settleFocusedTab()
+        let at = max(panes[p].active + 1, panes[p].pinnedCount)
+        panes[p].tabs.insert(ReaderTab(isNew: true), at: at)
+        panes[p].active = at
+    }
+
+    /// Pin or unpin a tab. Pinning fixes the tab's item and moves it to the end of the pins; unpinning
+    /// moves it to just after them. A new, empty tab can't be pinned.
+    func togglePinned(pane: Int, index: Int) {
+        guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        var tab = panes[pane].tabs[index]
+        if !tab.isPinned {
+            guard let item = item(for: tab) else { return }
+            openItems[item.id] = item
+            tab.itemID = item.id
+        }
+        tab.isPinned.toggle()
+        let activeID = panes[pane].activeTab.id
+        panes[pane].tabs.remove(at: index)
+        panes[pane].tabs.insert(tab, at: panes[pane].pinnedCount)
+        panes[pane].active = panes[pane].tabs.firstIndex { $0.id == activeID } ?? 0
+        savePinnedTabs()
     }
 
     /// ⇧⌘T: the most recently closed tab's item, in a new tab (or the empty one that's showing).
@@ -929,6 +957,8 @@ final class AppModel {
     func closeTab(pane: Int, index: Int) {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
         rememberClosed(panes[pane].tabs[index])
+        let wasPinned = panes[pane].tabs[index].isPinned
+        defer { if wasPinned { savePinnedTabs() } }
         if panes[pane].tabs.count == 1 {
             if isSplit { closePane(pane) } else { panes[pane].tabs[0] = ReaderTab(isNew: true) }
             pruneOpenItems()
@@ -942,17 +972,24 @@ final class AppModel {
 
     func closeOtherTabs(pane: Int, index: Int) {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
-        for (t, tab) in panes[pane].tabs.enumerated().reversed() where t != index { rememberClosed(tab) }
-        panes[pane].tabs = [panes[pane].tabs[index]]
-        panes[pane].active = 0
+        let keep = panes[pane].tabs[index]
+        for (t, tab) in panes[pane].tabs.enumerated().reversed() where t != index && !tab.isPinned { rememberClosed(tab) }
+        panes[pane].tabs.removeAll { !$0.isPinned && $0.id != keep.id }
+        panes[pane].active = panes[pane].tabs.firstIndex { $0.id == keep.id } ?? 0
         pruneOpenItems()
     }
 
     /// ⌘W: close the focused tab (or pane). Returns false when there is only the one tab, so the
-    /// caller closes the window instead.
+    /// caller closes the window instead. A pinned tab stays: ⌘W shows the first unpinned tab, or a
+    /// new one.
     func closeActiveTab() -> Bool {
+        let p = focusedPane
+        if panes[p].activeTab.isPinned {
+            if panes[p].pinnedCount < panes[p].tabs.count { panes[p].active = panes[p].pinnedCount } else { openNewTab() }
+            return true
+        }
         guard hasReaderTabs else { return false }
-        closeTab(pane: focusedPane, index: panes[focusedPane].active)
+        closeTab(pane: p, index: panes[p].active)
         return true
     }
 
@@ -961,13 +998,22 @@ final class AppModel {
         let p = focusedPane
         let count = panes[p].tabs.count
         guard count > 1 else { return }
-        pinFocusedTab()
+        settleFocusedTab()
         panes[p].active = ((panes[p].active + offset) % count + count) % count
     }
 
-    /// The focused pane's active tab shows `id` (nil: the list's first item).
+    /// The focused pane's active tab shows `id` (nil: the list's first item). A pinned tab keeps its
+    /// item: `id` opens in a new tab after the pins.
     private func setActiveItem(_ id: Int64?) {
-        let p = focusedPane, t = panes[p].active
+        let p = focusedPane
+        if panes[p].activeTab.isPinned {
+            guard let id, id != panes[p].activeTab.itemID else { return }
+            let at = panes[p].pinnedCount
+            panes[p].tabs.insert(ReaderTab(itemID: id), at: at)
+            panes[p].active = at
+            return
+        }
+        let t = panes[p].active
         panes[p].tabs[t].itemID = id
         panes[p].tabs[t].isNew = false
         pruneOpenItems()
@@ -981,9 +1027,31 @@ final class AppModel {
         if closedItems.count > 20 { closedItems.removeLast() }
     }
 
+    /// Pinned items, every pane's in order, for the next launch.
+    private func savePinnedTabs() {
+        let ids = panes.flatMap { $0.tabs.filter(\.isPinned).compactMap(\.itemID) }
+        UserDefaults.standard.set(ids.map(NSNumber.init(value:)), forKey: Keys.pinnedTabs)
+    }
+
+    /// Launch: the pinned items from last time, as pinned tabs ahead of the reader's first tab (in one
+    /// pane; split view is not restored). Items that no longer exist are dropped.
+    private func restorePinnedTabs() async {
+        let ids = (UserDefaults.standard.array(forKey: Keys.pinnedTabs) as? [NSNumber])?.map(\.int64Value) ?? []
+        guard !ids.isEmpty else { return }
+        var tabs: [ReaderTab] = []
+        for id in ids {
+            guard let item = try? await database.feedItem(id: id) else { continue }
+            openItems[id] = item
+            tabs.append(ReaderTab(itemID: id, isPinned: true))
+        }
+        panes[0].tabs.insert(contentsOf: tabs, at: 0)
+        panes[0].active += tabs.count
+        if tabs.count != ids.count { savePinnedTabs() }
+    }
+
     /// A tab that follows the list's first item keeps that item once focus or the active tab moves
     /// away, so later navigation in another tab does not change it.
-    private func pinFocusedTab() {
+    private func settleFocusedTab() {
         let p = focusedPane, t = panes[p].active
         guard panes[p].tabs[t].itemID == nil, let first = item(for: panes[p].tabs[t]) else { return }
         openItems[first.id] = first

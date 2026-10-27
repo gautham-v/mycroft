@@ -23,7 +23,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 **Reading**
 - Selecting an article fetches the page and runs Mozilla Readability (bundled, in a hidden WKWebView with page scripts off), then cleans, sanitizes and caches the text. If the page blocks it, the feed's own full text or a Jina Reader render is used.
 - YouTube videos play in an embedded youtube-nocookie player, full width above the title by default. Podcasts play in a native audio player that remembers your position and has playback speeds from 0.8× to 2×.
-- Mac: reader tabs, shown like a browser's even when there's one (⌘-click a row, or + / ⌘T for a new tab, ⇧⌘T to reopen a closed one) and split view (⌥-click a row, or ⌥⌘S), each pane with its own tabs; a full-screen reader (⇧⌘F).
+- Mac: reader tabs, shown like a browser's even when there's one (⌘-click a row, or + / ⌘T for a new tab, ⇧⌘T to reopen a closed one; right-click a tab to pin it) and split view (⌥-click a row, or ⌥⌘S), each pane with its own tabs; a full-screen reader (⇧⌘F).
 - Search across titles, summaries, authors and article text (/ or ⌘F).
 - Save, Open original, Share and Send to from the reader.
 

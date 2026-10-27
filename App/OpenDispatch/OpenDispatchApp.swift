@@ -99,6 +99,10 @@ struct OpenDispatchCommands: Commands {
             Button("Show Previous Tab") { model.selectTab(offset: -1) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
                 .disabled(model.panes[model.focusedPane].tabs.count < 2)
+            Button(model.panes[model.focusedPane].activeTab.isPinned ? "Unpin Tab" : "Pin Tab") {
+                model.togglePinned(pane: model.focusedPane, index: model.panes[model.focusedPane].active)
+            }
+            .disabled(model.selectedItem == nil)
             Divider()
             // Re-extract the focused reader's article (⌘R is Feed › Refresh).
             Button("Reload Article") { if let item = model.selectedItem { model.reloadArticle(item) } }
