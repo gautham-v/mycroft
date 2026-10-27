@@ -154,10 +154,14 @@ enum ArticlePasses {
             let inCode = pres.reduce(0) { $0 + DOM.textLen(DOM.text($1)) }
             return !pres.isEmpty && DOM.textLen(DOM.text(el)) - inCode <= 40
         }
+        // A bare `hidden` really is hidden (the desktop copy of a responsive pair); keep it.
+        func droppable(_ token: String) -> Bool { token != "hidden" && layoutNegative.test(token) }
         for el in DOM.select(root, "[class]") {
-            // A bare `hidden` really is hidden (the desktop copy of a responsive pair); keep it.
+            // Tokens first: few elements carry a layout word, and the wrapper tests read the subtree's text
+            // (on every classed element that made this pass most of the extraction time).
+            guard DOM.classTokens(el).contains(where: droppable) else { continue }
             if inFigure(el) || mediaWrapper(el) || codeWrapper(el) {
-                dropClassTokens(el) { $0 != "hidden" && layoutNegative.test($0) }
+                dropClassTokens(el, droppable)
             }
         }
     }
