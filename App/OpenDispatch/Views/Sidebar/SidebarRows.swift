@@ -45,10 +45,9 @@ enum SidebarViewItem: Hashable, Identifiable {
     case view(FeedView)
     case highlights
 
-    /// Sidebar order: the views, with Highlights after Saved.
-    static let ordered: [SidebarViewItem] = FeedView.allCases.flatMap { view in
-        view == .saved ? [.view(view), .highlights] : [.view(view)]
-    }
+    /// Sidebar order: the content views (All, Articles, Posts, Video, Podcasts), then Saved and Highlights,
+    /// as in the iPhone drawer.
+    static let ordered: [SidebarViewItem] = FeedView.allCases.filter { $0 != .saved }.map { .view($0) } + [.view(.saved), .highlights]
 
     /// Stored in `AppModel.hiddenSidebarViews`.
     var id: String {

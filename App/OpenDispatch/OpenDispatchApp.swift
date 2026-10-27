@@ -93,10 +93,13 @@ struct OpenDispatchCommands: Commands {
             Button("Filter Sources") { model.openSourceFilter() }
                 .keyboardShortcut("k", modifiers: .command)
             Divider()
-            ForEach(FeedView.allCases) { view in
-                Button(view.title) { model.navigate(view: view) }
+            // Same order as the sidebar.
+            ForEach(SidebarViewItem.ordered) { item in
+                switch item {
+                case .view(let view): Button(view.title) { model.navigate(view: view) }
+                case .highlights: Button("Highlights") { model.showHighlights() }
+                }
             }
-            Button("Highlights") { model.showHighlights() }
         }
         CommandGroup(replacing: .saveItem) {
             Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { closeTabOrWindow() }
