@@ -13,7 +13,9 @@ import AppKit
 ///   floating Liquid Glass bubbles sit over the rows along the bottom: the drawer's hamburger at the leading
 ///   edge, page dots in the middle (the five content views), search at the trailing edge. A source's feed
 ///   pushed from Manage sources has the system back button at the top and only the search bubble.
-///   Headline-only rows; pull to refresh. Opening a row pushes `ReaderView` onto the PhoneRoot stack.
+///   Headline-only rows; pull to refresh. Opening a row pushes `ReaderView` onto the PhoneRoot stack;
+///   pressing and holding one lifts it with a menu (Save, Share…, Copy Link / Markdown, Open in Browser,
+///   Send To, Go to <source>).
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
 /// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
@@ -226,7 +228,9 @@ struct ItemListView: View {
                 .padding(.horizontal, 8)
             }
         }
-        .rowContextMenu(enabled: !isPhone) { RowMenu(item: item, sendError: $sendError) }
+        .contextMenu { RowMenu(item: item, isPhone: isPhone, sendError: $sendError) }
+        // iPhone: the menu's icons and labels in ink, like the drawer, rather than the accent blue.
+        .tint(isPhone ? Color.ofInk : nil)
         .plainListRow()
         .id(item.id)
     }
@@ -432,16 +436,57 @@ private struct HoverTracking<Content: View>: View {
 }
 
 /// The row's context menu: where to open it, Save, Share (the reader's Share menu as a submenu), then the
-/// source's feed. A view of its own so it is built when the menu opens, not for every row on every
+/// source's feed. On iPhone a flat menu with icons instead (`phoneMenu`). A view of its own so it is built when the menu opens, not for every row on every
 /// evaluation of the list (it reads `model.integrations` and `model.selectedSourceID`, which would also
 /// make the list depend on them).
 private struct RowMenu: View {
     let item: FeedItem
+    var isPhone = false
     @Binding var sendError: String?
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
 
     var body: some View {
+        if isPhone { phoneMenu } else { desktopMenu }
+    }
+
+    /// iPhone (press and hold a row): flat, with icons; no tabs or split view.
+    @ViewBuilder private var phoneMenu: some View {
+        let url = URL(string: item.item.url)
+        Button(item.isSaved ? "Remove from Saved" : "Save", systemImage: item.isSaved ? "bookmark.slash" : "bookmark") {
+            Task { await model.toggleSaved(item) }
+        }
+        if let url {
+            ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+            Button("Copy Link", systemImage: "link") { ReaderPasteboard.copy(url) }
+            Button("Copy as Markdown", systemImage: "doc.on.doc") { model.copyMarkdown(item: item) }
+            Button("Open in Browser", systemImage: "safari") { openURL(url) }
+            sendMenu
+        }
+        if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
+            Divider()
+            Button("Go to \(item.source.title)", systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
+        }
+    }
+
+    @ViewBuilder private var sendMenu: some View {
+        let targets = model.integrations.configuredTargets
+        if targets.isEmpty {
+            Button("Set Up Send To…", systemImage: "paperplane") { model.showSettings(.integrations) }
+        } else {
+            Menu {
+                ForEach(targets) { t in
+                    Button("Send to \(SendToView.menuLabel(t))") { send(to: t) }
+                }
+            } label: {
+                Label("Send To", systemImage: "paperplane")
+            }
+        }
+    }
+
+    @ViewBuilder private var desktopMenu: some View {
         let url = URL(string: item.item.url)
         Button("Open in New Tab") { model.openInNewTab(item) }
         Button("Open in Split View") { model.openInSplit(item) }
@@ -486,11 +531,6 @@ private struct RowMenu: View {
 }
 
 private extension View {
-    /// A context menu on the desktop layouts only (the iPhone row has none).
-    @ViewBuilder func rowContextMenu<Menu: View>(enabled: Bool, @ViewBuilder _ menu: () -> Menu) -> some View {
-        if enabled { contextMenu(menuItems: menu) } else { self }
-    }
-
     /// Full-bleed list row: no insets, separators or system background (rows draw their own).
     func plainListRow() -> some View {
         listRowInsets(EdgeInsets())
