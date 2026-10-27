@@ -77,8 +77,6 @@ extension Color {
     static let ofCode = Color(light: 0xF0F0F3, dark: 0x2E2E30)
     /// The one accent: links, active tab, saved state, focus ring.
     static let ofAccent = Color(light: 0x007AFF, dark: 0x0A84FF)
-    /// Logo teal (app icon, feed mark).
-    static let ofLogo = Color(light: 0x0F6E6E, dark: 0x2F9C9C)
     static let ofDanger = Color(light: 0xFF3B30, dark: 0xFF453A)
     static let ofOK = Color(light: 0x34C759, dark: 0x30D158)
 }
@@ -101,7 +99,6 @@ extension ShapeStyle where Self == Color {
     static var ofField: Color { Color.ofField }
     static var ofCode: Color { Color.ofCode }
     static var ofAccent: Color { Color.ofAccent }
-    static var ofLogo: Color { Color.ofLogo }
     static var ofDanger: Color { Color.ofDanger }
     static var ofOK: Color { Color.ofOK }
 }
