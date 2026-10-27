@@ -303,6 +303,90 @@ struct SyncTests {
         #expect(CloudSync.syncRecord(from: sck) == secret)
     }
 
+    @Test func highlightsSyncWithoutTheItem() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let b = try Fixture.db()
+        try server.join(a)
+        try server.join(b)
+        var h = HighlightTests.highlight("https://b.example/feed", "g1", text: "the quote", color: .green)
+        h.note = "a note"
+        h.itemPublishedAt = Fixture.base
+        // The user makes it on A with Readwise on; B has neither the item nor the source.
+        try await a.insertHighlight(h, forReadwise: true)
+        #expect(try server.push(a).saves == [SyncRecord.highlightName(id: h.id)])
+        let result = try server.pull(b)
+        #expect(result.highlightsChanged)
+        var onB = try #require(try await b.highlights(sourceFeedUrl: h.sourceFeedUrl, itemGuid: "g1").first)
+        #expect(onB.text == "the quote")
+        #expect(onB.note == "a note")
+        #expect(onB.color == .green)
+        #expect(onB.itemTitle == "Title g1")
+        #expect(onB.itemPublishedAt == h.itemPublishedAt)
+        // Applied from iCloud, so B doesn't send it to Readwise.
+        #expect(!onB.readwisePending)
+        #expect(try diff(b).isEmpty)
+        #expect(try server.pull(b) == SyncStore.ApplyResult())
+
+        // An edit, then the Readwise id A gets back, both reach B; neither is queued there.
+        let id = h.id
+        try await a.updateHighlight(id: id, color: .pink, note: "changed", forReadwise: true)
+        try await a.writer.write { d in
+            let sent = try #require(try Queries.highlight(d, id: id))
+            try Queries.markReadwiseSent(d, sent: sent, readwiseId: 4242)
+        }
+        try server.push(a)
+        try server.pull(b)
+        onB = try #require(try await b.highlights(sourceFeedUrl: h.sourceFeedUrl, itemGuid: "g1").first)
+        #expect(onB.color == .pink)
+        #expect(onB.note == "changed")
+        #expect(onB.readwiseId == 4242)
+        #expect(!onB.readwisePending)
+        #expect(try diff(b).isEmpty)
+
+        // Deleted on B: gone on A, and A queues no Readwise deletion for a change it didn't make.
+        try await b.deleteHighlight(id: h.id)
+        #expect(try server.push(b).deletes == [SyncRecord.highlightName(id: h.id)])
+        try server.pull(a)
+        #expect(try await a.highlightCount() == 0)
+        #expect(try await a.reader.read { d in try Queries.pendingReadwiseDeletes(d) }.isEmpty)
+        #expect(try diff(a).isEmpty)
+    }
+
+    @Test func highlightsKeepTheirOwnArticleKey() async throws {
+        // Two articles with the same guid under different sources stay apart.
+        let server = FakeServer()
+        let a = try Fixture.db()
+        try await a.insertHighlight(HighlightTests.highlight("https://one.example/feed", "same", text: "x"))
+        try await a.insertHighlight(HighlightTests.highlight("https://two.example/feed", "same", text: "x"))
+        try server.join(a)
+        #expect(server.records.values.filter { $0.type == .highlight }.count == 2)
+    }
+
+    @Test func highlightRecordRoundTripsThroughCloudKit() throws {
+        var h = HighlightTests.highlight("https://b.example/feed", "g1", text: "quote", color: .underline)
+        h.note = "n"
+        h.readwiseId = 9
+        let r = SyncStore.highlightRecord(h)
+        #expect(r.name == "highlight-" + h.id)
+        let ck = CloudSync.ckRecord(r, systemFields: nil)
+        #expect(ck.recordType == "Highlight")
+        #expect(CloudSync.syncRecord(from: ck) == r)
+        // A bare highlight leaves the optional fields out entirely.
+        let bare = SyncStore.highlightRecord(HighlightTests.highlight("f", "g", text: "q"))
+        #expect(bare["note"] == nil && bare["readwiseId"] == nil && bare["itemPublishedAt"] == nil)
+        #expect(CloudSync.syncRecord(from: CloudSync.ckRecord(bare, systemFields: nil)) == bare)
+    }
+
+    @Test func highlightHashIgnoresTheArticleSnapshot() {
+        var h = HighlightTests.highlight("f", "g")
+        let before = SyncStore.highlightRecord(h).hash
+        h.itemTitle = "Renamed article"
+        #expect(SyncStore.highlightRecord(h).hash == before)
+        h.note = "now with a note"
+        #expect(SyncStore.highlightRecord(h).hash != before)
+    }
+
     @Test func recordNamesFollowNaturalKeys() {
         #expect(SyncRecord.folderName(title: " News ") == SyncRecord.folderName(title: "news"))
         #expect(SyncRecord.sourceName(feedUrl: "https://a/feed") != SyncRecord.sourceName(feedUrl: "https://b/feed"))

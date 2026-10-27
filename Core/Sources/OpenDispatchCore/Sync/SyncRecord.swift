@@ -11,6 +11,9 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
     case settings = "Settings"
     /// Webhook URL and the Readwise token (the token as an encrypted field).
     case integrations = "Integrations"
+    /// A highlight with its note and enough about the article to show it without the item. Named by the
+    /// highlight's id; sent only when CloudKit's Production schema has the type (see CloudSync).
+    case highlight = "Highlight"
 
     /// Order incoming records are applied in: folders before the sources filed in them, sources
     /// before the saved items that belong to them.
@@ -21,6 +24,7 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         case .folder: 2
         case .source: 3
         case .savedItem: 4
+        case .highlight: 5
         }
     }
 
@@ -38,6 +42,12 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
             "author": .string, "publishedAt": .date, "thumbnailUrl": .string, "videoId": .string,
             "durationSec": .int, "audioUrl": .string,
         ]
+        case .highlight: [
+            "sourceFeedUrl": .string, "itemGuid": .string, "itemUrl": .string, "itemTitle": .string,
+            "sourceTitle": .string, "itemAuthor": .string, "itemPublishedAt": .date, "text": .string,
+            "prefix": .string, "suffix": .string, "note": .string, "color": .string, "createdAt": .date,
+            "updatedAt": .date, "readwiseId": .int,
+        ]
         case .settings: ["json": .string]
         // hasReadwiseToken tells a cleared token apart from one that didn't decrypt.
         case .integrations: ["webhookURL": .string, "readwiseToken": .secret, "hasReadwiseToken": .bool]
@@ -53,6 +63,9 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         case .folder: ["title", "position"]
         case .source: ["feedUrl", "title", "folder", "position", "pinnedAt", "isHidden"]
         case .savedItem: ["sourceFeedUrl", "guid"]
+        // What the user edits, plus readwiseId so every device knows which Readwise highlight this is.
+        // The article snapshot (title, source, URL) is fixed when the highlight is made.
+        case .highlight: ["text", "prefix", "suffix", "note", "color", "updatedAt", "readwiseId"]
         case .settings: ["json"]
         case .integrations: ["webhookURL", "readwiseToken"]
         }
@@ -144,6 +157,12 @@ public struct SyncRecord: Sendable, Hashable {
 
     public static func savedItemName(sourceFeedUrl: String, guid: String) -> String {
         "saved-" + hex(sourceFeedUrl + "\n" + guid)
+    }
+
+    static let highlightPrefix = "highlight-"
+
+    public static func highlightName(id: String) -> String {
+        highlightPrefix + id
     }
 
     public static let settingsName = "settings"

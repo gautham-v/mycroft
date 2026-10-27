@@ -160,6 +160,37 @@ public final class AppDatabase: Sendable {
                 );
                 """)
         }
+        // Highlights and notes. A row holds what's needed to show it with no item (title, source, URL), so
+        // highlights survive pruning and a deleted source and can be listed on a device that never had the
+        // article. readwise_id says which Readwise highlight this is; readwise_pending and readwise_deletes
+        // are what this device still has to send there.
+        m.registerMigration("v5-highlights") { db in
+            try db.execute(sql: """
+                CREATE TABLE highlights (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  source_feed_url TEXT NOT NULL,
+                  item_guid TEXT NOT NULL,
+                  item_url TEXT NOT NULL,
+                  item_title TEXT NOT NULL,
+                  source_title TEXT NOT NULL,
+                  item_author TEXT,
+                  item_published_at DATETIME,
+                  text TEXT NOT NULL,
+                  prefix TEXT NOT NULL DEFAULT '',
+                  suffix TEXT NOT NULL DEFAULT '',
+                  note TEXT,
+                  color TEXT NOT NULL DEFAULT 'yellow' CHECK (color IN ('yellow', 'green', 'blue', 'pink', 'purple', 'underline')),
+                  created_at DATETIME NOT NULL,
+                  updated_at DATETIME NOT NULL,
+                  readwise_id INTEGER,
+                  readwise_pending BOOLEAN NOT NULL DEFAULT 0
+                );
+                CREATE INDEX highlights_item_idx ON highlights(source_feed_url, item_guid);
+                CREATE TABLE readwise_deletes (
+                  readwise_id INTEGER PRIMARY KEY NOT NULL
+                );
+                """)
+        }
         return m
     }
 }
