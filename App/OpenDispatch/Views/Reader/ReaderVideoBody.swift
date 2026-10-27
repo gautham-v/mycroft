@@ -47,6 +47,7 @@ struct ReaderVideoBody: View {
                 }
             }
         }
+        .onDisappear { playback.stop() }
     }
 
     private var column: some View {

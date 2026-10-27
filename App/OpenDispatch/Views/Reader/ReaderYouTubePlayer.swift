@@ -88,6 +88,7 @@ private struct ReaderYouTubeStage: View {
         .fullScreenCover(item: $fullscreen) { start in
             ReaderYouTubeFullscreen(videoID: videoID, title: title, start: start.time, vertical: vertical) { time in
                 fullscreen = nil
+                controller.inFullscreen = false
                 controller.resume(at: time)
             }
         }
@@ -102,7 +103,9 @@ private struct ReaderYouTubeStage: View {
         switch event {
         case .playing, .failed: reveal()
         #if os(iOS)
-        case .fullscreen(let time): fullscreen = ReaderYouTubeFullscreenStart(time: time)
+        case .fullscreen(let time):
+            controller.inFullscreen = true
+            fullscreen = ReaderYouTubeFullscreenStart(time: time)
         #else
         case .fullscreen: break
         #endif
@@ -244,6 +247,8 @@ final class ReaderYouTubeController {
     @ObservationIgnored weak var webView: WKWebView?
     /// Presses the poster's play button (before the player is loaded), starting at the given second.
     @ObservationIgnored var start: ((Double) -> Void)?
+    /// The iPhone's full-screen player is up: the reader under it disappears but keeps its player.
+    @ObservationIgnored var inFullscreen = false
 
     func togglePlayback() {
         if let webView {
@@ -265,6 +270,14 @@ final class ReaderYouTubeController {
 
     func resume(at time: Double) {
         webView?.evaluateJavaScript("window.odPlayer && window.odPlayer.resume(\(time))")
+    }
+
+    /// The reader left this video: blank the player. The lazy stack that pins the theater player doesn't
+    /// always dismantle its web view, which then played on out of sight.
+    func stop() {
+        guard !inFullscreen, let webView else { return }
+        webView.loadHTMLString("", baseURL: nil)
+        self.webView = nil
     }
 }
 
