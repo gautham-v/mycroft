@@ -17,12 +17,14 @@ public struct OpenDispatchServices: Sendable {
     public let opml: any OPMLCoding
     public let integrations: any IntegrationService
     public let refresh: any RefreshService
+    public let search: any SourceSearching
     public let content: ContentService
     public let copy: CopyService
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
-        extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService
+        extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService,
+        search: any SourceSearching = DefaultSourceSearch()
     ) {
         self.database = database
         self.feedParser = feedParser
@@ -32,6 +34,7 @@ public struct OpenDispatchServices: Sendable {
         self.opml = opml
         self.integrations = integrations
         self.refresh = refresh
+        self.search = search
         self.content = ContentService(database: database, extractor: extractor)
         self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }
@@ -52,11 +55,12 @@ public struct OpenDispatchServices: Sendable {
 
     /// POST /api/sources: normalize → detect → insert (or return the existing source) → fetch it once.
     /// The fetch's error is recorded on the source and not thrown. Throws SourceURLError or the detector's error.
-    public func addSource(url input: String, group: String? = nil) async throws -> (source: Source, existed: Bool) {
+    /// `fetch: false` returns as soon as the source is stored; the caller fetches it.
+    public func addSource(url input: String, group: String? = nil, fetch: Bool = true) async throws -> (source: Source, existed: Bool) {
         let url = try SourceURL.normalize(input)
         let found = try await detector.detect(url)
         let (created, existed) = try await database.insertSource(found, group: group)
-        if existed { return (created, true) }
+        if existed || !fetch { return (created, existed) }
         _ = try? await refresh.refreshSource(id: created.id)
         return ((try? await database.source(id: created.id)) ?? created, false)
     }

@@ -57,6 +57,13 @@ struct CopyToast: Equatable, Identifiable, Sendable {
     var note: String?
 }
 
+/// One add from the Add sources sheet.
+enum SourceAddState: Equatable {
+    case adding
+    case added
+    case failed(String)
+}
+
 /// App state and actions shared by every view. Port of the state in src/components/openfeed-app.tsx,
 /// src/hooks/use-data.ts, use-search.ts and use-settings.ts. Everything is local (AppDatabase).
 ///
@@ -135,6 +142,8 @@ final class AppModel {
     var isAddSourcePresented = false
     /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
     var pendingAddSourceURL: String?
+    /// Adds started from the Add sources sheet, by the URL added (a feed or a site).
+    private(set) var sourceAdds: [String: SourceAddState] = [:]
     var isShortcutsPresented = false
     /// Settings: the sheet on iOS/iPad, the in-window overlay on macOS. `settingsTab` picks the pane.
     var isSettingsPresented = false
@@ -233,7 +242,7 @@ final class AppModel {
             db = try AppDatabase.openDefault()
         } catch {
             // Last resort so the UI can show something; data will not persist this session.
-            db = try! AppDatabase.inMemory(seed: true)
+            db = try! AppDatabase.inMemory()
         }
         return AppModel(services: .live(database: db))
     }
@@ -712,14 +721,43 @@ final class AppModel {
         }
     }
 
-    /// "Add source": detect the feed, insert it (or find the existing one), fetch it, then refresh everything.
-    /// Throws a user-facing error (bad URL, nothing found).
-    @discardableResult
-    func addSource(url: String) async throws -> Source {
-        let (source, _) = try await services.addSource(url: url)
-        await loadSources()
-        Task { await self.refresh(force: true) }
-        return source
+    /// "Add sources" search: feeds and podcasts matching a name. Throws when search is unavailable.
+    func searchSources(_ query: String) async throws -> [SourceSearchResult] {
+        try await services.search.search(query)
+    }
+
+    /// Whether a feed (a search result's feed URL) is already in the library.
+    func hasSource(feedUrl: String) -> Bool {
+        let key = SourceSearch.feedKey(feedUrl)
+        return sources.contains { SourceSearch.feedKey($0.feedUrl) == key }
+    }
+
+    /// "Add sources": start adding without waiting. Detect the feed and store it (it shows in the sidebar),
+    /// then fetch it in the background. Progress and errors land in `sourceAdds[url]`, so the sheet can
+    /// stay open for more and closing it doesn't stop an add.
+    func beginAddSource(url: String) {
+        switch sourceAdds[url] {
+        case .adding, .added: return
+        case .failed, nil: break
+        }
+        sourceAdds[url] = .adding
+        Task {
+            do {
+                let (source, existed) = try await services.addSource(url: url, fetch: false)
+                sourceAdds[url] = .added
+                await loadSources()
+                guard !existed else { return }
+                _ = try? await services.refresh.refreshSource(id: source.id)
+                await reloadAll()
+            } catch {
+                sourceAdds[url] = .failed(HTTP.message(error))
+            }
+        }
+    }
+
+    /// Forget finished adds when the sheet closes; ones still running keep their entry.
+    func clearFinishedSourceAdds() {
+        sourceAdds = sourceAdds.filter { $0.value == .adding }
     }
 
     func deleteSource(id: Int64) async throws {

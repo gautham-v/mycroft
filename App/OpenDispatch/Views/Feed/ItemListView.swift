@@ -328,6 +328,34 @@ private struct ListStateRows: View {
                 Text("Searched titles, summaries, authors and full text in \(model.listTitle)")
                     .font(OFFont.ui(13))
                     .foregroundStyle(.ofMuted)
+            } else if model.sources.isEmpty {
+                // First run: nothing is preinstalled, so the empty list is the way in.
+                Text("Add your first sources")
+                    .font(OFFont.ui(15, .medium))
+                    .foregroundStyle(.ofInk)
+                Text("Sites, newsletters, YouTube channels and podcasts")
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
+                Button {
+                    model.isAddSourcePresented = true
+                } label: {
+                    HStack(spacing: 8) {
+                        OFIcon.search.image
+                            .font(.system(size: 13))
+                        Text("Search by name, or paste a link")
+                            .font(OFFont.ui(14))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.ofFaint)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: 300, minHeight: 40)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.ofGround))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.ofBorder, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 12)
+                .accessibilityLabel("Add sources")
             } else {
                 Text(model.selectedView == .saved && !model.isInSourceFeed ? "Nothing saved yet" : "Nothing here yet")
                     .font(OFFont.ui(15, .medium))
