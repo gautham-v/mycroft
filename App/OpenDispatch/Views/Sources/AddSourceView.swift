@@ -7,7 +7,8 @@ import SwiftUI
 /// one row for it above the results; several links (one per line, or separated by spaces or commas)
 /// show one row each with Add All. Adding doesn't close the sheet or wait for the feed: the row shows
 /// progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
-/// With nothing typed, the sheet explains what works and offers OPML import.
+/// With nothing typed, the sheet explains what works and offers OPML import. Opened from a folder's
+/// "Add Source to <Folder>…" (`AppModel.pendingAddSourceFolderID`), new sources go into that folder.
 struct AddSourceView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -18,6 +19,8 @@ struct AddSourceView: View {
     @State private var searchError = false
     @State private var importing = false
     @State private var importStatus: SettingsOPMLStatus?
+    /// The folder new sources go into; nil is Unfiled.
+    @State private var folderID: Int64?
     /// Height of the list or intro, which sizes the sheet on macOS.
     @State private var contentHeight: CGFloat = 0
     @FocusState private var fieldFocused: Bool
@@ -25,12 +28,20 @@ struct AddSourceView: View {
     /// Links in the field (empty when it holds a name).
     private var links: [String] { SourceSearch.links(in: query) }
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var targetFolder: Folder? { folderID.flatMap { id in model.folders.first { $0.id == id } } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             field
                 .padding(.top, 12)
+            if let targetFolder {
+                Text("New sources go into \u{201C}\(targetFolder.title)\u{201D}.")
+                    .font(OFFont.ui(12))
+                    .foregroundStyle(.ofMuted)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 6)
+            }
             ScrollView {
                 content
                     .padding(.vertical, 8)
@@ -58,6 +69,8 @@ struct AddSourceView: View {
                 query = pending
                 model.pendingAddSourceURL = nil
             }
+            folderID = model.pendingAddSourceFolderID
+            model.pendingAddSourceFolderID = nil
             fieldFocused = true
         }
         .onDisappear { model.clearFinishedSourceAdds() }
@@ -134,7 +147,7 @@ struct AddSourceView: View {
                     HStack {
                         sectionLabel("\(links.count) links")
                         Spacer()
-                        Button("Add All") { links.forEach { model.beginAddSource(url: $0) } }
+                        Button("Add All") { links.forEach { model.beginAddSource(url: $0, folderID: folderID) } }
                             .buttonStyle(.plain)
                             .font(OFFont.ui(13, .medium))
                             .foregroundStyle(.ofAccent)
@@ -143,7 +156,7 @@ struct AddSourceView: View {
                 }
                 ForEach(links, id: \.self) { link in
                     AddSourceRow(title: Self.shortLink(link), subtitle: "Link", host: URLHost.host(of: link),
-                                 imageUrl: nil, url: link, inLibrary: false)
+                                 imageUrl: nil, url: link, inLibrary: false, folderID: folderID)
                 }
                 if links.count <= 1 {
                     if !links.isEmpty, !results.isEmpty {
@@ -152,7 +165,7 @@ struct AddSourceView: View {
                     ForEach(results) { r in
                         AddSourceRow(title: r.title, subtitle: r.kind == .podcast ? "Podcast · \(r.subtitle)" : r.subtitle,
                                      host: URLHost.host(of: r.siteUrl ?? r.feedUrl), imageUrl: r.imageUrl, url: r.feedUrl,
-                                     inLibrary: model.hasSource(feedUrl: r.feedUrl))
+                                     inLibrary: model.hasSource(feedUrl: r.feedUrl), folderID: folderID)
                     }
                     if results.isEmpty, links.isEmpty, !searching {
                         note(searchError
@@ -245,7 +258,7 @@ struct AddSourceView: View {
 
     /// Return adds what was pasted; a name just searches (results update as you type).
     private func submit() {
-        links.forEach { model.beginAddSource(url: $0) }
+        links.forEach { model.beginAddSource(url: $0, folderID: folderID) }
     }
 
     /// Debounced search for a name (or a single link, which may also be a name like "node.js").
@@ -316,6 +329,8 @@ private struct AddSourceRow: View {
     /// What gets added: a feed URL from search, or the pasted link.
     let url: String
     let inLibrary: Bool
+    /// The folder the source goes into; nil is Unfiled.
+    let folderID: Int64?
 
     @Environment(AppModel.self) private var model
     @State private var hovering = false
@@ -372,7 +387,7 @@ private struct AddSourceRow: View {
     private var button: some View {
         let done = inLibrary || state == .added
         Button {
-            model.beginAddSource(url: url)
+            model.beginAddSource(url: url, folderID: folderID)
         } label: {
             ZStack {
                 if state == .adding {

@@ -154,6 +154,9 @@ final class AppModel {
     var isAddSourcePresented = false
     /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
     var pendingAddSourceURL: String?
+    /// Folder the Add source sheet puts what it adds into (the drawer's "Add Source to <Folder>…"); the
+    /// sheet takes it when it opens. nil adds to Unfiled.
+    var pendingAddSourceFolderID: Int64?
     /// Adds started from the Add sources sheet, by the URL added (a feed or a site).
     private(set) var sourceAdds: [String: SourceAddState] = [:]
     var isShortcutsPresented = false
@@ -785,8 +788,8 @@ final class AppModel {
 
     /// "Add sources": start adding without waiting. Detect the feed and store it (it shows in the sidebar),
     /// then fetch it in the background. Progress and errors land in `sourceAdds[url]`, so the sheet can
-    /// stay open for more and closing it doesn't stop an add.
-    func beginAddSource(url: String) {
+    /// stay open for more and closing it doesn't stop an add. A new source goes into `folderID` when given.
+    func beginAddSource(url: String, folderID: Int64? = nil) {
         switch sourceAdds[url] {
         case .adding, .added: return
         case .failed, nil: break
@@ -796,6 +799,7 @@ final class AppModel {
             do {
                 let (source, existed) = try await services.addSource(url: url, fetch: false)
                 sourceAdds[url] = .added
+                if !existed, let folderID { try? await database.moveSource(id: source.id, toFolder: folderID) }
                 await loadSources()
                 guard !existed else { return }
                 _ = try? await services.refresh.refreshSource(id: source.id)
