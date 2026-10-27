@@ -7,12 +7,7 @@ import SwiftUI
 struct CopyToastOverlay: ViewModifier {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    #if os(iOS)
-    /// Clears the floating tab bar on iPhone.
-    private static let bottomInset: CGFloat = 56
-    #else
     private static let bottomInset: CGFloat = 24
-    #endif
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
@@ -65,7 +60,7 @@ private struct CopyToastView: View {
 /// (after a divider).
 struct CopyDigestButtons: View {
     let scope: DigestScope
-    /// Menus that show an icon on every item (the iPhone Sources tab).
+    /// Menus that show an icon on every item (the iPhone Sources screen).
     var icons = false
     @Environment(AppModel.self) private var model
 

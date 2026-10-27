@@ -236,12 +236,6 @@ struct SettingsView: View {
 
     /// Tapping a source title opens its feed and leaves Settings.
     private func open(source: Source) {
-        #if os(iOS)
-        if compact {
-            // Feed first: selecting the tab goes home, then show the source.
-            model.phoneTab = .feed
-        }
-        #endif
         model.isSettingsPresented = false
         model.navigate(sourceID: source.id)
     }

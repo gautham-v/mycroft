@@ -156,80 +156,129 @@ struct FeedSearchButton: View {
     }
 }
 
-
 #if os(iOS)
-/// The iPhone's list title as a menu, in the navigation bar's leading slot: the title with a chevron, which
-/// the system draws as a floating Liquid Glass bubble like the search item opposite. `items` are the menu's
-/// entries (FeedTitleMenu, SavedTitleMenu).
-struct PhoneTitleMenu<Items: View>: View {
-    let title: String
-    @ViewBuilder let items: Items
+/// The iPhone list's floating glass bubbles (navigation bar items the rows scroll behind): the drawer's
+/// hamburger at the leading edge (`showsMenu`; a source's feed pushed from Manage sources has the system
+/// back button instead), the list's title in the middle and a search button at the trailing edge. While
+/// searching, a search field takes the middle and a Cancel button the trailing edge.
+struct PhoneListToolbar: ToolbarContent {
+    var showsMenu: Bool
+    @Environment(AppModel.self) private var model
+    @Environment(\.phoneDrawer) private var drawer
 
-    var body: some View {
-        Menu {
-            items
-        } label: {
-            HStack(spacing: 5) {
-                Text(title)
+    var body: some ToolbarContent {
+        if model.isSearchOpen {
+            ToolbarItem(placement: .topBarLeading) { PhoneSearchField() }
+                .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Cancel search", systemImage: "xmark") { model.closeSearch() }
+                    .labelStyle(.iconOnly)
+                    .tint(.ofInk)
+            }
+        } else {
+            ToolbarItem(placement: .topBarLeading) {
+                if showsMenu {
+                    Button(action: drawer.open) {
+                        Image("ph.menu")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                    }
+                    .tint(.ofInk)
+                    .accessibilityLabel("Menu")
+                }
+            }
+            .sharedBackgroundVisibility(showsMenu ? .automatic : .hidden)
+            ToolbarItem(placement: .principal) {
+                Text(model.listTitle)
                     .font(OFFont.ui(17, .semibold))
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.ofMuted)
+                    .padding(.horizontal, 18)
+                    .frame(height: 44)
+                    .glassEffect(.regular, in: .capsule)
+                    .accessibilityAddTraits(.isHeader)
             }
-            .padding(.horizontal, 4)
+            .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Search", systemImage: "magnifyingglass") { model.openSearch() }
+                    .labelStyle(.iconOnly)
+                    .tint(.ofInk)
+            }
         }
-        .menuIndicator(.hidden)
-        .accessibilityLabel("\(title), switch view")
     }
 }
 
-/// The Feed tab's title menu: the content-type views (All, Articles, Posts, Video, Podcasts, less the ones hidden
-/// in Settings; Saved and Highlights live in the Saved tab), then the folders, the current one checked (none
-/// while a source shows), then Copy Last 24 Hours / 7 Days of what the list shows.
-struct FeedTitleMenu: View {
+/// The search field that replaces the title while searching on the iPhone: a glass capsule bound to
+/// `AppModel.searchDraft`, focused when it appears; Search commits right away.
+private struct PhoneSearchField: View {
+    @Environment(AppModel.self) private var model
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        @Bindable var model = model
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.ofMuted)
+            TextField("", text: $model.searchDraft, prompt: Text(model.searchPlaceholder).foregroundStyle(.ofFaint))
+                .font(OFFont.ui(17))
+                .foregroundStyle(.ofInk)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($focused)
+                .onSubmit { model.flushSearch() }
+        }
+        .padding(.horizontal, 14)
+        // Navigation bar items size to their content: fill the bar up to the Cancel button.
+        .frame(width: max(200, UIScreen.main.bounds.width - 128))
+        .frame(height: 44)
+        .glassEffect(.regular, in: .capsule)
+        .onAppear { focused = true }
+        .accessibilityLabel("Search")
+    }
+}
+
+/// The big "Saved  Highlights" tabs at the top of the Saved and Highlights lists, 30pt: the inactive one
+/// faint, the active one ink with a marker swipe behind its lower half.
+struct SavedTabs: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        PhoneTitleMenu(title: model.listTitle) {
-            ForEach(Self.views.filter { !model.isSidebarViewHidden(.view($0)) }) { view in
-                Toggle(view.title, isOn: Binding(
-                    get: { model.selectedView == view && !model.isInSourceFeed },
-                    set: { _ in model.navigate(view: view) }))
-            }
-            if !model.orderedFolders.isEmpty {
-                Divider()
-                ForEach(model.orderedFolders) { folder in
-                    Toggle(folder.title, isOn: Binding(
-                        get: { model.selectedFolderID == folder.id && model.selectedSourceID == nil },
-                        set: { _ in model.navigate(folderID: folder.id) }))
+        HStack(alignment: .firstTextBaseline, spacing: 22) {
+            tab("Saved", isOn: !model.showsHighlights) { model.navigate(view: .saved) }
+            tab("Highlights", isOn: model.showsHighlights) { model.showHighlights() }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
+
+    private func tab(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            if !isOn { action() }
+        } label: {
+            Text(title)
+                .font(OFFont.ui(30, .semibold))
+                .tracking(-0.6)
+                .foregroundStyle(isOn ? Color.ofInk : Color.ofFaint)
+                .background(alignment: .bottom) {
+                    if isOn {
+                        UnevenRoundedRectangle(topLeadingRadius: 3, bottomLeadingRadius: 6, bottomTrailingRadius: 4, topTrailingRadius: 7, style: .continuous)
+                            .fill(Color.ofMarker)
+                            .frame(height: 12)
+                            .padding(.horizontal, -6)
+                            .rotationEffect(.degrees(-1.2))
+                            .offset(y: -3)
+                    }
                 }
-            }
-            Divider()
-            CopyDigestButtons(scope: model.currentDigestScope)
+                .contentShape(Rectangle())
         }
-    }
-
-    /// The sidebar's views that belong on the Feed tab.
-    private static let views: [FeedView] = SidebarViewItem.ordered.compactMap {
-        if case .view(let view) = $0, view != .saved { view } else { nil }
-    }
-}
-
-/// The Saved tab's title menu: Saved or Highlights.
-struct SavedTitleMenu: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        PhoneTitleMenu(title: model.showsHighlights ? "Highlights" : "Saved") {
-            Toggle("Saved", isOn: Binding(
-                get: { !model.showsHighlights },
-                set: { _ in if model.showsHighlights { model.navigate(view: .saved) } }))
-            Toggle("Highlights", isOn: Binding(
-                get: { model.showsHighlights },
-                set: { _ in if !model.showsHighlights { model.showHighlights() } }))
-        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 #endif

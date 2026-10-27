@@ -182,8 +182,6 @@ enum Metrics {
     static let readerActionSpacing: CGFloat = 4
     static let readerActionGlyph: CGFloat = 15
     static let touchTarget: CGFloat = 44
-    /// Phone tab bar item min height.
-    static let tabBarItemHeight: CGFloat = 52
     /// Sidebar row height and corner radius.
     static let sidebarRowHeight: CGFloat = 34
     static let rowRadius: CGFloat = 6

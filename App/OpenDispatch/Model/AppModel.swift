@@ -37,11 +37,6 @@ struct ReaderTabDrag: Equatable, Sendable {
     var payload: String { "openfeed-tab:\(tabID.uuidString)" }
 }
 
-/// Phone tab bar (openfeed-app.tsx): Feed / Sources / Saved / Settings.
-enum PhoneTab: String, Hashable, CaseIterable, Sendable {
-    case feed, sources, saved, settings
-}
-
 /// What a digest covers: a view (All, Saved, ...), a folder or a source (Copy Last 24 Hours / 7 Days).
 enum DigestScope: Equatable, Sendable {
     case view(FeedView)
@@ -100,13 +95,9 @@ final class AppModel {
     var selectedItemID: Int64? { panes[focusedPane].activeTab.itemID }
     /// Tablet/desktop: with nothing opened, show the first item (the web app's md+ behavior). Set by RootView.
     var prefersDefaultSelection = false
-    /// The Highlights view (sidebar, Saved tab on iPhone) is showing instead of an item list: the articles
+    /// The Highlights view (sidebar, the iPhone drawer) is showing instead of an item list: the articles
     /// that have highlights, which HighlightStore lists. Any other navigation turns it off.
     private(set) var showsHighlights = false
-    /// Phone tab. Setting it navigates like the web tab bar (Feed → All, Saved → Saved view).
-    var phoneTab: PhoneTab = .feed {
-        didSet { if phoneTab != oldValue { didSelectTab(phoneTab) } }
-    }
 
     // MARK: Search (use-search.ts): the draft follows typing; it is committed after 250 ms.
 
@@ -309,7 +300,7 @@ final class AppModel {
 
     var activeSource: Source? { selectedSourceID.flatMap { id in sources.first { $0.id == id } } }
     var activeFolder: Folder? { selectedFolderID.flatMap { id in folders.first { $0.id == id } } }
-    /// A source or folder feed (belongs to the Sources tab on phones).
+    /// A source or folder feed (not one of the views).
     var isInSourceFeed: Bool { selectedSourceID != nil || selectedFolderID != nil }
 
     /// Header title: source title, folder title, or the view name.
@@ -365,7 +356,7 @@ final class AppModel {
         SourceList.inFolder(sources, folderId)
     }
 
-    /// Every source of a folder, pinned and hidden included (iPhone Sources tab, which has no such groups).
+    /// Every source of a folder, pinned and hidden included (iPhone Sources screen, which has no such groups).
     func allSources(inFolder folderId: Int64?) -> [Source] {
         SourceList.allInFolder(sources, folderId)
     }
@@ -442,14 +433,6 @@ final class AppModel {
         setActiveItem(nil)
         resetSearchState()
         if changed { Task { await loadItems(reset: true) } }
-    }
-
-    private func didSelectTab(_ tab: PhoneTab) {
-        switch tab {
-        case .feed: goHome()
-        case .saved: navigate(view: .saved)
-        case .sources, .settings: break
-        }
     }
 
     // MARK: Items
