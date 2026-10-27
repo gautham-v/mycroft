@@ -377,3 +377,44 @@ final class TranscriptStub: URLProtocol, @unchecked Sendable {
 
     override func stopLoading() {}
 }
+
+@Suite("Transcripts: Substack")
+struct SubstackTranscriptTests {
+    private func item(url: String, audio: String?) -> Item {
+        Item(sourceId: 1, guid: url, url: url, title: "Ep", publishedAt: Date(), audioUrl: audio)
+    }
+
+    @Test func recognizesSubstackEpisodes() {
+        #expect(SubstackTranscript.isSubstack(item(url: "https://www.lennysnewsletter.com/p/pmf", audio: "https://api.substack.com/feed/podcast/1/a.mp3")))
+        #expect(SubstackTranscript.isSubstack(item(url: "https://someone.substack.com/p/ep", audio: "https://cdn.example.com/a.mp3")))
+        #expect(!SubstackTranscript.isSubstack(item(url: "https://show.example.com/ep1", audio: "https://cdn.example.com/a.mp3")))
+    }
+
+    @Test func postAPIURL() {
+        #expect(SubstackTranscript.postAPIURL("https://www.lennysnewsletter.com/p/an-86-minute-guide-to-finding-pmf?utm_source=rss#x")
+                == "https://www.lennysnewsletter.com/api/v1/posts/an-86-minute-guide-to-finding-pmf")
+        #expect(SubstackTranscript.postAPIURL("https://www.lennysnewsletter.com/about") == nil)
+    }
+
+    @Test func linksFromThePostJSONAndSpeakerNames() throws {
+        let post = #"""
+        {"type":"podcast","podcastUpload":{"transcription":{
+          "speaker_map":{"SPEAKER_0":"Rob Snyder","SPEAKER_1":"Lenny Rachitsky"},
+          "cdn_url":"https://substackcdn.com/x/transcription.json?Signature=a",
+          "signed_captions":[{"language":"en","url":"https://substackcdn.com/x/en.vtt?Signature=b"}]}}}
+        """#
+        let links = SubstackTranscript.transcriptLinks(postJSON: Data(post.utf8))
+        #expect(links.map(\.url) == ["https://substackcdn.com/x/transcription.json?Signature=a", "https://substackcdn.com/x/en.vtt?Signature=b"])
+        #expect(links.map(\.format) == [.json, .vtt])
+
+        let body = #"[{"start":0.22,"end":6.8,"text":" The theory behind a sales call.","speaker":"SPEAKER_0","words":[]},{"start":13.5,"end":15,"text":"How can people use this?","speaker":"SPEAKER_1"}]"#
+        let segs = SubstackTranscript.segments(body, link: links[0])
+        #expect(segs.map(\.speaker) == ["Rob Snyder", "Lenny Rachitsky"])
+        #expect(segs.map(\.text) == ["The theory behind a sales call.", "How can people use this?"])
+        #expect(segs.first?.start == 0.22)
+    }
+
+    @Test func noTranscriptionMeansNoLinks() {
+        #expect(SubstackTranscript.transcriptLinks(postJSON: Data(#"{"type":"newsletter"}"#.utf8)).isEmpty)
+    }
+}

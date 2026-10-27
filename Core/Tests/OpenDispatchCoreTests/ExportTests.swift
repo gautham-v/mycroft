@@ -308,6 +308,18 @@ struct CopyItemTests {
         #expect(out.note == nil)
     }
 
+    @Test func blogPostWithAnEpisodeGetsItsTranscript() async throws {
+        let db = try Fixture.db()
+        let src = try Fixture.source(db, title: "Lenny's Newsletter", url: "https://www.lennysnewsletter.com", kind: .rss, group: "blogs")
+        let id = try insert(db, src, ParsedItem(guid: "p1", url: "https://www.lennysnewsletter.com/p/pmf", title: "Finding PMF",
+                                                publishedAt: date(2026, 10, 25), audioUrl: "https://api.substack.com/feed/podcast/1/a.mp3"))
+        let segs = [Transcript.Segment(start: 0, speaker: "Rob Snyder", text: "Pull is everything.")]
+        let out = try await service(db, transcripts: StubTranscripts(result: Transcript(origin: .substack, segments: segs))).markdown(forItem: id)
+        #expect(out.markdown.contains("## Show notes\n\nBody text."))
+        #expect(out.markdown.contains("## Transcript (from Substack)\n\n[0:00] Rob Snyder: Pull is everything."))
+        #expect(out.note == nil)
+    }
+
     @Test func podcastWithoutTranscriptUsesShowNotes() async throws {
         let db = try Fixture.db()
         let src = try Fixture.source(db, title: "The Show", url: "https://show.example.com", kind: .podcast, group: "podcast")

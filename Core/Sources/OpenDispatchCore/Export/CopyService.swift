@@ -34,7 +34,7 @@ public struct CopyService: Sendable {
     }
 
     /// One item. Articles: the cached (or freshly extracted) text. Videos: description + transcript.
-    /// Podcasts: show notes + transcript. A non-empty `prompt` goes first, followed by a `---` rule.
+    /// Podcasts (and posts with an audio episode, like Substack podcasts): show notes + transcript. A non-empty `prompt` goes first, followed by a `---` rule.
     /// Throws QueryError.notFound for an unknown id; extraction errors propagate.
     public func markdown(forItem id: Int64, prompt: String? = nil) async throws -> CopiedText {
         let pair = try await database.reader.read { db -> (Item, Source)? in
@@ -42,9 +42,11 @@ public struct CopyService: Sendable {
             return (item, src)
         }
         guard let (item, source) = pair else { throw QueryError.notFound("Item") }
-        let isMedia = source.kind == .youtube || source.kind == .podcast
+        let isVideo = source.kind == .youtube
+        // A blog post with an audio enclosure is an episode too (Substack podcasts): show notes + transcript.
+        let isMedia = isVideo || source.kind == .podcast || item.audioUrl != nil
 
-        async let html = articleHTML(id, source)
+        async let html = articleHTML(id, source, isMedia: isMedia)
         async let transcript = isMedia ? fetchTranscript(item, source) : nil
         let extracted = try await html
         let spoken = await transcript
@@ -55,8 +57,7 @@ public struct CopyService: Sendable {
         var sections: [String] = []
         var words = 0
         var note: String?
-        switch source.kind {
-        case .rss, .page:
+        if !isMedia {
             var body = extracted.map { MarkdownConverter.convert($0, baseURL: item.url) } ?? ""
             if body.isEmpty {
                 body = summaryMarkdown()
@@ -64,8 +65,7 @@ public struct CopyService: Sendable {
             }
             if !body.isEmpty { sections.append(body) }
             words += MarkdownConverter.wordCount(body)
-        case .youtube, .podcast:
-            let isVideo = source.kind == .youtube
+        } else {
             let label = isVideo ? "description" : "show notes"
             var body = isVideo ? summaryMarkdown() : (extracted.map { MarkdownConverter.convert($0, baseURL: item.url) } ?? "")
             if body.isEmpty { body = summaryMarkdown() }
@@ -100,11 +100,11 @@ public struct CopyService: Sendable {
         return CopiedText(markdown: ItemMarkdown.withPrompt(out.markdown, prompt), wordCount: out.words, itemCount: items.count)
     }
 
-    /// The item's article (or show notes) HTML. A podcast whose notes can't be fetched falls back to the feed summary.
-    private func articleHTML(_ id: Int64, _ source: Source) async throws -> String? {
+    /// The item's article (or show notes) HTML. An episode whose notes can't be fetched falls back to the feed summary.
+    private func articleHTML(_ id: Int64, _ source: Source, isMedia: Bool) async throws -> String? {
         do {
             return try await content.content(forItem: id).contentHtml
-        } catch where source.kind == .podcast {
+        } catch where isMedia && source.kind != .youtube {
             return nil
         }
     }
