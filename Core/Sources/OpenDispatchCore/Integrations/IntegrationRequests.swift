@@ -97,7 +97,7 @@ public enum IntegrationRequests {
     }
 
     /// Wraps a network failure (timeout, DNS, refused, bad URL) as a 504/502 send error.
-    private static func perform(
+    static func perform(
         _ label: String, session: URLSession, _ op: () async throws -> (Data, HTTPURLResponse)
     ) async throws -> (Data, HTTPURLResponse) {
         do {

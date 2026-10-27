@@ -54,7 +54,9 @@ struct ReaderItemView: View {
     var pane = 0
 
     @Environment(AppModel.self) private var model
+    @Environment(HighlightStore.self) private var highlights
     @Environment(\.openURL) private var openURL
+    @Environment(ReaderSpeech.self) private var speech
 
     @Environment(\.displayScale) private var displayScale
     #if os(iOS)
@@ -62,6 +64,8 @@ struct ReaderItemView: View {
     #endif
 
     @State private var content: ReaderContentState = .loading
+    /// Read aloud's hold on this article's web view.
+    @State private var speechPage = ReaderSpeechPage()
 
     // MARK: Derived (same rules as reader.tsx)
 
@@ -129,8 +133,22 @@ struct ReaderItemView: View {
     }
 
     private var appearance: ReaderHTML.Appearance {
-        ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, theme: settings.theme, wide: wide,
+        ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, leading: settings.lineSpacing,
+                              theme: settings.theme, wide: wide,
                               columnWidth: settings.readerColumnWidth)
+    }
+
+    /// Listen (read aloud) works on anything with an extracted body.
+    private var canListen: Bool { contentHTML != nil && !isVideo }
+
+    /// Listen button and menu command: start reading, or pause / resume when already reading this article.
+    private func listen() {
+        guard canListen else { return }
+        speech.toggle(page: speechPage, item: item, settings: settings)
+    }
+
+    private var listenLabel: String {
+        speech.owns(speechPage) ? (speech.state == .playing ? "Pause reading" : "Resume reading") : "Listen"
     }
 
     private var buttonSize: CGFloat { compact ? Metrics.touchTarget : Metrics.readerActionButton }
@@ -156,6 +174,7 @@ struct ReaderItemView: View {
         }
         .scrollContentBackground(.hidden)
         .overlayScrollers()
+        .highlightsPanel(item: item, pane: pane, compact: compact)
         // The article scrolls under the toolbar, which is frosted.
         .safeAreaInset(edge: .top, spacing: 0) {
             if !compact { toolbar }
@@ -165,6 +184,15 @@ struct ReaderItemView: View {
         .toolbar { if compact { phoneToolbar } }
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .readerSpeech(page: speechPage, pane: pane, compact: compact, contentKey: bodyHTML, listen: listen)
+        .onAppear {
+            // Explicit captures: the page owns this closure, and capturing the view would keep its state
+            // (the page itself and the article HTML) alive after the article closes.
+            speechPage.onReadAloudFromSelection = { [weak speechPage, speech, model, item] in
+                guard let speechPage else { return }
+                speech.toggle(page: speechPage, item: item, settings: model.settings, from: .selection)
+            }
+        }
         .task { await load(refresh: false) }
         // Reload Article (⇧⌘R, or the article's right-click menu).
         .onChange(of: model.articleReloads[item.id]) { _, _ in Task { await load(refresh: true) } }
@@ -190,6 +218,18 @@ struct ReaderItemView: View {
                       systemImage: (item.isSaved ? OFIcon.bookmarkFilled : OFIcon.bookmark).rawValue)
             }
             .tint(item.isSaved ? Color.ofAccent : Color.primary)
+            if canListen {
+                Button(action: listen) {
+                    Label(listenLabel, systemImage: OFIcon.headphones.rawValue)
+                }
+                .tint(speech.owns(speechPage) ? Color.ofAccent : Color.primary)
+            }
+            if !isVideo {
+                Button { highlights.isSheetPresented.toggle() } label: {
+                    Label("Highlights & Notes", systemImage: OFIcon.highlighter.rawValue)
+                }
+                .tint(highlights.isSheetPresented ? Color.ofAccent : Color.primary)
+            }
             if let url = itemURL {
                 Button { openURL(url) } label: {
                     Label("Open original", systemImage: OFIcon.external.rawValue)
@@ -231,6 +271,18 @@ struct ReaderItemView: View {
             .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
             .help(item.isSaved ? "Remove from saved" : "Save")
             .accessibilityLabel(item.isSaved ? "Remove from saved" : "Save")
+
+            if canListen {
+                Button(action: listen) {
+                    OFIcon.headphones.image.foregroundStyle(speech.owns(speechPage) ? Color.ofAccent : Color.ofInk)
+                }
+                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                .help(speech.owns(speechPage) ? "Pause or resume reading (⇧⌘L)" : "Listen (⇧⌘L)")
+                .accessibilityLabel(listenLabel)
+            }
+            if !isVideo {
+                HighlightsToolbarButton(pane: pane, compact: compact, size: buttonSize, glyph: glyphSize)
+            }
 
             if let url = itemURL {
                 Button { openURL(url) } label: { OFIcon.external.image }
@@ -289,7 +341,7 @@ struct ReaderItemView: View {
             case .ok:
                 ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
                                      onReload: { model.reloadArticle(item) },
-                                     onCopyMarkdown: { model.copyMarkdown(item: item) })
+                                     onCopyMarkdown: { model.copyMarkdown(item: item) }, speechPage: speechPage)
             case .loading:
                 VStack(alignment: .leading, spacing: 0) {
                     heroImage
@@ -368,11 +420,8 @@ struct ReaderItemView: View {
     }
 
     private var headlineText: some View {
-        let font: Font = settings.readerFont == .sans
-            ? OFFont.ui(headlineSize, .semibold)
-            : OFFont.serif(headlineSize, .semibold)
-        return Text(item.item.title)
-            .font(font)
+        Text(item.item.title)
+            .font(OFFont.reader(settings.readerFont, headlineSize, .semibold))
             .tracking(-0.01 * headlineSize)
             .foregroundStyle(.ofInk)
             .multilineTextAlignment(.leading)
@@ -414,9 +463,8 @@ struct ReaderItemView: View {
             heroImage
             if !summary.isEmpty {
                 Text(summary)
-                    .font(settings.readerFont == .sans ? OFFont.ui(OFFont.bodySize(settings.textSize))
-                                                       : OFFont.serif(OFFont.bodySize(settings.textSize)))
-                    .lineSpacing(OFFont.bodySize(settings.textSize) * 0.4)
+                    .font(OFFont.reader(settings.readerFont, OFFont.bodySize(settings.textSize)))
+                    .lineSpacing(OFFont.bodySize(settings.textSize) * (settings.lineSpacing.lineHeight - 1.2))
                     .foregroundStyle(.ofInk)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -507,5 +555,6 @@ struct ReaderSkeleton: View {
 }
 
 #Preview {
-    ReaderView().environment(AppModel.preview())
+    let model = AppModel.preview()
+    return ReaderView().environment(model).environment(HighlightStore(model: model)).environment(ReaderSpeech())
 }

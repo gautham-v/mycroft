@@ -94,16 +94,19 @@ final class ReaderFittedWebView: WKWebView {
     var forwardsVerticalScroll = true
     /// The article's actions, added to WebKit's right-click menu above Inspect Element.
     var extraMenuItems: (() -> [NSMenuItem])?
+    /// Items at the very top of the menu (the highlight colors), with their own trailing separator.
+    var topMenuItems: (() -> [NSMenuItem])?
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        for (i, item) in (topMenuItems?() ?? []).enumerated() { menu.insertItem(item, at: i) }
         var extra = extraMenuItems?() ?? []
         guard !extra.isEmpty else { return }
         // WebKit's Reload would only reload the extracted HTML; Reload Article re-extracts.
         menu.items.removeAll { $0.identifier?.rawValue == "WKMenuItemIdentifierReload" }
         // On a link WebKit already offers Open Link and Copy Link; keep only Reload Article.
         if menu.items.contains(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierCopyLink" }) {
-            extra = extra.filter { $0.title == "Reload Article" }
+            extra = extra.filter { $0.title == "Reload Article" || $0.title == ReaderSpeechMenu.title }
         }
         var at = menu.items.firstIndex { $0.identifier?.rawValue == "WKMenuItemIdentifierInspectElement" } ?? menu.items.count
         if at > 0, !menu.items[at - 1].isSeparatorItem {
@@ -215,5 +218,26 @@ enum ReaderScrollKeys {
     }
 }
 #else
-typealias ReaderFittedWebView = WKWebView
+/// The article's web view on iOS: its text-selection edit menu gets Highlight and Add Note first and the
+/// article's other actions (Read Aloud from Here) last.
+final class ReaderFittedWebView: WKWebView {
+    var highlightMenu: (() -> [UIMenuElement])?
+    var extraMenuElements: (() -> [UIMenuElement])?
+
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard builder.system == .context else { return }
+        if let elements = highlightMenu?(), !elements.isEmpty {
+            builder.insertChild(UIMenu(options: .displayInline, children: elements), atStartOfMenu: .standardEdit)
+        }
+        if let extra = extraMenuElements?(), !extra.isEmpty {
+            builder.insertChild(UIMenu(options: .displayInline, children: extra), atEndOfMenu: .standardEdit)
+        }
+    }
+}
 #endif
+
+/// Scrolling the reader's ScrollView to a highlight: the marker the article's web view places there.
+enum HighlightScroll {
+    static func markerID(pane: Int) -> String { "highlight-marker-\(pane)" }
+}

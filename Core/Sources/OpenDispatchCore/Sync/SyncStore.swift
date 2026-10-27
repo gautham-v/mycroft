@@ -30,6 +30,9 @@ public enum SyncStore {
         for (item, feedUrl) in try savedItems(db) {
             add(savedItemRecord(item, sourceFeedUrl: feedUrl))
         }
+        for h in try Highlight.fetchAll(db) {
+            add(highlightRecord(h))
+        }
         if let json = try Queries.meta(db, MetaKey.syncedSettings) {
             add(SyncRecord(type: .settings, name: SyncRecord.settingsName, fields: ["json": .string(json)]))
         }
@@ -82,6 +85,27 @@ public enum SyncStore {
         if let v = it.durationSec { fields["durationSec"] = .int(Int64(v)) }
         if let v = it.audioUrl { fields["audioUrl"] = .string(v) }
         return SyncRecord(type: .savedItem, name: SyncRecord.savedItemName(sourceFeedUrl: sourceFeedUrl, guid: it.guid), fields: fields)
+    }
+
+    static func highlightRecord(_ h: Highlight) -> SyncRecord {
+        var fields: [String: SyncField] = [
+            "sourceFeedUrl": .string(h.sourceFeedUrl),
+            "itemGuid": .string(h.itemGuid),
+            "itemUrl": .string(h.itemUrl),
+            "itemTitle": .string(h.itemTitle),
+            "sourceTitle": .string(h.sourceTitle),
+            "text": .string(h.text),
+            "color": .string(h.color.rawValue),
+            "createdAt": .date(h.createdAt),
+            "updatedAt": .date(h.updatedAt),
+        ]
+        if let v = h.itemAuthor { fields["itemAuthor"] = .string(v) }
+        if let v = h.itemPublishedAt { fields["itemPublishedAt"] = .date(v) }
+        if !h.prefix.isEmpty { fields["prefix"] = .string(h.prefix) }
+        if !h.suffix.isEmpty { fields["suffix"] = .string(h.suffix) }
+        if !h.note.isEmpty { fields["note"] = .string(h.note) }
+        if let v = h.readwiseId { fields["readwiseId"] = .int(v) }
+        return SyncRecord(type: .highlight, name: SyncRecord.highlightName(id: h.id), fields: fields)
     }
 
     /// Saved items with their source's feed URL.
@@ -183,6 +207,8 @@ public enum SyncStore {
         public var libraryChanged = false
         /// Sources inserted from iCloud; they have no items until fetched.
         public var addedSourceIDs: [Int64] = []
+        /// Highlights were added, changed or removed (reload the reader's highlights and the Highlights view).
+        public var highlightsChanged = false
         /// New settings JSON from iCloud.
         public var settingsJSON: String?
         /// Webhook URL or Readwise token changed.
@@ -312,6 +338,37 @@ public enum SyncStore {
             }
             return true
 
+        case .highlight:
+            guard r.name.hasPrefix(SyncRecord.highlightPrefix),
+                  let feedUrl = r["sourceFeedUrl"]?.stringValue, let guid = r["itemGuid"]?.stringValue,
+                  let text = r["text"]?.stringValue else { return false }
+            // Needs no item or source: a highlight stands on its own. A change from another device is
+            // applied without readwise_pending, so it is not sent to Readwise from here.
+            let incoming = Highlight(
+                id: String(r.name.dropFirst(SyncRecord.highlightPrefix.count)), sourceFeedUrl: feedUrl, itemGuid: guid,
+                itemUrl: r["itemUrl"]?.stringValue ?? "", itemTitle: r["itemTitle"]?.stringValue ?? "",
+                sourceTitle: r["sourceTitle"]?.stringValue ?? "", itemAuthor: r["itemAuthor"]?.stringValue,
+                itemPublishedAt: r["itemPublishedAt"]?.dateValue, text: text,
+                prefix: r["prefix"]?.stringValue ?? "", suffix: r["suffix"]?.stringValue ?? "",
+                note: r["note"]?.stringValue ?? "",
+                color: r["color"]?.stringValue.flatMap(HighlightColor.init(rawValue:)) ?? .yellow,
+                createdAt: r["createdAt"]?.dateValue ?? now, updatedAt: r["updatedAt"]?.dateValue ?? now,
+                readwiseId: r["readwiseId"]?.intValue)
+            if let existing = try Highlight.fetchOne(db, key: incoming.id) {
+                var merged = incoming
+                merged.readwisePending = existing.readwisePending
+                // An id this device got from Readwise but hasn't uploaded yet must not be lost to an older copy.
+                merged.readwiseId = incoming.readwiseId ?? existing.readwiseId
+                if merged != existing {
+                    try merged.update(db)
+                    result.highlightsChanged = true
+                }
+            } else {
+                try incoming.insert(db)
+                result.highlightsChanged = true
+            }
+            return true
+
         case .settings:
             guard let json = r["json"]?.stringValue else { return false }
             if try Queries.meta(db, MetaKey.syncedSettings) != json {
@@ -353,6 +410,12 @@ public enum SyncStore {
             for (it, feedUrl) in try savedItems(db) where SyncRecord.savedItemName(sourceFeedUrl: feedUrl, guid: it.guid) == d.name {
                 try Queries.setSaved(db, itemId: it.id, saved: false)
                 result.libraryChanged = true
+            }
+        case .highlight:
+            // Removed elsewhere: gone here too, and not deleted from Readwise by this device.
+            if d.name.hasPrefix(SyncRecord.highlightPrefix),
+               try Highlight.deleteOne(db, key: String(d.name.dropFirst(SyncRecord.highlightPrefix.count))) {
+                result.highlightsChanged = true
             }
         case .settings:
             // Keep this device's settings; the next diff uploads them again.

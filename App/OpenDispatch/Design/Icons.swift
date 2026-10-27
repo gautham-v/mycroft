@@ -34,7 +34,7 @@ enum OFIcon: String, CaseIterable {
     case play = "play.fill"
     /// VideoIcon (Video view)
     case video = "play.rectangle"
-    /// HeadphonesIcon (Podcasts view, podcast thumbnails)
+    /// HeadphonesIcon (Podcasts view, podcast thumbnails, the reader's Listen button)
     case headphones = "headphones"
     /// CommentIcon (HN comments)
     case comment = "bubble.left"
@@ -64,6 +64,8 @@ enum OFIcon: String, CaseIterable {
     case saved = "bookmark.circle"
     /// The quoted post under a quote post on X (list rows)
     case quoted = "arrow.turn.down.right"
+    /// Highlights & Notes (reader bar, sidebar row)
+    case highlighter = "highlighter"
 
     /// macOS draws its toolbar and sidebar icons from our own symbols (Resources/Assets.xcassets/Icons):
     /// thin, rounded 24-unit strokes like the Claude desktop app's, where SF Symbols read heavier. The
@@ -90,6 +92,8 @@ enum OFIcon: String, CaseIterable {
         case .collapse: "of.collapse"
         case .close: "of.close"
         case .plus: "of.plus"
+        case .headphones: "of.headphones"
+        case .highlighter: "of.highlighter"
         default: nil
         }
     }

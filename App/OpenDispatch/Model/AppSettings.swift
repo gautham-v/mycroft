@@ -22,20 +22,56 @@ enum ThemeSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Reader typeface. `serif` is New York (the system serif); Charter and Iowan Old Style ship with macOS
+/// and iOS, so nothing is bundled.
 enum ReaderFontSetting: String, Codable, CaseIterable, Identifiable, Sendable {
-    case serif, sans
-    var id: String { rawValue }
-    var label: String { self == .serif ? "Serif" : "Sans" }
-}
-
-enum TextSizeSetting: String, Codable, CaseIterable, Identifiable, Sendable {
-    case s, m, l
+    case sans, serif, charter, iowan
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .s: "Small"
-        case .m: "Medium"
-        case .l: "Large"
+        case .sans: "Sans"
+        case .serif: "New York"
+        case .charter: "Charter"
+        case .iowan: "Iowan"
+        }
+    }
+}
+
+/// Reader text size, eight steps (OFFont.bodySize). s / m / l keep their original sizes and raw values,
+/// so saved settings carry over.
+enum TextSizeSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    case xxs, xs, s, m, l, xl, xxl, xxxl
+    var id: String { rawValue }
+    var label: String { "\(OFFont.bodySize(self).formatted()) pt" }
+
+    /// The next step down or up, nil at either end.
+    var smaller: TextSizeSetting? { step(-1) }
+    var larger: TextSizeSetting? { step(1) }
+
+    private func step(_ d: Int) -> TextSizeSetting? {
+        let all = Self.allCases
+        guard let i = all.firstIndex(of: self), all.indices.contains(i + d) else { return nil }
+        return all[i + d]
+    }
+}
+
+/// Reader line height (reader.css data-leading).
+enum LineSpacingSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    case tight, normal, loose
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .tight: "Tight"
+        case .normal: "Normal"
+        case .loose: "Loose"
+        }
+    }
+    /// Line height as a multiple of the font size.
+    var lineHeight: CGFloat {
+        switch self {
+        case .tight: 1.45
+        case .normal: 1.6
+        case .loose: 1.8
         }
     }
 }
@@ -65,6 +101,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var theme: ThemeSetting = .system
     var readerFont: ReaderFontSetting = .sans
     var textSize: TextSizeSetting = .m
+    var lineSpacing: LineSpacingSetting = .normal
     var readerWidth: ReaderWidthSetting = .medium
     /// The article column uses the whole reader pane, ignoring `readerWidth`.
     var fillWindow: Bool = false
@@ -74,6 +111,13 @@ struct AppSettings: Codable, Equatable, Sendable {
     var theater: Bool = true
     /// Copy as Markdown: a line put above the copied text (Settings → Integrations). Empty = none.
     var copyPrompt: String = ""
+    /// Read aloud voice (AVSpeechSynthesisVoice identifier); nil is the best voice installed. Another
+    /// device's voice may not exist here, so readers resolve it through `ReaderSpeechVoices.resolve`.
+    var speechVoice: String?
+    /// Read aloud speed multiplier at the start of each article (one of the podcast player's steps).
+    var speechRate: Float = 1
+    /// Send highlights and notes made on this device to Readwise (when a token is set).
+    var sendHighlightsToReadwise: Bool = true
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -87,11 +131,16 @@ struct AppSettings: Codable, Equatable, Sendable {
         theme = (try? c.decode(ThemeSetting.self, forKey: .theme)) ?? .system
         readerFont = (try? c.decode(ReaderFontSetting.self, forKey: .readerFont)) ?? .sans
         textSize = (try? c.decode(TextSizeSetting.self, forKey: .textSize)) ?? .m
+        lineSpacing = (try? c.decode(LineSpacingSetting.self, forKey: .lineSpacing)) ?? .normal
         readerWidth = (try? c.decode(ReaderWidthSetting.self, forKey: .readerWidth)) ?? .medium
         fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
         copyPrompt = (try? c.decode(String.self, forKey: .copyPrompt)) ?? ""
+        speechVoice = (try? c.decodeIfPresent(String.self, forKey: .speechVoice)) ?? nil
+        let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1
+        speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
+        sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
     }
 
     init() {}

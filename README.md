@@ -16,7 +16,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Feeds refresh on launch, when the app comes to the foreground (if the last fetch is older than 15 minutes), on a timer while it's open (every 15 minutes by default; Settings → Data), and on ⌘R or pull to refresh. On iOS a background refresh task runs when the system allows. Unsaved items older than 14 days are pruned.
 
 **Sidebar**
-- Views: All, Saved, Articles, Posts, Video and Podcasts, with counts.
+- Views: All, Saved, Articles, Posts, Video and Podcasts, with counts, and Highlights under Saved (see below).
 - Folders with drag and drop: move sources between folders, reorder sources and folders. Sources in no folder list flat below the folders.
 - Pin sources to a Pinned group at the top, hide sources into a collapsed Hidden group, rename, remove. ⌘K filters the source list.
 
@@ -24,6 +24,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Selecting an article fetches the page and runs Mozilla Readability (bundled, in a hidden WKWebView with page scripts off), then cleans, sanitizes and caches the text. If the page blocks it, the feed's own full text or a Jina Reader render is used.
 - YouTube videos play in an embedded youtube-nocookie player, full width above the title by default. Podcasts play in a native audio player that remembers your position and has playback speeds from 0.8× to 2×.
 - Mac: reader tabs, shown like a browser's even when there's one (⌘-click a row, or + / ⌘T for a new tab, ⇧⌘T to reopen a closed one; right-click a tab to pin it) and split view (⌥-click a row, or ⌥⌘S), each pane with its own tabs; a full-screen reader (⇧⌘F).
+- Read aloud: the headphones button (⇧⌘L on the Mac) speaks the headline and then the article, a sentence at a time, with the system voices, highlighting the sentence being read and scrolling to keep it in view. A player bar steps sentences, pauses, changes speed (0.8× to 2×) and shows elapsed and estimated time; click or tap a sentence to jump there, or select text and choose Read Aloud from Here. On iPhone it keeps going in the background with lock-screen controls. Pick the voice and starting speed in Settings → Playback; better voices download in System Settings → Accessibility → Spoken Content.
 - Search across titles, summaries, authors and article text (/ or ⌘F).
 - Save, Open original, Share and Send to from the reader.
 
@@ -32,17 +33,24 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Right-click a view, folder or source in the sidebar (or use the filter menu on iPhone) for Copy Last 24 Hours / Copy Last 7 Days: each item's title, source, time, link and a short summary, ready to paste with "brief me on this".
 - Settings → Integrations can add a line above everything you copy, such as "Summarize this in 5 bullets". The app itself has no AI. YouTube captions come from unofficial endpoints and may stop working when YouTube changes them.
 
+**Highlights and notes**
+- Select text in an article and highlight it in yellow, green, blue, pink or purple, or underline it. On the Mac, Control-click (right-click) the selection: the colors and Add Note… come first in the menu, like Apple Books. Control-click a highlight to change its color, edit its note or remove it. On iPhone the edit menu of a selection has Highlight and Add Note, and tapping a highlight offers the same changes.
+- The highlighter button in the reader bar opens Highlights & Notes: this article's highlights in reading order with their notes (editable in place), a click scrolls the article to one, and Copy as Markdown. On iPhone it is a sheet.
+- The Highlights view (sidebar, under Saved with a count; on iPhone the Saved / Highlights control at the top of the Saved tab) lists every article you highlighted, newest activity first, even ones the app no longer has: opening one brings the article back from its source, or opens the original page when the source is gone. Highlights keep their article from being pruned.
+- Highlights are drawn with the CSS Custom Highlight API and found again by their text and the words around it, so they survive a re-extracted article; one that no longer matches stays in the panel, marked as not found.
+
 **Send to**
 - Readwise Reader (paste an access token from readwise.io/access_token) and/or a webhook of your own, set up in Settings → Integrations. With one target the send button sends straight away; with both it asks which.
+- With a Readwise token set, "Send highlights to Readwise" (on by default) sends highlights and notes you make on this device to Readwise through its highlights API, and updates or deletes them there when you edit or remove them. A failure never blocks anything; what is still unsent goes out on the next change or launch.
 - The webhook gets a JSON POST with `id`, `url`, `title`, `author`, `published_at`, `summary` and `source { title, host }`. Each target has a test button: the webhook gets a sample payload marked `"test": true`, and the Readwise token is only checked.
 
 **Sync**
-- iCloud sync is on by default and needs no sign-up: it uses the device's iCloud account and your private CloudKit database. It carries sources (with their folder, order, pin and hidden state), folders, saved items, appearance and playback settings, the webhook URL and the Readwise token (as an end-to-end encrypted field). Feed items are not synced; each device fetches its own.
+- iCloud sync is on by default and needs no sign-up: it uses the device's iCloud account and your private CloudKit database. It carries sources (with their folder, order, pin and hidden state), folders, saved items, highlights and notes, appearance and playback settings, the webhook URL and the Readwise token (as an end-to-end encrypted field). Feed items are not synced; each device fetches its own.
 - A new device takes the library already in iCloud: if it still only has the starter sources it was seeded with, the ones iCloud doesn't have are dropped. A device that was already in use merges its library with iCloud's instead, so nothing on it is lost.
 - Turn it off per device in Settings → Data. Turning it off keeps the local library; turning it back on picks up what changed on both sides.
 
 **Settings**
-- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay, theater layout for videos), Integrations, Data (iCloud sync, refresh interval, database location and size, clear cached article text) and About.
+- On the Mac, Settings (⌘,) opens as a panel over the main window: Sources, Appearance (theme, reader font Sans or Serif, text size, reader width Narrow / Medium / Wide or fill the window), Playback (autoplay and theater layout for videos, Read aloud voice and speed), Integrations, Data (iCloud sync, refresh interval, database location and size, clear cached article text) and About.
 - iPhone uses Liquid Glass system bars and a Feed / Sources / Saved / Settings tab bar.
 
 **Links**
@@ -60,6 +68,7 @@ Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
 | s | Save or unsave |
 | ⇧⌘R | Reload the article (extract it again) |
 | ⇧⌘C | Copy the item as Markdown |
+| ⇧⌘L | Listen to the article (read aloud), pause or resume |
 | g then a / s / v / p | All / Saved / Video / Podcasts |
 | ⌘-click | Open in a new tab |
 | ⌥-click | Open in split view |
@@ -113,7 +122,7 @@ The app icon and in-app logo are rendered from `design/app-icon.svg` with `scrip
 
 **Mac.** Bump `CURRENT_PROJECT_VERSION` (and `MARKETING_VERSION` when it changes) in `App/project.yml`, commit, then run `scripts/release-mac.sh`. It builds from a clean worktree of the commit, archives, signs with Developer ID, notarizes and staples the app and a DMG, and writes a Sparkle `appcast.xml` signed with the EdDSA key in the login keychain (keep a backup with `generate_keys -x`; without it existing installs can't verify updates). It needs `~/.appstoreconnect/opendispatch.env` with an App Store Connect API key for notarization. Output is in `App/build/release/`; publish with the `gh release create v<version> …` command the script prints. Installed copies read `appcast.xml` from the latest release.
 
-**iCloud.** The app uses the CloudKit container `iCloud.com.gauthamv.openfeed`, and every build, local or released, uses its Production environment (`com.apple.developer.icloud-container-environment` in the entitlements), so a Mac built from this checkout and a TestFlight iPhone share one library. Production only has the record types deployed to it. After changing what syncs (`Core/Sources/OpenDispatchCore/Sync/SyncRecord.swift`), update `App/CloudKit/schema.ckdb` to match, import it into Development (CloudKit Console → Import Schema…, or `xcrun cktool import-schema --team-id 26TVJ92MLZ --container-id iCloud.com.gauthamv.openfeed --environment development --file App/CloudKit/schema.ckdb` with a management token from `xcrun cktool save-token`), then use Deploy Schema Changes… before running the new build. Production record types and fields can be added but never removed.
+**iCloud.** The app uses the CloudKit container `iCloud.com.gauthamv.openfeed`, and every build, local or released, uses its Production environment (`com.apple.developer.icloud-container-environment` in the entitlements), so a Mac built from this checkout and a TestFlight iPhone share one library. Production only has the record types deployed to it. Highlights sync as a `Highlight` record type: until it is deployed, highlights stay on the device that made them (they are retried after a relaunch and every 30 minutes) and nothing else is held up. After changing what syncs (`Core/Sources/OpenDispatchCore/Sync/SyncRecord.swift`), update `App/CloudKit/schema.ckdb` to match, import it into Development (CloudKit Console → Import Schema…, or `xcrun cktool import-schema --team-id 26TVJ92MLZ --container-id iCloud.com.gauthamv.openfeed --environment development --file App/CloudKit/schema.ckdb` with a management token from `xcrun cktool save-token`), then use Deploy Schema Changes… before running the new build. Production record types and fields can be added but never removed.
 
 **iOS.** `scripts/release-ios.sh` archives the app from a clean worktree of the commit, uploads it to App Store Connect, waits for processing and adds the build to the TestFlight Internal group (`scripts/asc-distribute.swift`), which doesn't pick up new builds on its own. Bump `CURRENT_PROJECT_VERSION` first; App Store Connect rejects a build number it has seen.
 

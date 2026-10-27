@@ -219,10 +219,16 @@ public enum Queries {
             """, arguments: [html, result.rendered, result.leadImage, itemId])
     }
 
-    /// Delete unsaved items published before `cutoff`. Returns rows removed.
+    /// Delete unsaved items published before `cutoff`, except those with highlights. Returns rows removed.
     @discardableResult
     public static func pruneOldItems(_ db: Database, before cutoff: Date = Retention.cutoff()) throws -> Int {
-        try Item.filter(Item.Columns.isSaved == false && Item.Columns.publishedAt < cutoff).deleteAll(db)
+        try db.execute(sql: """
+            DELETE FROM items WHERE is_saved = 0 AND published_at < ?
+              AND NOT EXISTS (
+                SELECT 1 FROM highlights h JOIN sources s ON s.feed_url = h.source_feed_url
+                WHERE s.id = items.source_id AND h.item_guid = items.guid)
+            """, arguments: [cutoff])
+        return db.changesCount
     }
 
     // MARK: Sources

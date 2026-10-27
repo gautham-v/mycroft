@@ -28,6 +28,7 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["s"], label: "Save or unsave"),
             ShortcutEntry(keys: ["⇧", "⌘", "R"], label: "Reload the article"),
             ShortcutEntry(keys: ["⇧", "⌘", "C"], label: "Copy the article as Markdown"),
+            ShortcutEntry(keys: ["⇧", "⌘", "L"], label: "Listen to the article, pause or resume"),
         ]),
         ShortcutGroup(title: "Views", items: [
             ShortcutEntry(keys: ["g", "a"], label: "All", separator: "then"),

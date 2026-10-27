@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="3300" height="2200">
+ <g id="Notes">
+  <text id="template-version" x="2934" y="1933" style="font-size:13px">Template v.2.0</text>
+ </g>
+ <g id="Guides">
+  <line id="Baseline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="696" y2="696"/>
+  <line id="Capline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="625.541" y2="625.541"/>
+  <line id="Baseline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1556" y2="1556"/>
+  <line id="Capline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1485.54" y2="1485.54"/>
+  <line id="Baseline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1126.0" y2="1126.0"/>
+  <line id="Capline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1055.54" y2="1055.54"/>
+  <line id="left-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="1400.0" x2="1400.0" y1="1030" y2="1150"/>
+  <line id="right-margin" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="1520.0" x2="1520.0" y1="1030" y2="1150"/>
+ </g>
+ <g id="Symbols">
+  <g id="Regular-M">
+   <path d="M1469.375 1135.770C1469.375 1138.186 1467.416 1140.145 1465.000 1140.145L1417.500 1140.145C1415.084 1140.145 1413.125 1138.186 1413.125 1135.770C1413.125 1133.354 1415.084 1131.395 1417.500 1131.395L1465.000 1131.395C1467.416 1131.395 1469.375 1133.354 1469.375 1135.770ZM1485.897 1050.480L1500.290 1064.873C1504.928 1069.511 1504.928 1077.029 1500.290 1081.667L1472.361 1109.596C1472.021 1109.936 1471.654 1110.233 1471.267 1110.486C1470.727 1111.413 1469.845 1112.141 1468.734 1112.467L1426.234 1124.967C1422.621 1126.030 1419.443 1122.333 1421.035 1118.920L1438.535 1081.420C1438.926 1080.584 1439.546 1079.929 1440.287 1079.498C1440.540 1079.113 1440.836 1078.747 1441.174 1078.409L1456.906 1062.676L1469.103 1050.480C1473.741 1045.842 1481.259 1045.842 1485.897 1050.480ZM1433.063 1113.838L1459.195 1106.152L1443.823 1090.780ZM1475.290 1056.667L1463.094 1068.864L1448.687 1083.270L1467.500 1102.083L1494.103 1075.480C1495.323 1074.259 1495.323 1072.281 1494.103 1071.060L1479.710 1056.667C1478.489 1055.447 1476.511 1055.447 1475.290 1056.667Z"/>
+  </g>
+ </g>
+</svg>

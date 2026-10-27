@@ -101,7 +101,7 @@ struct RootView: View {
                 #endif
                 .flushToWindowTop()
         } content: {
-            ItemListView()
+            FeedColumn()
                 .navigationSplitViewColumnWidth(min: Metrics.listMinWidth, ideal: Metrics.listWidth, max: Metrics.listMaxWidth)
                 .flushToWindowTop()
         } detail: {
@@ -161,7 +161,7 @@ struct RootView: View {
                 NavigationStack { SourcesView() }
             }
             Tab("Saved", systemImage: OFIcon.bookmark.rawValue, value: PhoneTab.saved) {
-                NavigationStack { ItemListView() }
+                NavigationStack { SavedTabView() }
             }
             Tab("Settings", systemImage: OFIcon.gear.rawValue, value: PhoneTab.settings) {
                 NavigationStack { SettingsView() }
@@ -201,7 +201,8 @@ private struct MacReaderOverlay: View {
 #endif
 
 #Preview {
-    RootView().environment(AppModel.preview())
+    let model = AppModel.preview()
+    return RootView().environment(model).environment(HighlightStore(model: model))
 }
 
 private extension View {
