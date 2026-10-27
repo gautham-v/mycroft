@@ -269,11 +269,14 @@ final class AppModel {
     /// Items from closed tabs, most recent first (⇧⌘T, the new tab's Recently closed). Session only.
     private(set) var closedItems: [FeedItem] = []
 
-    /// What a tab shows: its item, or with none opened (tablet/desktop) the first in the list.
+    /// What a tab shows: its item, or with none opened (tablet/desktop) the first in the list that
+    /// isn't pinned, so the default tab never repeats a pin (the newest item pinned last launch).
     func item(for tab: ReaderTab) -> FeedItem? {
         if tab.isNew { return nil }
         if let id = tab.itemID { return items.first { $0.id == id } ?? openItems[id] }
-        return prefersDefaultSelection ? items.first : nil
+        guard prefersDefaultSelection else { return nil }
+        let pinned = Set(panes.flatMap { $0.tabs.filter(\.isPinned).compactMap(\.itemID) })
+        return items.first { !pinned.contains($0.id) }
     }
 
     /// What a pane shows: its active tab's item.
