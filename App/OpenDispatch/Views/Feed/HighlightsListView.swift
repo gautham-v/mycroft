@@ -168,17 +168,16 @@ private struct HighlightGroupRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 8)
         .overlay(alignment: .top) {
             if previousID != nil && !isSelected && !hovered {
                 Rectangle()
                     .fill(Color.ofHairline)
                     .frame(height: 1)
-                    .padding(.leading, Metrics.rowDividerInset)
-                    .padding(.trailing, Metrics.rowPaddingH)
+                    .padding(.horizontal, Metrics.rowPaddingH)
                     .allowsHitTesting(false)
             }
         }
+        .padding(.horizontal, 8)
         .onHover { hovered = $0 }
         #if os(macOS)
         .contextMenu {

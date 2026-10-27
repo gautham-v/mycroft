@@ -174,10 +174,10 @@ enum Metrics {
     /// rows keep from the column's sides (8pt row inset + 8pt from the list), so a selected first row
     /// sits evenly in its corner.
     static let listHeaderGap: CGFloat = 15
-    /// Item row padding (px-2.5 py-[11px]) and the inset hairline start (10 + 24 + 12).
+    /// Item row padding (px-2.5 py-[11px]); the hairline between rows is inset by rowPaddingH on both
+    /// sides, lining up with the badge and title.
     static let rowPaddingH: CGFloat = 10
     static let rowPaddingV: CGFloat = 11
-    static let rowDividerInset: CGFloat = 46
     /// Source badge in list rows; reader header badge.
     static let rowBadge: CGFloat = 16
     /// List thumbnail (h-[42px] w-[64px], 3pt corners).

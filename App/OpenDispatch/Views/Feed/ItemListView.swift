@@ -253,8 +253,7 @@ struct ItemListView: View {
                         Rectangle()
                             .fill(Color.ofHairline)
                             .frame(height: 1)
-                            .padding(.leading, Metrics.rowDividerInset)
-                            .padding(.trailing, Metrics.rowPaddingH)
+                            .padding(.horizontal, Metrics.rowPaddingH)
                             .allowsHitTesting(false)
                     }
                 }
