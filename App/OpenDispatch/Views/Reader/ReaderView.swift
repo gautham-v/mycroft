@@ -54,6 +54,7 @@ struct ReaderItemView: View {
     var pane = 0
 
     @Environment(AppModel.self) private var model
+    @Environment(HighlightStore.self) private var highlights
     @Environment(\.openURL) private var openURL
 
     @Environment(\.displayScale) private var displayScale
@@ -157,6 +158,7 @@ struct ReaderItemView: View {
         }
         .scrollContentBackground(.hidden)
         .overlayScrollers()
+        .highlightsPanel(item: item, pane: pane, compact: compact)
         // The article scrolls under the toolbar, which is frosted.
         .safeAreaInset(edge: .top, spacing: 0) {
             if !compact { toolbar }
@@ -191,6 +193,12 @@ struct ReaderItemView: View {
                       systemImage: (item.isSaved ? OFIcon.bookmarkFilled : OFIcon.bookmark).rawValue)
             }
             .tint(item.isSaved ? Color.ofAccent : Color.primary)
+            if !isVideo {
+                Button { highlights.isSheetPresented.toggle() } label: {
+                    Label("Highlights & Notes", systemImage: OFIcon.highlighter.rawValue)
+                }
+                .tint(highlights.isSheetPresented ? Color.ofAccent : Color.primary)
+            }
             if let url = itemURL {
                 Button { openURL(url) } label: {
                     Label("Open original", systemImage: OFIcon.external.rawValue)
@@ -230,6 +238,10 @@ struct ReaderItemView: View {
             .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
             .help(item.isSaved ? "Remove from saved" : "Save")
             .accessibilityLabel(item.isSaved ? "Remove from saved" : "Save")
+
+            if !isVideo {
+                HighlightsToolbarButton(pane: pane, compact: compact, size: buttonSize, glyph: glyphSize)
+            }
 
             if let url = itemURL {
                 Button { openURL(url) } label: { OFIcon.external.image }
@@ -500,5 +512,6 @@ struct ReaderSkeleton: View {
 }
 
 #Preview {
-    ReaderView().environment(AppModel.preview())
+    let model = AppModel.preview()
+    return ReaderView().environment(model).environment(HighlightStore(model: model))
 }

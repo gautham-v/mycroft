@@ -94,9 +94,12 @@ final class ReaderFittedWebView: WKWebView {
     var forwardsVerticalScroll = true
     /// The article's actions, added to WebKit's right-click menu above Inspect Element.
     var extraMenuItems: (() -> [NSMenuItem])?
+    /// Items at the very top of the menu (the highlight colors), with their own trailing separator.
+    var topMenuItems: (() -> [NSMenuItem])?
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        for (i, item) in (topMenuItems?() ?? []).enumerated() { menu.insertItem(item, at: i) }
         var extra = extraMenuItems?() ?? []
         guard !extra.isEmpty else { return }
         // WebKit's Reload would only reload the extracted HTML; Reload Article re-extracts.
@@ -215,5 +218,19 @@ enum ReaderScrollKeys {
     }
 }
 #else
-typealias ReaderFittedWebView = WKWebView
+/// The article's web view on iOS: its text-selection edit menu gets Highlight and Add Note.
+final class ReaderFittedWebView: WKWebView {
+    var highlightMenu: (() -> [UIMenuElement])?
+
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard builder.system == .context, let elements = highlightMenu?(), !elements.isEmpty else { return }
+        builder.insertChild(UIMenu(options: .displayInline, children: elements), atStartOfMenu: .standardEdit)
+    }
+}
 #endif
+
+/// Scrolling the reader's ScrollView to a highlight: the marker the article's web view places there.
+enum HighlightScroll {
+    static func markerID(pane: Int) -> String { "highlight-marker-\(pane)" }
+}

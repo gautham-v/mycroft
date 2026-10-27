@@ -37,7 +37,7 @@ struct SettingsIntegrationsPane: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(
                 title: "Integrations",
-                hint: "Send an item from the reader to Readwise Reader or your own webhook. Stored on this device; the token is kept in the Keychain."
+                hint: "Send an item from the reader to Readwise Reader or your own webhook, and your highlights to Readwise. Stored on this device; the token is kept in the Keychain."
             )
             readwiseSection
             webhookSection
@@ -78,6 +78,21 @@ struct SettingsIntegrationsPane: View {
             .accessibilityLabel("Readwise Reader access token")
 
             if state.readwiseConfigured { actions(.readwise, testLabel: "Check token") }
+
+            if state.readwiseConfigured {
+                SettingsRow(label: "Send highlights to Readwise", hint: "Highlights and notes you make on this device") {
+                    Toggle("Send highlights to Readwise", isOn: Binding(
+                        get: { model.settings.sendHighlightsToReadwise },
+                        set: { model.settings.sendHighlightsToReadwise = $0 }))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(.ofOK)
+                        #if os(macOS)
+                        .controlSize(.small)
+                        #endif
+                }
+                .padding(.top, 12)
+            }
         }
         .padding(.vertical, 12)
         .overlay(alignment: .top) { SettingsHairline() }

@@ -14,6 +14,7 @@ import SwiftUI
 /// tree for a flat list of matches.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
+    @Environment(HighlightStore.self) private var highlights
     @Environment(\.openURL) private var openURL
 
     /// Inline text field in use (sidebar.tsx `editing`).
@@ -152,13 +153,18 @@ struct SidebarView: View {
                 SidebarViewRow(view: view, active: isActive(view)) {
                     model.navigate(view: view)
                 }
+                if view == .saved {
+                    SidebarHighlightsRow(count: highlights.count, active: model.showsHighlights) {
+                        model.showHighlights()
+                    }
+                }
             }
         }
         .padding(.top, 2)
     }
 
     private func isActive(_ view: FeedView) -> Bool {
-        model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil
+        model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
     }
 
     // MARK: Folders
@@ -628,8 +634,10 @@ private struct SidebarNewFolderButton: View {
 }
 
 #Preview {
-    SidebarView()
-        .environment(AppModel.preview())
+    let model = AppModel.preview()
+    return SidebarView()
+        .environment(model)
+        .environment(HighlightStore(model: model))
         .frame(width: Metrics.sidebarWidth, height: 700)
 }
 

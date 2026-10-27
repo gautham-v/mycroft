@@ -57,6 +57,9 @@ final class AppModel {
     var selectedItemID: Int64? { panes[focusedPane].activeTab.itemID }
     /// Tablet/desktop: with nothing opened, show the first item (the web app's md+ behavior). Set by RootView.
     var prefersDefaultSelection = false
+    /// The Highlights view (sidebar, Saved tab on iPhone) is showing instead of an item list: the articles
+    /// that have highlights, which HighlightStore lists. Any other navigation turns it off.
+    private(set) var showsHighlights = false
     /// Phone tab. Setting it navigates like the web tab bar (Feed → All, Saved → Saved view).
     var phoneTab: PhoneTab = .feed {
         didSet { if phoneTab != oldValue { didSelectTab(phoneTab) } }
@@ -240,7 +243,7 @@ final class AppModel {
     var isInSourceFeed: Bool { selectedSourceID != nil || selectedFolderID != nil }
 
     /// Header title: source title, folder title, or the view name.
-    var listTitle: String { activeSource?.title ?? activeFolder?.title ?? selectedView.title }
+    var listTitle: String { showsHighlights ? "Highlights" : activeSource?.title ?? activeFolder?.title ?? selectedView.title }
 
     /// Search field placeholder: "Search" in All, else "Search <title>".
     var searchPlaceholder: String { listTitle == "All" ? "Search" : "Search \(listTitle)" }
@@ -274,7 +277,7 @@ final class AppModel {
     func item(for tab: ReaderTab) -> FeedItem? {
         if tab.isNew { return nil }
         if let id = tab.itemID { return items.first { $0.id == id } ?? openItems[id] }
-        guard prefersDefaultSelection else { return nil }
+        guard prefersDefaultSelection, !showsHighlights else { return nil }
         let pinned = Set(panes.flatMap { $0.tabs.filter(\.isPinned).compactMap(\.itemID) })
         return items.first { !pinned.contains($0.id) }
     }
@@ -356,8 +359,15 @@ final class AppModel {
         Task { await loadItems(reset: true) }
     }
 
+    /// Show the Highlights view: the articles with highlights, under Saved.
+    func showHighlights() {
+        setNav(view: .saved, source: nil, folder: nil)
+        showsHighlights = true
+    }
+
     private func setNav(view: FeedView, source: Int64?, folder: Int64?) {
         let changed = view != selectedView || source != selectedSourceID || folder != selectedFolderID || !searchQuery.isEmpty
+        showsHighlights = false
         selectedView = view
         selectedSourceID = source
         selectedFolderID = folder
@@ -428,7 +438,7 @@ final class AppModel {
 
     /// j/k: select the next (1) or previous (-1) item; prefetches the next page near the end.
     func moveSelection(by step: Int) {
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty, !showsHighlights else { return }
         let from = selectedItem?.id
         let i = items.firstIndex { $0.id == from } ?? -1
         let target = i < 0 ? 0 : min(max(i + step, 0), items.count - 1)

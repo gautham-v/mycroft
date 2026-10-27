@@ -75,6 +75,12 @@ icon("collapse") { p in
 }
 icon("close") { p in poly(p, [P(6, 6), P(18, 18)]); poly(p, [P(18, 6), P(6, 18)]) }
 icon("plus") { p in poly(p, [P(12, 5), P(12, 19)]); poly(p, [P(5, 12), P(19, 12)]) }
+// A marker slanted toward the lower left, its nib on a line of ink.
+icon("highlighter") { p in
+    rounded(p, [P(15.5, 3.5), P(20.5, 8.5), P(13.5, 15.5), P(8.5, 10.5)], [1.5, 1.5, 0.5, 0.5])
+    poly(p, [P(8.5, 10.5), P(5, 18), P(13.5, 15.5)])
+    poly(p, [P(3.5, 21), P(13, 21)])
+}
 
 // Template geometry (SF Symbols template, point size 100): cap height 70.459 above the baseline.
 /// 24 units span 1.2× the point size: at the 15pt toolbar size the 24-unit box is 18pt, like the Claude app.

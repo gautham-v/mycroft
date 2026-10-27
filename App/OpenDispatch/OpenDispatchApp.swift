@@ -7,26 +7,32 @@ import Sparkle
 @main
 struct OpenDispatchApp: App {
     /// The single app model (owns AppDatabase via OpenDispatchServices). Injected with `.environment(model)`.
-    @State private var model = AppModel.live()
+    @State private var model: AppModel
+    /// Highlights and notes (HighlightStore), beside the model rather than in it.
+    @State private var highlights: HighlightStore
     #if os(macOS)
     /// Sparkle: checks the appcast on its own schedule and backs "Check for Updates…".
     private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     #endif
 
-    #if os(macOS)
     init() {
+        let model = AppModel.live()
+        _model = State(initialValue: model)
+        _highlights = State(initialValue: HighlightStore(model: model))
+        #if os(macOS)
         // Overlay scrollers for this app even with a mouse attached (System Settings' "Automatically"
         // then means always-visible scroll bars). Otherwise SwiftUI reserves a 15pt scroll-bar gutter on
         // the right of every scroll view, so rows stop short of the right edge. overlayScrollers() then
         // shows each scroller only while the pointer is over its pane.
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+        #endif
     }
-    #endif
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(highlights)
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
@@ -76,6 +82,7 @@ struct OpenDispatchCommands: Commands {
             ForEach(FeedView.allCases) { view in
                 Button(view.title) { model.navigate(view: view) }
             }
+            Button("Highlights") { model.showHighlights() }
         }
         CommandGroup(replacing: .saveItem) {
             Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { closeTabOrWindow() }

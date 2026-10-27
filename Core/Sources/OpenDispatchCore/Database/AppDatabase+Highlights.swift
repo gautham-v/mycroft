@@ -13,6 +13,12 @@ extension AppDatabase {
         try await reader.read { db in try Queries.highlightGroups(db) }
     }
 
+    /// Every highlight grouped by article, now and again after each change to the table, whether the user
+    /// made it here, iCloud applied it, or Readwise sending recorded an id.
+    public func observeHighlightGroups() -> AsyncValueObservation<[HighlightGroup]> {
+        ValueObservation.tracking { db in try Queries.highlightGroups(db) }.values(in: reader)
+    }
+
     public func highlightCount() async throws -> Int {
         try await reader.read { db in try Queries.highlightCount(db) }
     }

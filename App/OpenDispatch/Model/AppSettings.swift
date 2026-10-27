@@ -109,6 +109,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var autoplay: Bool = true
     /// Full-width player above the title.
     var theater: Bool = true
+    /// Send highlights and notes made on this device to Readwise (when a token is set).
+    var sendHighlightsToReadwise: Bool = true
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -127,6 +129,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
+        sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
     }
 
     init() {}
