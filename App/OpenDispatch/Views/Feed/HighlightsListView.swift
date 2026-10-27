@@ -217,10 +217,7 @@ private struct HighlightsListHeader: View {
                 .accessibilityLabel("Show sidebar")
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Highlights")
-                    .font(OFFont.listHeaderTitle)
-                    .foregroundStyle(.ofInk)
-                    .lineLimit(1)
+                ListTitleMenu()
                     .layoutPriority(1)
                 Text(verbatim: subline)
                     .font(OFFont.listHeaderSubline)
@@ -228,8 +225,6 @@ private struct HighlightsListHeader: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
         }
         #if os(macOS)
         .padding(.leading, model.sidebarCollapsed ? Metrics.sidebarToggleX : 18)
