@@ -48,4 +48,9 @@ public protocol PageScraper: Sendable {
 
     /// fetchPageImage(url, timeoutMs): read the page head for a share image (thumbnail backfill).
     func fetchPageImage(url: String, timeout: TimeInterval) async -> PageImageResult
+
+    /// A link typed into a new tab, as an item (guid and url = `url`): the page's metadata like a scraped
+    /// article's, and for a YouTube video (`videoID`) its channel and full description. Nil when the page
+    /// can't be read.
+    func fetchLinkItem(url: String, videoID: String?, timeout: TimeInterval) async -> ParsedItem?
 }

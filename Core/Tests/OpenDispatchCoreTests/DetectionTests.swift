@@ -62,6 +62,8 @@ private struct FakeScraper: PageScraper {
     }
 
     func fetchPageImage(url: String, timeout: TimeInterval) async -> PageImageResult { PageImageResult(image: nil, final: true) }
+
+    func fetchLinkItem(url: String, videoID: String?, timeout: TimeInterval) async -> ParsedItem? { nil }
 }
 
 private func detector(_ net: FakeNet) -> DefaultFeedDetector {

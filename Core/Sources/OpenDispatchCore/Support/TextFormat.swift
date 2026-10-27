@@ -36,10 +36,15 @@ public enum TextFormat {
         url.range(of: #"^https?://(?:www\.|mobile\.)?(?:twitter|x)\.com/[^/]+/status/\d+"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    /// "Kun Chen (@kunchenguid)" → ("Kun Chen", "kunchenguid").
+    /// A post on X, Bluesky, Mastodon, LinkedIn, Threads or Instagram: same as `isXPost`, for every network the reader shows as a post.
+    public static func isSocialPost(_ url: String) -> Bool {
+        isXPost(url) || SocialPosts.network(of: url) != nil
+    }
+
+    /// "Kun Chen (@kunchenguid)" → ("Kun Chen", "kunchenguid"); a handle may hold dots, dashes and an instance ("a@b.social").
     public static func splitHandle(_ author: String?) -> (name: String, handle: String?) {
         let a = author ?? ""
-        guard let re = try? NSRegularExpression(pattern: #"^(.*?)\s*\(@([A-Za-z0-9_]+)\)\s*$"#),
+        guard let re = try? NSRegularExpression(pattern: #"^(.*?)\s*\(@([^\s()]+)\)\s*$"#),
               let m = re.firstMatch(in: a, range: NSRange(a.startIndex..., in: a)),
               let nameR = Range(m.range(at: 1), in: a), let handleR = Range(m.range(at: 2), in: a)
         else { return (a, nil) }

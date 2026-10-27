@@ -312,6 +312,18 @@ public enum PageScraping {
         )
     }
 
+    private static let ownerChannel = ScrapingText.regex(#""ownerChannelName":"((?:\\.|[^"\\])*)""#)
+    private static let shortDescription = ScrapingText.regex(#""shortDescription":"((?:\\.|[^"\\])*)""#)
+    private static let lengthSeconds = ScrapingText.regex(#""lengthSeconds":"(\d+)""#)
+
+    /// A YouTube watch page's channel name, full description and length, from its player JSON. Pure.
+    public static func youTubeWatchMeta(html: String) -> (channel: String?, description: String?, durationSec: Int?) {
+        func string(_ re: NSRegularExpression) -> String? {
+            ScrapingText.firstGroups(re, html)?[1].flatMap(ScrapingText.jsonStringLiteral).flatMap { $0.isEmpty ? nil : $0 }
+        }
+        return (string(ownerChannel), string(shortDescription), ScrapingText.firstGroups(lengthSeconds, html)?[1].flatMap { Int($0) })
+    }
+
     private static let paragraphBreak = ScrapingText.regex(#"\n\s*\n"#)
     private static let onX = ScrapingText.regex(#"\s+on X$"#, [.caseInsensitive])
     private static let quotedName = ScrapingText.regex(#"\\"core\\":\{\\"name\\":\\"((?:\\\\.|[^\\])*?)\\",\\"screen_name\\""#)

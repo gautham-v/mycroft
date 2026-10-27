@@ -98,7 +98,7 @@ final class ReaderSpeech {
         stop()
         owner = ObjectIdentifier(page)
         self.page = page
-        let isPost = TextFormat.isXPost(item.item.url)
+        let isPost = TextFormat.isSocialPost(item.item.url)
         title = item.item.title
         source = item.source.title
         voiceID = settings.speechVoice

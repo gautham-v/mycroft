@@ -66,6 +66,7 @@ private struct RefreshFakeScraper: PageScraper {
         calls.add("image \(url)")
         return images[url] ?? PageImageResult(image: nil, final: true)
     }
+    func fetchLinkItem(url: String, videoID: String?, timeout: TimeInterval) async -> ParsedItem? { nil }
 }
 
 private func makeService(

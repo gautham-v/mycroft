@@ -39,7 +39,7 @@ public struct CopyService: Sendable {
     public func markdown(forItem id: Int64, prompt: String? = nil) async throws -> CopiedText {
         let pair = try await database.reader.read { db -> (Item, Source)? in
             guard let item = try Queries.itemRecord(db, id: id), let src = try Queries.source(db, id: item.sourceId) else { return nil }
-            return (item, src)
+            return (item, src.shown(for: item))
         }
         guard let (item, source) = pair else { throw QueryError.notFound("Item") }
         let isVideo = source.kind == .youtube

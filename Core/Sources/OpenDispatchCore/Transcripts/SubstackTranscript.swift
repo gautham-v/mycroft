@@ -6,13 +6,14 @@ import Foundation
 enum SubstackTranscript {
     static let timeout: TimeInterval = 20
 
-    /// The episode is Substack's: its audio comes from substack.com, or the post is on a *.substack.com site.
+    /// The episode is Substack's: its audio comes from substack.com (also behind a tracking redirect such as
+    /// `pscrb.fm/rss/p/api.substack.com/...`), or the post is on a *.substack.com site.
     static func isSubstack(_ item: Item) -> Bool {
         func onSubstack(_ url: String?) -> Bool {
             guard let host = url.flatMap({ URLComponents(string: $0)?.host?.lowercased() }) else { return false }
             return host == "substack.com" || host.hasSuffix(".substack.com")
         }
-        return onSubstack(item.audioUrl) || onSubstack(item.url)
+        return onSubstack(item.audioUrl) || item.audioUrl?.contains("/api.substack.com/") == true || onSubstack(item.url)
     }
 
     /// `https://www.lennysnewsletter.com/p/some-post` → `https://www.lennysnewsletter.com/api/v1/posts/some-post`.

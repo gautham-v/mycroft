@@ -33,8 +33,8 @@ struct ReaderPaneView: View {
     }
 }
 
-/// A new tab (+ or ⌘T): the bar, then what to open in it, recently closed tabs and the latest saved
-/// items. Opening anything, from here or the list, fills this tab.
+/// A new tab (+ or ⌘T): the bar, then an address field for any link (⌘L), recently closed tabs and
+/// the latest saved items. Opening anything, from here or the list, fills this tab.
 struct NewTabView: View {
     let pane: Int
     @Environment(AppModel.self) private var model
@@ -43,13 +43,7 @@ struct NewTabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                VStack(spacing: 4) {
-                    Text("New Tab").font(OFFont.ui(15, .medium)).foregroundStyle(.ofInk)
-                    Text("Pick an item from the list, or one below").font(OFFont.ui(13)).foregroundStyle(.ofMuted)
-                }
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
-
+                NewTabAddressField(pane: pane)
                 section("Recently closed", Array(model.closedItems.prefix(5)))
                 section("Saved", saved)
             }
@@ -90,6 +84,72 @@ struct NewTabView: View {
                 }
             }
         }
+    }
+}
+
+/// The New Tab page's address field: Return opens the link in this tab, reading it like any article
+/// (a YouTube link plays like a channel's video). Focused when the page appears in the focused pane and
+/// on ⌘L. While the link's page loads, the field holds it with a spinner; a problem shows underneath.
+private struct NewTabAddressField: View {
+    let pane: Int
+    @Environment(AppModel.self) private var model
+    @State private var text = ""
+    @State private var error: String?
+    @FocusState private var focused: Bool
+
+    private var openingURL: String? {
+        model.panes.indices.contains(pane) ? model.panes[pane].activeTab.openingURL : nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                OFIcon.globe.image
+                    .font(.system(size: 13))
+                    .foregroundStyle(.ofMuted)
+                    .accessibilityHidden(true)
+                TextField("", text: $text, prompt: Text("Enter a link to read").foregroundStyle(.ofFaint))
+                    .textFieldStyle(.plain)
+                    .font(OFFont.ui(14))
+                    .foregroundStyle(.ofInk)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .submitLabel(.go)
+                    #endif
+                    .focused($focused)
+                    .disabled(openingURL != nil)
+                    .accessibilityLabel("Link to open")
+                    .onSubmit(open)
+                    .onChange(of: text) { error = nil }
+                if openingURL != nil {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.ofAccent.opacity(focused ? 0.6 : 0), lineWidth: 1)
+            )
+            if let error {
+                Text(error)
+                    .font(OFFont.ui(12))
+                    .foregroundStyle(.ofDanger)
+                    .padding(.leading, 2)
+            }
+        }
+        .onAppear { if pane == model.focusedPane { focused = true } }
+        .onChange(of: model.addressFocusRequests) { if pane == model.focusedPane { focused = true } }
+    }
+
+    private func open() {
+        let link = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty, openingURL == nil else { return }
+        model.focusPane(pane)
+        Task { error = await model.openLink(link, inPane: pane) }
     }
 }
 
@@ -247,7 +307,8 @@ struct ReaderTabStrip: View {
     private func tabView(_ tab: ReaderTab, index: Int, count: Int, active: Bool, divider: Bool) -> some View {
         let item = model.item(for: tab)
         let isHovered = hovered == tab.id
-        let title = tab.isNew ? "New Tab" : item?.item.title ?? "Nothing selected"
+        let opening = tab.isNew ? tab.openingURL : nil
+        let title = opening.map(URLHost.host(of:)) ?? (tab.isNew ? "New Tab" : item?.item.title ?? "Nothing selected")
         // The window's only tab, already empty, has nothing to close.
         let closable = count > 1 || model.isSplit || !tab.isNew
         return Group {
@@ -258,7 +319,9 @@ struct ReaderTabStrip: View {
                 .frame(width: 32, height: 28)
             } else {
                 HStack(spacing: 7) {
-                    if let item {
+                    if opening != nil {
+                        ProgressView().controlSize(.mini).frame(width: 14, height: 14)
+                    } else if let item {
                         SourceBadge(host: item.source.host, title: item.source.title, size: 14)
                     }
                     Text(title)

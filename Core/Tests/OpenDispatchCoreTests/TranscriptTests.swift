@@ -291,6 +291,30 @@ struct TranscriptFetcherTests {
         await #expect(throws: HTTPError.self) { try await fetcher.transcript(for: item, source: source) }
     }
 
+    @Test func anOpenedAppleEpisodeFindsItsTranscriptInTheShowsFeed() async throws {
+        TranscriptStub.reset([
+            ApplePodcastEpisode.lookupURL(showID: "1627920305", country: "us", limit: 0): String(decoding: ApplePodcastFixtures.show, as: UTF8.self),
+            ApplePodcastFixtures.showFeedURL: String(decoding: ApplePodcastFixtures.feed, as: UTF8.self),
+            "https://api.substack.com/transcripts/217274136.vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Tibo>Hello</v>\n",
+        ])
+        let fetcher = DefaultTranscriptFetcher(parser: parser, session: TranscriptStub.session(), language: "en")
+        let db = try Fixture.db()
+        let link = ApplePodcastEpisode.Link(country: "us", showID: "1627920305", episodeID: ApplePodcastFixtures.episodeID)
+        let opened = try await db.insertOpenedLink(try #require(ApplePodcastEpisode.item(lookup: ApplePodcastFixtures.episodes, link: link).item))
+
+        // The holder source's own feed URL is never fetched; the show's is, through the lookup.
+        let t = try #require(try await fetcher.transcript(for: opened.item, source: opened.source))
+        #expect(t.origin == .podcastFeed)
+        #expect(t.segments == [.init(start: 1, speaker: "Tibo", text: "Hello")])
+        #expect(!TranscriptStub.requests().contains(OpenedLinks.episodesFeedURL))
+
+        // An audio file has no show to ask.
+        let file = try await db.insertOpenedLink(OpenedLinks.audioItem(url: "https://cdn.example.com/talk.mp3"))
+        TranscriptStub.reset([:])
+        #expect(try await fetcher.transcript(for: file.item, source: file.source) == nil)
+        #expect(TranscriptStub.requests().isEmpty)
+    }
+
     @Test func articlesHaveNoTranscript() async throws {
         TranscriptStub.reset([:])
         let fetcher = DefaultTranscriptFetcher(parser: parser, session: TranscriptStub.session(), language: "en")
@@ -387,6 +411,7 @@ struct SubstackTranscriptTests {
     @Test func recognizesSubstackEpisodes() {
         #expect(SubstackTranscript.isSubstack(item(url: "https://www.lennysnewsletter.com/p/pmf", audio: "https://api.substack.com/feed/podcast/1/a.mp3")))
         #expect(SubstackTranscript.isSubstack(item(url: "https://someone.substack.com/p/ep", audio: "https://cdn.example.com/a.mp3")))
+        #expect(SubstackTranscript.isSubstack(item(url: "https://www.lennysnewsletter.com/p/pmf", audio: "https://pscrb.fm/rss/p/api.substack.com/feed/podcast/1/a.mp3")))
         #expect(!SubstackTranscript.isSubstack(item(url: "https://show.example.com/ep1", audio: "https://cdn.example.com/a.mp3")))
     }
 

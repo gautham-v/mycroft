@@ -285,7 +285,7 @@ body { overflow-y: hidden; }
   padding: 6px 10px;
 }
 
-/* Posts from X (extractor's tweetFromPage): author row, text, quoted post, link card, footer. */
+/* Posts (TweetExtraction for X, SocialPost for the other networks): author row, text, quoted post, link card, footer. */
 .prose-opendispatch .x-post { font-family: var(--font-sans); display: grid; gap: 14px; }
 .prose-opendispatch .x-post > * + *,
 .prose-opendispatch .x-quote > * + * { margin-top: 0; }
@@ -300,6 +300,7 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-body p { margin: 0; }
 .prose-opendispatch .x-body a { text-decoration: none; }
 .prose-opendispatch .x-body a:hover { text-decoration: underline; }
+.prose-opendispatch .x-emoji { display: inline; width: auto; height: 1.2em; margin: 0 0.05em; vertical-align: -0.25em; border-radius: 0; }
 .prose-opendispatch .x-media { display: grid; gap: 4px; border-radius: 12px; overflow: hidden; }
 .prose-opendispatch .x-media-grid { grid-template-columns: 1fr 1fr; }
 .prose-opendispatch .x-media img,

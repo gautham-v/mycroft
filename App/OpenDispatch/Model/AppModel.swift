@@ -10,11 +10,13 @@ import UIKit
 /// One reader tab. `itemID` nil follows the list's first item (the desktop default selection), unless
 /// the tab is a new, empty one (`isNew`, from + or ⌘T) waiting for something to be opened in it.
 /// Pinned tabs (`isPinned`) sit leftmost in their pane, keep their item and come back on relaunch.
+/// A new tab whose address field is opening a link holds it in `openingURL` until the item is stored.
 struct ReaderTab: Identifiable, Equatable, Sendable {
     let id = UUID()
     var itemID: Int64?
     var isNew = false
     var isPinned = false
+    var openingURL: String?
 }
 
 /// A reader column (split view has two): its tabs and the one showing.
@@ -115,6 +117,8 @@ final class AppModel {
     var isSourceFilterOpen = false
     /// Bumped by ⌘K so the field takes focus even when it is already open.
     private(set) var sourceFilterFocusRequests = 0
+    /// Bumped by ⌘L so the New Tab page's address field takes focus.
+    private(set) var addressFocusRequests = 0
     /// The sidebar's collapsed-by-default "Hidden" group is open. Session only.
     var isHiddenGroupExpanded = false
     /// The sidebar's collapsed-by-default "More" row, which holds the hidden views, is open. Session only.
@@ -1156,6 +1160,48 @@ final class AppModel {
         panes[p].active = at
     }
 
+    /// ⌘L: the focused pane's New Tab page with its address field focused, opening a new tab unless
+    /// one is showing.
+    func openLocation() {
+        if !panes[focusedPane].activeTab.isNew { openNewTab() }
+        addressFocusRequests += 1
+    }
+
+    /// The New Tab page's address field: the link fills that tab once it is stored (OpenedLinks). Its
+    /// page is read for a title first, so meanwhile the tab shows the host with a spinner. Returns what
+    /// to show under the field when the text isn't a web address or the link can't be stored.
+    func openLink(_ text: String, inPane pane: Int) async -> String? {
+        guard panes.indices.contains(pane), panes[pane].activeTab.isNew else { return nil }
+        let url: String
+        do {
+            url = try SourceURL.normalize(text)
+        } catch {
+            return "Enter a web address, like example.com/article"
+        }
+        let tabID = panes[pane].activeTab.id
+        func locate() -> (Int, Int)? {
+            for p in panes.indices {
+                if let t = panes[p].tabs.firstIndex(where: { $0.id == tabID && $0.isNew && $0.openingURL == url }) { return (p, t) }
+            }
+            return nil
+        }
+        panes[pane].tabs[panes[pane].active].openingURL = url
+        let opened: FeedItem
+        do {
+            opened = try await services.openLink(url)
+        } catch {
+            if let (p, t) = locate() { panes[p].tabs[t].openingURL = nil }
+            return HTTP.message(error)
+        }
+        // The tab was closed, or something else was opened in it, while the page loaded.
+        guard let (p, t) = locate() else { return nil }
+        openItems[opened.id] = opened
+        panes[p].tabs[t].itemID = opened.id
+        panes[p].tabs[t].isNew = false
+        panes[p].tabs[t].openingURL = nil
+        return nil
+    }
+
     /// Pin or unpin a tab. Pinning fixes the tab's item and moves it to the end of the pins; unpinning
     /// moves it to just after them. A new, empty tab can't be pinned.
     func togglePinned(pane: Int, index: Int) {
@@ -1243,6 +1289,7 @@ final class AppModel {
         let t = panes[p].active
         panes[p].tabs[t].itemID = id
         panes[p].tabs[t].isNew = false
+        panes[p].tabs[t].openingURL = nil
         pruneOpenItems()
     }
 

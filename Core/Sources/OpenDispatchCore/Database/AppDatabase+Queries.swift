@@ -37,6 +37,16 @@ extension AppDatabase {
         try await writer.write { db in try Queries.pruneOldItems(db, before: cutoff) }
     }
 
+    // MARK: Opened links
+
+    public func openedLink(feedUrl: String, url: String) async throws -> FeedItem? {
+        try await reader.read { db in try Queries.openedLink(db, feedUrl: feedUrl, url: url) }
+    }
+
+    public func insertOpenedLink(_ item: ParsedItem) async throws -> FeedItem {
+        try await writer.write { db in try Queries.insertOpenedLink(db, item) }
+    }
+
     // MARK: Sources & folders
 
     /// Sources (position, title) and folders (position, id) in one read.

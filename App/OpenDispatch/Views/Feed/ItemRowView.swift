@@ -25,7 +25,7 @@ struct ItemRowView: View, Equatable {
 
     var body: some View {
         Group {
-            if TextFormat.isXPost(item.item.url) {
+            if TextFormat.isSocialPost(item.item.url) {
                 postRow
             } else {
                 articleRow

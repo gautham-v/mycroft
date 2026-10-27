@@ -65,6 +65,50 @@ public struct OpenDispatchServices: Sendable {
         return ((try? await database.source(id: created.id)) ?? created, false)
     }
 
+    /// A link typed into a new tab: normalize it, then return it as an item (OpenedLinks), reading the
+    /// page for its title and the rest the first time. A page that can't be read is still stored, with its
+    /// address as the title, and the reader shows why it can't be shown. An Apple Podcasts episode and a
+    /// link to an audio file become episodes the reader plays. Throws SourceURLError for text that isn't a
+    /// web address.
+    public func openLink(_ input: String) async throws -> FeedItem {
+        let typed = try SourceURL.normalize(input)
+        let videoID = OpenedLinks.youTubeVideoID(typed)
+        let apple = videoID == nil ? ApplePodcastEpisode.link(typed) : nil
+        let url = apple.map(ApplePodcastEpisode.canonicalURL) ?? OpenedLinks.canonicalURL(typed, videoID: videoID)
+        let feedUrl = videoID != nil ? OpenedLinks.videosFeedURL
+            : apple != nil || OpenedLinks.isAudioURL(url) ? OpenedLinks.episodesFeedURL : OpenedLinks.linksFeedURL
+        if let opened = try await database.openedLink(feedUrl: feedUrl, url: url) { return opened }
+
+        if let apple, let episode = await ApplePodcastEpisode.resolve(
+            apple, fetch: ApplePodcastEpisode.liveFetch(timeout: 10), pageTitle: { await pageTitle(url) }) {
+            return try await database.insertOpenedLink(episode)
+        }
+        if OpenedLinks.isAudioURL(url) { return try await database.insertOpenedLink(OpenedLinks.audioItem(url: url)) }
+        // An audio file without an extension is only known by its response; asked before the page is read in full.
+        if apple == nil, videoID == nil, await isAudio(url) {
+            if let opened = try await database.openedLink(feedUrl: OpenedLinks.episodesFeedURL, url: url) { return opened }
+            return try await database.insertOpenedLink(OpenedLinks.audioItem(url: url))
+        }
+
+        guard var item = await scraper.fetchLinkItem(url: url, videoID: videoID, timeout: 10) else {
+            return try await database.insertOpenedLink(OpenedLinks.fallbackItem(url: url, videoID: videoID))
+        }
+        item.title = OpenedLinks.cleanedTitle(item.title, url: url) ?? OpenedLinks.fallbackItem(url: url, videoID: videoID).title
+        return try await database.insertOpenedLink(item)
+    }
+
+    /// The title of a page, for matching an Apple Podcasts episode to its show's feed.
+    private func pageTitle(_ url: String) async -> String? {
+        guard let item = await scraper.fetchLinkItem(url: url, videoID: nil, timeout: 10) else { return nil }
+        return OpenedLinks.cleanedTitle(item.title, url: url)
+    }
+
+    /// The link answers with an `audio/*` content type. A server that refuses HEAD counts as not audio.
+    private func isAudio(_ url: String) async -> Bool {
+        guard let (_, res) = try? await HTTP.fetch(url, timeout: 3, method: "HEAD"), (200..<300).contains(res.statusCode) else { return false }
+        return OpenedLinks.isAudioContentType(res.value(forHTTPHeaderField: "Content-Type"))
+    }
+
     /// GET /api/opml: the whole subscription list as OPML.
     public func exportOPML(now: Date = Date()) async throws -> String {
         let (sources, folders) = try await database.sourcesAndFolders()

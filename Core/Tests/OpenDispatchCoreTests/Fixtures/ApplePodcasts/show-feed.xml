@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Lenny's Podcast: Product | Career | Growth</title>
+    <link>https://www.lennysnewsletter.com/podcast</link>
+    <itunes:image href="https://example.com/show-art.jpg"/>
+    <item>
+      <title>OpenAI's Head of ChatGPT: We're entering a new era of AI (again) | Tibo Sottiaux</title>
+      <link>https://www.lennysnewsletter.com/p/openais-head-of-chatgpt-were-entering</link>
+      <guid isPermaLink="false">substack:post:217274136</guid>
+      <pubDate>Sun, 04 Oct 2026 12:32:47 GMT</pubDate>
+      <description>Short blurb.</description>
+      <content:encoded><![CDATA[<p>Tibo Sottiaux leads ChatGPT and Codex at OpenAI.</p><p>We discuss <strong>Dots</strong>, the personal agent.</p>]]></content:encoded>
+      <enclosure url="https://pscrb.fm/rss/p/api.substack.com/feed/podcast/217274136/13e3f49711c936b294b6ef27d4160818.mp3" length="35885835" type="audio/mpeg"/>
+      <itunes:duration>2243</itunes:duration>
+      <podcast:transcript url="/transcripts/217274136.vtt" type="text/vtt" language="en"/>
+    </item>
+    <item>
+      <title>An older episode: why PMF isn't a moment</title>
+      <link>https://www.lennysnewsletter.com/p/an-older-episode</link>
+      <guid isPermaLink="false">substack:post:100</guid>
+      <pubDate>Sun, 07 Apr 2024 11:02:37 GMT</pubDate>
+      <content:encoded><![CDATA[<p>Notes for the older episode.</p>]]></content:encoded>
+      <enclosure url="https://cdn.example.com/older.mp3?x=1" length="1000" type="audio/mpeg"/>
+      <itunes:duration>01:01:05</itunes:duration>
+      <podcast:transcript url="https://cdn.example.com/older.vtt" type="text/vtt" language="en"/>
+    </item>
+  </channel>
+</rss>

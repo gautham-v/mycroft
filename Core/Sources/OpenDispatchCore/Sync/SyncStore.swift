@@ -322,7 +322,7 @@ public enum SyncStore {
 
         case .savedItem:
             guard let feedUrl = r["sourceFeedUrl"]?.stringValue, let guid = r["guid"]?.stringValue,
-                  let source = try Queries.source(db, feedUrl: feedUrl) else { return false }
+                  let source = try Queries.sourceCreatingOpenedLinks(db, feedUrl: feedUrl, now: now) else { return false }
             if let id = try Int64.fetchOne(db, sql: "SELECT id FROM items WHERE source_id = ? AND guid = ?", arguments: [source.id, guid]) {
                 try db.execute(sql: "UPDATE items SET is_saved = 1 WHERE id = ? AND is_saved = 0", arguments: [id])
                 if db.changesCount > 0 { result.libraryChanged = true }

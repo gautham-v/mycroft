@@ -40,12 +40,14 @@ public struct DefaultFeedParser: FeedParser {
 
     // MARK: - Internals
 
-    /// The entry with this guid (or Atom id) across every entry first, then by link.
+    /// The entry with this guid (or Atom id) across every entry first, then by link, then by audio enclosure
+    /// (an opened Apple Podcasts episode knows its audio URL but not the feed's guid or link).
     static func rawItem(in data: Data, guid: String, url: String) -> FeedParsingSupport.RawItem? {
         guard let raw = try? rawFeed(data) else { return nil }
         let key = FeedParsingSupport.linkMatchKey(url)
         return raw.items.first { ($0.guid ?? $0.id) == guid }
             ?? raw.items.first { item in item.link.map { FeedParsingSupport.linkMatchKey($0) == key } ?? false }
+            ?? raw.items.first { item in item.enclosure?.url.map { FeedParsingSupport.linkMatchKey($0) == key } ?? false }
     }
 
     static func rawFeed(_ data: Data) throws -> FeedParsingSupport.RawFeed {

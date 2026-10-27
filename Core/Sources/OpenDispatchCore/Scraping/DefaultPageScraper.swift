@@ -160,6 +160,33 @@ public struct DefaultPageScraper: PageScraper {
         }
     }
 
+    // MARK: - Opened link
+
+    public func fetchLinkItem(url: String, videoID: String?, timeout: TimeInterval) async -> ParsedItem? {
+        // A post on Bluesky, Mastodon, LinkedIn, Threads or Instagram comes from the network's own data.
+        if videoID == nil, let post = await SocialPosts.item(url: url, fetch: { u, h in
+            try? await self.fetch(PageFetchRequest(url: u, timeout: timeout, headers: h))
+        }) { return post }
+        guard let (data, res) = try? await fetch(PageFetchRequest(url: url, timeout: timeout, headers: Self.htmlHeaders)),
+              (200..<300).contains(res.statusCode), Self.isHTMLish(res) else { return nil }
+        let html = HTTP.text(data, response: res)
+        let now = Date()
+        let m = PageScraping.extractArticleMeta(html: html, pageURL: res.url?.absoluteString ?? url, now: now)
+        var item = ParsedItem(
+            guid: url, url: url, title: m.title ?? url, summary: m.summary, author: m.author,
+            publishedAt: m.publishedAt ?? now, thumbnailUrl: m.thumbnailUrl, quoteAvatarUrl: m.quoteAvatarUrl)
+        if let videoID {
+            let video = PageScraping.youTubeWatchMeta(html: html)
+            item.videoId = videoID
+            item.author = video.channel ?? item.author
+            item.summary = video.description ?? item.summary
+            item.durationSec = video.durationSec
+            // The feed's size, which every video has (og:image is maxresdefault, which some lack).
+            item.thumbnailUrl = "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg"
+        }
+        return item
+    }
+
     // MARK: - Page image
 
     private static func transient(_ status: Int) -> Bool { status == 429 || status >= 500 }

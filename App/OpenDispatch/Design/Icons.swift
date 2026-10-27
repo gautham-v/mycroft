@@ -72,6 +72,8 @@ enum OFIcon: String, CaseIterable {
     case note = "note.text"
     /// Remove a highlight (its popover)
     case trash = "trash"
+    /// The New Tab page's address field
+    case globe = "globe"
 
     /// macOS draws its toolbar and sidebar icons from our own symbols (Resources/Assets.xcassets/Icons):
     /// thin, rounded 24-unit strokes like the Claude desktop app's, where SF Symbols read heavier. The

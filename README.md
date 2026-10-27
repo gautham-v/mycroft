@@ -11,7 +11,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 **Sources**
 - Add a site URL, a feed URL, a YouTube channel (`youtube.com/@handle`) or an Apple Podcasts link, and the app finds the feed (⌘N, the sidebar's add button, or the Sources tab on iPhone).
 - Pages with no feed, like `anthropic.com/news`, are added as scraped sources: the app reads the article links off the listing page and each article's Open Graph / JSON-LD metadata.
-- Hacker News items link to their comment threads from the reader (and show points and comment counts on iPhone). X, Bluesky, Threads and Mastodon sources collect in the Posts view, and X posts render with avatars, link cards and quoted posts.
+- Hacker News items link to their comment threads from the reader (and show points and comment counts on iPhone). X, Bluesky, Threads and Mastodon sources collect in the Posts view, and posts from X, Bluesky and Mastodon render with avatars, media, link cards and quoted posts.
 - OPML import and export in Settings → Sources. Imported folders become sidebar folders; feeds you already have are skipped.
 - Feeds refresh on launch, when the app comes to the foreground (if the last fetch is older than 15 minutes), on a timer while it's open (every 15 minutes by default; Settings → Data), and on ⌘R or pull to refresh. On iOS a background refresh task runs when the system allows. Unsaved items older than 14 days are pruned.
 
@@ -24,6 +24,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Selecting an article fetches the page and runs Mozilla Readability (bundled, in a hidden WKWebView with page scripts off), then cleans, sanitizes and caches the text. If the page blocks it, the feed's own full text or a Jina Reader render is used.
 - YouTube videos play in an embedded youtube-nocookie player, full width above the title by default. Podcasts play in a native audio player that remembers your position and has playback speeds from 0.8× to 2×.
 - Mac: reader tabs, shown like a browser's even when there's one (⌘-click a row, or + / ⌘T for a new tab, ⇧⌘T to reopen a closed one; right-click a tab to pin it) and split view (⌥-click a row, or ⌥⌘S), each pane with its own tabs; a full-screen reader (⇧⌘F).
+- Open any link: type or paste it into a new tab's address field (⌘L) and it opens in the reader like an article from a feed, with highlights, read aloud and Copy as Markdown; a YouTube link plays in the video player, and an Apple Podcasts episode link or a direct audio link (.mp3, .m4a, ...) opens as an episode with the audio player (an Apple Podcasts episode also gets the show's notes and, for Copy as Markdown, its transcript when the show's feed has one). A post on X, Bluesky, Mastodon (any server) or LinkedIn (including lnkd.in short links) opens as a post, with its author, text and links, photos or video, quoted post and link card, and its first line as the title; Threads and Instagram posts show their author, text and picture when they will give them without a login, otherwise they say so and link to the original. Opened links stay out of the feed and the source list; save one to keep it (it syncs like other saved items), otherwise it's pruned 14 days after you opened it.
 - Read aloud: the headphones button (⇧⌘L on the Mac) speaks the headline and then the article, a sentence at a time, with the system voices, highlighting the sentence being read and scrolling to keep it in view. A player bar steps sentences, pauses, changes speed (0.8× to 2×) and shows elapsed and estimated time; click or tap a sentence to jump there, or select text and choose Read Aloud from Here. On iPhone it keeps going in the background with lock-screen controls. Pick the voice and starting speed in Settings → Playback; better voices download in System Settings → Accessibility → Spoken Content.
 - Search across titles, summaries, authors and article text (/ or ⌘F).
 - Save, Open original, Share and Send to from the reader.
@@ -74,6 +75,7 @@ Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
 | ⌥-click | Open in split view |
 | ⇧⌘] / ⇧⌘[ | Next / previous tab |
 | ⌘T | New tab |
+| ⌘L | Open a link in a new tab |
 | ⌘W | Close the tab |
 | ⇧⌘T | Reopen the last closed tab |
 | ⌥⌘S | Split view on or off |

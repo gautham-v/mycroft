@@ -37,6 +37,8 @@ public enum Queries {
             c.append(![SourceKind.youtube.rawValue, SourceKind.podcast.rawValue].contains(kind))
             c.append(isPost == false)
         }
+        // Links opened from a new tab aren't part of the feed: they list only once saved.
+        if q.view != .saved, q.sourceId == nil { c.append(!OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl])) }
         if let s = q.sourceId { c.append(Item.Columns.sourceId == s) }
         if let f = q.folderId { c.append(src[Source.Columns.folderId] == f) }
         switch q.filter {
@@ -219,23 +221,30 @@ public enum Queries {
             """, arguments: [html, result.rendered, result.leadImage, itemId])
     }
 
-    /// Delete unsaved items published before `cutoff`, except those with highlights. Returns rows removed.
+    /// Delete unsaved items published before `cutoff` (opened links: opened before it), except those
+    /// with highlights. Returns rows removed.
     @discardableResult
     public static func pruneOldItems(_ db: Database, before cutoff: Date = Retention.cutoff()) throws -> Int {
+        let holders = databaseQuestionMarks(count: OpenedLinks.feedURLs.count)
         try db.execute(sql: """
-            DELETE FROM items WHERE is_saved = 0 AND published_at < ?
+            DELETE FROM items WHERE is_saved = 0
+              AND (CASE WHEN source_id IN (SELECT id FROM sources WHERE feed_url IN (\(holders))) THEN created_at ELSE published_at END) < ?
               AND NOT EXISTS (
                 SELECT 1 FROM highlights h JOIN sources s ON s.feed_url = h.source_feed_url
                 WHERE s.id = items.source_id AND h.item_guid = items.guid)
-            """, arguments: [cutoff])
+            """, arguments: StatementArguments(OpenedLinks.feedURLs) + [cutoff])
         return db.changesCount
     }
 
     // MARK: Sources
 
-    /// All sources ordered by position, then title (GET /api/sources).
+    /// All sources ordered by position, then title (GET /api/sources). Leaves out the OpenedLinks
+    /// holders, which aren't subscriptions, so nothing refreshes, lists, exports or syncs them.
     public static func sources(_ db: Database) throws -> [Source] {
-        try Source.order(Source.Columns.position, Source.Columns.title).fetchAll(db)
+        try Source
+            .filter(!OpenedLinks.feedURLs.contains(Source.Columns.feedUrl))
+            .order(Source.Columns.position, Source.Columns.title)
+            .fetchAll(db)
     }
 
     public static func source(_ db: Database, id: Int64) throws -> Source? {

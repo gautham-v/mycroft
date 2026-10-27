@@ -499,7 +499,7 @@ private struct RowMenu: View {
                 }
             }
         }
-        if model.selectedSourceID != item.source.id {
+        if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
             Divider()
             Button("Go to \(item.source.title)") { model.navigate(sourceID: item.source.id) }
         }

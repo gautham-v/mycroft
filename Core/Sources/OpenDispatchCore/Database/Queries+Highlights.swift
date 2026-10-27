@@ -115,7 +115,7 @@ extension Queries {
     /// the highlights' own data when only its source is here (the item was pruned on this device, or the
     /// highlight arrived from another). nil when the source isn't on this device either.
     public static func itemForHighlights(_ db: Database, sourceFeedUrl: String, itemGuid: String) throws -> FeedItem? {
-        guard let source = try source(db, feedUrl: sourceFeedUrl) else { return nil }
+        guard let source = try sourceCreatingOpenedLinks(db, feedUrl: sourceFeedUrl) else { return nil }
         if let id = try Int64.fetchOne(db, sql: "SELECT id FROM items WHERE source_id = ? AND guid = ?", arguments: [source.id, itemGuid]) {
             return try feedItem(db, id: id)
         }

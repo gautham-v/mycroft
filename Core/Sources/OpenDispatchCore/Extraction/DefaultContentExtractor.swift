@@ -51,6 +51,12 @@ public struct DefaultContentExtractor: ContentExtractor {
     public func extractArticle(url: String, feed: FeedRef?) async throws -> ExtractResult {
         if TweetExtraction.tweetURL.test(url) {
             if let t = try? await TweetExtraction.extract(url: url, timeout: Self.extractTimeout, session: session) { return t }
+        } else if SocialPosts.network(of: url) != nil {
+            let session = session
+            let post = await SocialPosts.extract(url: url) { u, h in
+                try? await HTTP.fetch(u, timeout: Self.extractTimeout, headers: h, session: session)
+            }
+            if let post { return post }
         }
         let started = Date()
         // The feed's copy is fetched alongside the page: the fallback when the page fails and the yardstick for a page

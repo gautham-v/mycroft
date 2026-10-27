@@ -71,6 +71,8 @@ struct OpenDispatchCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { model.openNewTab() }
                 .keyboardShortcut("t", modifiers: .command)
+            Button("Open Link…") { model.openLocation() }
+                .keyboardShortcut("l", modifiers: .command)
             Button("Add Source…") { model.isAddSourcePresented = true }
                 .keyboardShortcut("n", modifiers: .command)
         }

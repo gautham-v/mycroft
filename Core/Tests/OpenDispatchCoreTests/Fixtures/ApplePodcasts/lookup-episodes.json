@@ -1,0 +1,109 @@
+{
+ "resultCount": 3,
+ "results": [
+  {
+   "wrapperType": "track",
+   "kind": "podcast",
+   "collectionId": 1627920305,
+   "trackId": 1627920305,
+   "artistName": "Lenny Rachitsky",
+   "collectionName": "Lenny's Podcast: Product | Career | Growth",
+   "trackName": "Lenny's Podcast: Product | Career | Growth",
+   "collectionCensoredName": "Lenny's Podcast: Product | Career | Growth",
+   "trackCensoredName": "Lenny's Podcast: Product | Career | Growth",
+   "collectionViewUrl": "https://podcasts.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305?uo=4",
+   "feedUrl": "https://api.substack.com/feed/podcast/10845.rss",
+   "trackViewUrl": "https://podcasts.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305?uo=4",
+   "artworkUrl30": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/c7/80/a3/c780a365-a1ed-527f-365f-1bd3e51ac6d1/mza_5908526734339724450.jpg/30x30bb.jpg",
+   "artworkUrl60": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/c7/80/a3/c780a365-a1ed-527f-365f-1bd3e51ac6d1/mza_5908526734339724450.jpg/60x60bb.jpg",
+   "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/c7/80/a3/c780a365-a1ed-527f-365f-1bd3e51ac6d1/mza_5908526734339724450.jpg/100x100bb.jpg",
+   "collectionPrice": 0.0,
+   "trackPrice": 0.0,
+   "collectionHdPrice": 0,
+   "releaseDate": "2026-10-18T12:31:00Z",
+   "collectionExplicitness": "notExplicit",
+   "trackExplicitness": "cleaned",
+   "trackCount": 367,
+   "trackTimeMillis": 4332,
+   "country": "USA",
+   "currency": "USD",
+   "primaryGenreName": "Technology",
+   "contentAdvisoryRating": "Clean",
+   "artworkUrl600": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/c7/80/a3/c780a365-a1ed-527f-365f-1bd3e51ac6d1/mza_5908526734339724450.jpg/600x600bb.jpg",
+   "genreIds": [
+    "1318",
+    "26",
+    "1321",
+    "1493"
+   ],
+   "genres": [
+    "Technology",
+    "Podcasts",
+    "Business",
+    "Entrepreneurship"
+   ]
+  },
+  {
+   "episodeFileExtension": "mp3",
+   "episodeContentType": "audio",
+   "collectionViewUrl": "https://itunes.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305?mt=2&uo=4",
+   "trackViewUrl": "https://podcasts.apple.com/us/podcast/openais-head-of-chatgpt-were-entering-a-new-era/id1627920305?i=1000793099277&uo=4",
+   "trackTimeMillis": 2243000,
+   "contentAdvisoryRating": "Clean",
+   "artistIds": [],
+   "genres": [
+    {
+     "name": "Technology",
+     "id": "1318"
+    }
+   ],
+   "episodeGuid": "substack:post:217274136",
+   "releaseDate": "2026-10-04T12:32:47Z",
+   "shortDescription": "Tibo Sottiaux leads ChatGPT and Codex at OpenAI. Under his stewardship, OpenAI has shipped some of its most consequential consumer launches: Codex, ChatGPT Work, and most recently, the new Dots personal agent platform. He joined me at DevDay, hours afte",
+   "trackId": 1000793099277,
+   "trackName": "OpenAI’s Head of ChatGPT: We’re entering a new era of AI (again) | Tibo Sottiaux",
+   "feedUrl": "https://api.substack.com/feed/podcast/10845.rss",
+   "closedCaptioning": "none",
+   "collectionId": 1627920305,
+   "collectionName": "Lenny's Podcast: Product | Career | Growth",
+   "kind": "podcast-episode",
+   "wrapperType": "podcastEpisode",
+   "description": "Tibo Sottiaux leads ChatGPT and Codex at OpenAI. Under his stewardship, OpenAI has shipped some of its most consequential consumer launches: Codex, ChatGPT Work, and most recently, the new Dots personal agent platform. He joined me at DevDay, hours after his team launched more than 20 new products, to talk about where things are heading.\n\nWe discuss:\n1. Dots, OpenAI’s new personal AI assistant\n2. Why most actions on ",
+   "country": "USA",
+   "artworkUrl600": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/e4/ca/fd/e4cafda0-e7e8-ccd4-388d-93341a6bd344/mza_6770909817174607087.png/600x600bb.jpg",
+   "previewUrl": "https://pscrb.fm/rss/p/api.substack.com/feed/podcast/217274136/13e3f49711c936b294b6ef27d4160818.mp3",
+   "episodeUrl": "https://pscrb.fm/rss/p/api.substack.com/feed/podcast/217274136/13e3f49711c936b294b6ef27d4160818.mp3"
+  },
+  {
+   "episodeFileExtension": "mp3",
+   "episodeContentType": "audio",
+   "collectionViewUrl": "https://itunes.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305?mt=2&uo=4",
+   "trackViewUrl": "https://podcasts.apple.com/us/podcast/why-every-company-now-needs-to-think-and-operate-like/id1627920305?i=1000795263758&uo=4",
+   "trackTimeMillis": 3731000,
+   "contentAdvisoryRating": "Clean",
+   "artistIds": [],
+   "genres": [
+    {
+     "name": "Technology",
+     "id": "1318"
+    }
+   ],
+   "episodeGuid": "substack:post:216810191",
+   "releaseDate": "2026-10-11T12:31:59Z",
+   "shortDescription": "Josh Woodward is the head of Google Labs, the Gemini app, and AI Studio. He has spent over 17 years at Google and oversees its longest-running and largest labs team, whose products include NotebookLM (now Gemini Notebook), Project Genie, and Flow. His j",
+   "trackId": 1000795263758,
+   "trackName": "Why every company now needs to think and operate like a lab team | Josh Woodward (Google Labs, Gemini, AI Studio)",
+   "feedUrl": "https://api.substack.com/feed/podcast/10845.rss",
+   "closedCaptioning": "none",
+   "collectionId": 1627920305,
+   "collectionName": "Lenny's Podcast: Product | Career | Growth",
+   "kind": "podcast-episode",
+   "wrapperType": "podcastEpisode",
+   "description": "Josh Woodward is the head of Google Labs, the Gemini app, and AI Studio. He has spent over 17 years at Google and oversees its longest-running and largest labs team, whose products include NotebookLM (now Gemini Notebook), Project Genie, and Flow. His job is to find, experiment with, and scale new AI products, and he has built one of the most distinctive product cultures in the industry for generating ideas, running ",
+   "country": "USA",
+   "artworkUrl600": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/58/8d/78/588d78a0-2062-15fe-7566-235323c0f718/mza_9185879795648835118.png/600x600bb.jpg",
+   "previewUrl": "https://pscrb.fm/rss/p/api.substack.com/feed/podcast/216810191/b5148fc43510e2906d5e532bff5b6116.mp3",
+   "episodeUrl": "https://pscrb.fm/rss/p/api.substack.com/feed/podcast/216810191/b5148fc43510e2906d5e532bff5b6116.mp3"
+  }
+ ]
+}

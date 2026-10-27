@@ -181,7 +181,7 @@ extension FeedItem: FetchableRecord {
         guard let s = row.scopes["source"] else {
             throw DatabaseError(message: "FeedItem row is missing its source")
         }
-        source = try Source(row: s)
+        source = try Source(row: s).shown(for: item)
         let flag: Bool? = row["has_content"]
         hasContent = flag ?? (item.contentHtml != nil)
     }

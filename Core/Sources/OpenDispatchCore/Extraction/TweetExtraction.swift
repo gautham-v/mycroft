@@ -34,6 +34,10 @@ enum TweetExtraction {
         var poster: String?
         var width: Int?
         var height: Int?
+        /// Alt text (other networks' photos carry it).
+        var alt: String?
+        /// A small version for list thumbnails, where the network has one.
+        var thumb: String?
     }
 
     /// Two layers: a JSON string literal holding JSON-escaped text.
@@ -99,10 +103,13 @@ enum TweetExtraction {
         return f
     }()
 
-    /// `\"created_at_ms\":1792865465000` after `from`, as a date line ("Oct 25, 2026") in the system time zone.
+    /// A date line ("Oct 25, 2026") in the system time zone.
+    static func dateLine(_ date: Date) -> String { dateFormatter.string(from: date) }
+
+    /// `\"created_at_ms\":1792865465000` after `from`, as a date line.
     static func tweetDate(_ raw: String, from: Int) -> String? {
         guard let m = datePattern.firstMatch(raw, from: from), let ms = m[1].flatMap({ Double($0) }) else { return nil }
-        return dateFormatter.string(from: Date(timeIntervalSince1970: ms / 1000))
+        return dateLine(Date(timeIntervalSince1970: ms / 1000))
     }
 
     /// A string binding of the post's link card.
@@ -145,7 +152,7 @@ enum TweetExtraction {
             let size = [m.width.map { " width=\"\($0)\"" }, m.height.map { " height=\"\($0)\"" }].compactMap { $0 }.joined()
             let poster = m.poster.map { " poster=\"\(DOM.escapeAttr($0))\"" } ?? ""
             switch m.kind {
-            case .photo: return "<img src=\"\(DOM.escapeAttr(m.url))\" alt=\"\"\(size)>"
+            case .photo: return "<img src=\"\(DOM.escapeAttr(m.url))\" alt=\"\(DOM.escapeAttr(m.alt ?? ""))\"\(size)>"
             case .video: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) playsinline></video>"
             case .gif: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) autoplay loop muted playsinline></video>"
             }
@@ -162,10 +169,25 @@ enum TweetExtraction {
         return t
     }
 
-    static func whoHTML(_ u: User, date: String?) -> String {
+    /// The author row. `profile` is the account's page where it isn't x.com/handle.
+    static func whoHTML(_ u: User, date: String?, profile: String? = nil) -> String {
         let av = u.avatar.map { "<img class=\"x-avatar\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
         let when = date.map { "<span class=\"x-when\">· \(DOM.escapeHTML($0))</span>" } ?? ""
-        return "<div class=\"x-who\">\(av)<span class=\"x-name\">\(DOM.escapeHTML(u.name))</span><a class=\"x-handle\" href=\"https://x.com/\(u.handle)\">@\(u.handle)</a>\(when)</div>"
+        let handle = profile.map { "<a class=\"x-handle\" href=\"\(DOM.escapeAttr($0))\">@\(DOM.escapeHTML(u.handle))</a>" }
+            ?? "<a class=\"x-handle\" href=\"https://x.com/\(u.handle)\">@\(u.handle)</a>"
+        return "<div class=\"x-who\">\(av)<span class=\"x-name\">\(DOM.escapeHTML(u.name))</span>\(handle)\(when)</div>"
+    }
+
+    /// A link card: lead image, domain, title.
+    static func cardHTML(href: String, title: String, domain: String?, image: String?) -> String {
+        let pic = image.map { "<img class=\"x-card-img\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
+        let shownDomain = domain ?? DOM.hostname(href) ?? ""
+        return "<a class=\"x-card\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span><span class=\"x-card-title\">\(DOM.escapeHTML(title))</span></span></a>"
+    }
+
+    /// The footer: the date and a link to the post on its network.
+    static func footHTML(date: String?, canonical: String, network: String) -> String {
+        "<div class=\"x-foot\"><span>\(DOM.escapeHTML(date ?? ""))</span><a class=\"x-open\" href=\"\(DOM.escapeAttr(canonical))\">Open on \(network)</a></div>"
     }
 
     static func bodyHTML(_ text: String, links: Links, drop: String? = nil) -> String {
@@ -232,11 +254,7 @@ enum TweetExtraction {
             cardURL = cardString(region, key: "card_url")
             let img = cardImage.firstMatch(region)?[1] ?? nil
             let href = cardURL.flatMap { links[$0]?.expanded } ?? cardURL
-            if let title, let href {
-                let pic = img.map { "<img class=\"x-card-img\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
-                let shownDomain = domain ?? DOM.hostname(href) ?? ""
-                card = "<a class=\"x-card\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span><span class=\"x-card-title\">\(DOM.escapeHTML(title))</span></span></a>"
-            }
+            if let title, let href { card = cardHTML(href: href, title: title, domain: domain, image: img) }
         }
 
         var quoted = ""
@@ -252,7 +270,7 @@ enum TweetExtraction {
             }
         }
 
-        let foot = "<div class=\"x-foot\"><span>\(DOM.escapeHTML(tweetDate(raw, from: 0) ?? ""))</span><a class=\"x-open\" href=\"\(canonical)\">Open on X</a></div>"
+        let foot = footHTML(date: tweetDate(raw, from: 0), canonical: canonical, network: "X")
         let html = ArticleSanitizer.sanitize(
             "<div class=\"x-post\">\(whoHTML(author, date: nil))\(bodyHTML(text, links: links, drop: card.isEmpty ? nil : cardURL))\(mediaHTML(media))\(quoted)\(card)\(foot)</div>"
         ).trimmingCharacters(in: .whitespacesAndNewlines)

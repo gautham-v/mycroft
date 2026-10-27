@@ -83,8 +83,8 @@ struct ReaderItemView: View {
     private var isVideo: Bool { item.source.kind == .youtube }
     /// Podcasts read like articles with an audio player between header and notes.
     private var isPodcast: Bool { item.source.kind == .podcast && item.item.audioUrl != nil }
-    /// Posts on X have no headline: the extracted markup carries the author row, text and cards.
-    private var isPost: Bool { TextFormat.isXPost(item.item.url) && content != .failed }
+    /// Posts (X, Bluesky, Mastodon, LinkedIn, Threads, Instagram) have no headline: the extracted markup carries the author row, text and cards.
+    private var isPost: Bool { TextFormat.isSocialPost(item.item.url) && content != .failed }
     private var itemURL: URL? { URL(string: item.item.url) }
 
     private var contentHTML: String? {
@@ -119,7 +119,7 @@ struct ReaderItemView: View {
     /// The toolbar title, as the item's list row reads: source (or a post's author and handle) in
     /// ink, then " · 31m" muted, both at the sidebar's row size. Re-rendered every minute.
     private var titleLine: some View {
-        let (author, handle) = TextFormat.isXPost(item.item.url) ? TextFormat.splitHandle(item.item.author) : ("", nil)
+        let (author, handle) = TextFormat.isSocialPost(item.item.url) ? TextFormat.splitHandle(item.item.author) : ("", nil)
         let name = author.isEmpty ? item.source.title : author
         return TimelineView(.periodic(from: .now, by: 60)) { context in
             let lead = Text(verbatim: name).foregroundStyle(Color.ofInk)
