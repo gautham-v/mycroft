@@ -59,6 +59,13 @@ private struct ReaderYouTubeStage: View {
                     .transition(.opacity)
             }
         }
+        .onAppear {
+            controller.start = { started = true }
+            ReaderYouTubeController.current = controller
+        }
+        .onDisappear {
+            if ReaderYouTubeController.current === controller { ReaderYouTubeController.current = nil }
+        }
         .task(id: started) {
             // Autoplay refused or a slow network: hand over to the player (and its play button) after a while.
             guard started, !revealed, (try? await Task.sleep(for: .seconds(8))) != nil else { return }
@@ -206,10 +213,24 @@ enum ReaderYouTubeEvent {
     case playing, failed, fullscreen(Double), exitFullscreen(Double)
 }
 
-/// Lets the stage reach the player's page (resume after the iPhone full-screen cover closes).
+/// Lets the stage reach the player's page (resume after the iPhone full-screen cover closes), and the
+/// window's key monitor reach the reader's player (Space plays or pauses it wherever focus is).
 @MainActor
 final class ReaderYouTubeController {
+    /// The player in the reader, if it shows a video (the most recent one, with several panes).
+    static weak var current: ReaderYouTubeController?
+
     weak var webView: WKWebView?
+    /// Presses the poster's play button (before the player is loaded).
+    var start: (() -> Void)?
+
+    func togglePlayback() {
+        if let webView {
+            webView.evaluateJavaScript("window.odPlayer && window.odPlayer.toggle()")
+        } else {
+            start?()
+        }
+    }
 
     func resume(at time: Double) {
         webView?.evaluateJavaScript("window.odPlayer && window.odPlayer.resume(\(time))")

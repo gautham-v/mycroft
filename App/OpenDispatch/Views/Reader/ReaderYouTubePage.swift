@@ -17,7 +17,7 @@ import Foundation
 /// Messages to the `openDispatchYouTube` handler: `{type: "playing"}` once playback first starts,
 /// `{type: "failed"}` when the API or the video fails (the layer and bar are removed, YouTube's own
 /// player or error shows), `{type: "fullscreen" | "exitFullscreen", time}`. `window.odPlayer.resume(t)`
-/// seeks and plays.
+/// seeks and plays, `window.odPlayer.toggle()` plays or pauses (Space in the app's window).
 enum ReaderYouTubePage {
     static let handlerName = "openDispatchYouTube"
 
@@ -368,6 +368,7 @@ enum ReaderYouTubePage {
 
           window.odPlayer = {
             resume: function (t) { if (!ready) return; player.seekTo(t, true); player.playVideo(); },
+            toggle: function () { if (failed) return; toggle(); poke(); },
             fail: fail
           };
           render();
