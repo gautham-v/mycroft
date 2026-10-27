@@ -214,7 +214,7 @@ enum ReaderYouTubeEvent {
 }
 
 /// Lets the stage reach the player's page (resume after the iPhone full-screen cover closes), and the
-/// window's key monitor reach the reader's player (Space plays or pauses it wherever focus is).
+/// window's key monitor reach the reader's player (Space plays or pauses it and ←/→ skip wherever focus is).
 @MainActor
 final class ReaderYouTubeController {
     /// The player in the reader, if it shows a video (the most recent one, with several panes).
@@ -230,6 +230,11 @@ final class ReaderYouTubeController {
         } else {
             start?()
         }
+    }
+
+    /// Skips by `seconds` (negative goes back). Nothing before the player is loaded.
+    func seek(by seconds: Double) {
+        webView?.evaluateJavaScript("window.odPlayer && window.odPlayer.seekBy(\(seconds))")
     }
 
     func resume(at time: Double) {

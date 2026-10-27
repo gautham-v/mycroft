@@ -30,6 +30,7 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["⇧", "⌘", "C"], label: "Copy the article as Markdown"),
             ShortcutEntry(keys: ["⇧", "⌘", "L"], label: "Listen to the article, pause or resume"),
             ShortcutEntry(keys: ["Space"], label: "Play or pause the video"),
+            ShortcutEntry(keys: ["←", "→"], label: "Skip the video back or ahead 5 seconds", separator: "or"),
         ]),
         ShortcutGroup(title: "Views", items: [
             ShortcutEntry(keys: ["g", "a"], label: "All", separator: "then"),

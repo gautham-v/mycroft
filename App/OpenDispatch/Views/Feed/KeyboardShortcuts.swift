@@ -239,11 +239,15 @@ private final class FeedKeyMonitor {
             return false
         }
 
-        // Space plays or pauses the reader's video wherever focus is (the player's own page only sees keys
-        // while it has focus, and clicking the poster or autoplay doesn't give it focus).
-        if event.keyCode == 49, flags.isDisjoint(with: .shift), let player = ReaderYouTubeController.current {
-            player.togglePlayback()
-            return true
+        // Space plays or pauses the reader's video and ←/→ skip 5 s, wherever focus is (the player's own
+        // page only sees keys while it has focus, and clicking the poster or autoplay doesn't give it focus).
+        if flags.isDisjoint(with: .shift), let player = ReaderYouTubeController.current {
+            switch event.keyCode {
+            case 49: player.togglePlayback(); return true
+            case 123: player.seek(by: -5); return true
+            case 124: player.seek(by: 5); return true
+            default: break
+            }
         }
 
         // After a click in the reader, scroll keys scroll the article (the web's readerClicked).
