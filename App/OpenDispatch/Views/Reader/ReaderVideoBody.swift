@@ -20,7 +20,8 @@ struct ReaderVideoBody: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if theater, let videoID = item.item.videoId {
-                ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay)
+                ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
+                                    thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec)
                     .frame(maxWidth: Metrics.theaterMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, wide ? 16 : 0)
@@ -70,7 +71,8 @@ struct ReaderVideoBody: View {
                 .padding(.top, 12)
 
                 if !theater, let videoID = item.item.videoId {
-                    ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay)
+                    ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
+                                    thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .padding(.top, 20)
                 }
