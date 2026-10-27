@@ -3,11 +3,6 @@ import OpenDispatchCore
 import SwiftUI
 import UIKit
 
-/// Where the iPhone's one navigation stack can go from the home list besides the reader.
-enum PhoneRoute: Hashable {
-    case manageSources
-}
-
 /// The home list's horizontal slide while swiping between views (PhoneRoot drives it; the list reads it).
 /// A reference type of its own so the per-frame drag only re-evaluates the small modifier that offsets the
 /// list, not the list or PhoneRoot.
@@ -54,8 +49,9 @@ extension EnvironmentValues {
         set { self[PhoneDrawerKey.self] = newValue }
     }
 
-    /// Something (Manage sources, a source's feed) is pushed above the iPhone's home list, so the home list
-    /// must not present the search field or the reader.
+    /// Something is pushed above the iPhone's home list, so the home list must not present the search field or
+    /// the reader. Nothing pushes onto the home stack now (the drawer manages folders and sources itself), so
+    /// this stays false.
     var isFeedStackPushed: Bool {
         get { self[FeedStackPushedKey.self] }
         set { self[FeedStackPushedKey.self] = newValue }
@@ -67,8 +63,8 @@ extension EnvironmentValues {
 /// the list's hamburger bubble or a swipe: in from the left edge, or right on the first view or on a list
 /// that is not one of the five content views. Sideways swipes otherwise move between those views (page
 /// dots). The drawer covers 82% of the width, and the list slides right, dims, shrinks a little and
-/// rounds its corners as a peek; tapping the peek or swiping left closes it. Opening a row, Manage
-/// sources and a source's feed push onto the stack; Settings and Add source are sheets (RootView).
+/// rounds its corners as a peek; tapping the peek or swiping left closes it. Opening a row pushes the
+/// reader onto the stack; Settings and Add source are sheets (RootView).
 ///
 /// The swipes are one UIKit pan recognizer on the hosting view (`PhoneSwipeBridge`), not a SwiftUI
 /// gesture: the list's scroll view takes the touch first and a SwiftUI drag on a parent never fired.
@@ -79,7 +75,6 @@ struct PhoneRoot: View {
     /// Finger travel while dragging the drawer open or closed.
     @State private var drag: CGFloat = 0
     @State private var chrome = PhoneChrome()
-    @State private var path: [PhoneRoute] = []
 
     private static let drawerFraction: CGFloat = 0.82
     /// An edge swipe starts within this distance of the screen's left edge.
@@ -101,7 +96,7 @@ struct PhoneRoot: View {
             let width = geo.size.width * Self.drawerFraction
             let progress = progress(width: width)
             ZStack(alignment: .leading) {
-                PhoneDrawer(safeArea: safeArea, close: close, manageSources: manageSources)
+                PhoneDrawer(safeArea: safeArea, isOpen: isOpen, close: close)
                     .frame(width: width)
                     .accessibilityHidden(!isOpen)
                 stack
@@ -133,13 +128,9 @@ struct PhoneRoot: View {
     }
 
     private var stack: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             FeedColumn(isPhoneHome: true)
-                .navigationDestination(for: PhoneRoute.self) { _ in
-                    SourcesView()
-                }
         }
-        .environment(\.isFeedStackPushed, !path.isEmpty)
         .environment(\.phoneDrawer, PhoneDrawerControl(open: { open() }))
         .environment(chrome)
     }
@@ -162,18 +153,12 @@ struct PhoneRoot: View {
         }
     }
 
-    /// The drawer's Manage sources: close it, then push the sources list.
-    private func manageSources() {
-        close()
-        path = [.manageSources]
-    }
-
     // MARK: Swipes
 
-    /// Whether a swipe may do anything: with the drawer open, or on the home list. With something pushed
-    /// (the reader, Manage sources, a source's feed) the stack's own swipe back owns the left edge.
+    /// Whether a swipe may do anything: with the drawer open, or on the home list. With the reader pushed the
+    /// stack's own swipe back owns the left edge.
     private var swipesEnabled: Bool {
-        isOpen || (path.isEmpty && model.selectedItemID == nil)
+        isOpen || model.selectedItemID == nil
     }
 
     /// What a horizontal swipe that starts at `startX` moving at `velocity` (points per second) does, or
@@ -400,64 +385,205 @@ private struct TouchShield: UIViewRepresentable {
     }
 }
 
-/// The drawer: the app's logo and name over a hairline; the sidebar's views in its order (All, Articles,
-/// Posts, Video, Podcasts, Saved, Highlights, less the ones hidden in Settings); Folders with their source counts; Sources (Add
-/// source, Manage sources); Copy Last 24 Hours / 7 Days of the list shown; and Settings pinned at the
-/// bottom. The row for what the list shows gets the soft pill; picking anything closes the drawer.
+
+// MARK: - Drawer
+
+/// What the drawer's name alert is asking for.
+private enum DrawerPrompt: Identifiable {
+    case newFolder
+    case renameFolder(Folder)
+    case renameSource(Source)
+
+    var id: String {
+        switch self {
+        case .newFolder: "new"
+        case .renameFolder(let f): "folder-\(f.id)"
+        case .renameSource(let s): "source-\(s.id)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .newFolder: "New Folder"
+        case .renameFolder: "Rename Folder"
+        case .renameSource: "Rename Source"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .newFolder: "Enter a name for the folder."
+        case .renameFolder(let f): "Enter a new name for \u{201C}\(f.title)\u{201D}."
+        case .renameSource(let s): "Enter a new name for \u{201C}\(s.title)\u{201D}."
+        }
+    }
+
+    var initial: String {
+        switch self {
+        case .newFolder: ""
+        case .renameFolder(let f): f.title
+        case .renameSource(let s): s.title
+        }
+    }
+
+    var confirm: String {
+        if case .newFolder = self { "Create" } else { "Rename" }
+    }
+}
+
+/// The drawer: the OpenDispatch wordmark with a glass search bubble; the sidebar's views in its order (All,
+/// Articles, Posts, Video, Podcasts, Saved, Highlights, less the ones hidden in Settings); Folders, each
+/// with its source count and a chevron that opens its sources inline, then Unfiled if any source is
+/// without a folder; Settings as a glass bubble and Add source as a dark pill floating over the list. The
+/// row for what the list shows gets the soft pill; picking a view, folder or source closes the drawer.
+///
+/// Search turns the top into a glass field and filters the list to the folders and sources whose name
+/// matches. Holding a folder or source gives its actions (rename, move, copy, delete) as a context menu.
+/// Edit switches the list to the folders alone, with a delete control and a drag handle on each, and the
+/// bottom to New folder and Done.
 private struct PhoneDrawer: View {
     let safeArea: EdgeInsets
+    let isOpen: Bool
     let close: () -> Void
-    let manageSources: () -> Void
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+
+    /// Folders whose sources are showing (`AppModel.folderKey`); collapsed by default, kept for the session.
+    @State private var expanded: Set<String> = []
+    @State private var isSearching = false
+    @State private var query = ""
+    @State private var isEditing = false
+    @State private var prompt: DrawerPrompt?
+    @State private var promptText = ""
+    @State private var pendingFolderDelete: Folder?
+    @State private var pendingSourceDelete: Source?
+    @State private var errorMessage: String?
+    @FocusState private var searchFocused: Bool
+
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isFiltering: Bool { isSearching && !trimmedQuery.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    viewRows
-                    foldersSection
-                    sourcesSection
-                    copySection
-                }
-                .padding(.top, 10)
-                .padding(.bottom, 16)
+        ZStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                if isEditing { editList } else { browseList }
             }
-            .scrollIndicators(.hidden)
-            footer
+            .padding(.top, safeArea.top + 8)
+            // Stays put when the keyboard comes up for an alert's text field.
+            if !isSearching { bottomBar.ignoresSafeArea(.keyboard) }
         }
-        .padding(.top, safeArea.top + 8)
-        .padding(.bottom, max(safeArea.bottom, 12))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.ofDrawer)
+        // Once the drawer has closed, the next opening starts from the plain list.
+        .task(id: isOpen) {
+            guard !isOpen else { return }
+            searchFocused = false
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            isSearching = false
+            query = ""
+            isEditing = false
+        }
+        .modifier(DrawerDialogs(
+            prompt: $prompt, promptText: $promptText, pendingFolderDelete: $pendingFolderDelete,
+            pendingSourceDelete: $pendingSourceDelete, errorMessage: $errorMessage,
+            commit: commit, deleteFolder: { folder in run { try await model.deleteFolder(id: folder.id) } },
+            deleteSource: { source in run { try await model.deleteSource(id: source.id) } }))
     }
+
+    // MARK: Top
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image("AppLogo")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 32, height: 32)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            Text("OpenDispatch")
-                .font(OFFont.ui(22, .semibold))
-                .tracking(-0.3)
-                .foregroundStyle(.ofInk)
-                .lineLimit(1)
+            if isSearching {
+                searchField
+            } else {
+                Text("OpenDispatch")
+                    .font(OFFont.ui(27, .semibold))
+                    .tracking(-0.6)
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                if !isEditing { searchBubble }
+            }
         }
-        .padding(.leading, 20)
-        .padding(.bottom, 16)
-        .padding(.top, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Color.ofHairline).frame(height: 1).padding(.trailing, 20).padding(.leading, 20)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("OpenDispatch")
-        .accessibilityAddTraits(.isHeader)
+        .padding(.leading, isSearching ? 12 : 22)
+        .padding(.trailing, 12)
+        .frame(height: 56)
     }
 
-    // MARK: Views
+    private var searchBubble: some View {
+        Button {
+            withAnimation(.smooth(duration: 0.2)) { isSearching = true }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.ofInk)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel("Search sources and folders")
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.ofMuted)
+            TextField("", text: $query, prompt: Text("Search sources and folders").foregroundStyle(.ofFaint))
+                .font(OFFont.ui(17))
+                .foregroundStyle(.ofInk)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($searchFocused)
+            Button {
+                searchFocused = false
+                query = ""
+                withAnimation(.smooth(duration: 0.2)) { isSearching = false }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.ofInk)
+                    .frame(width: 36, height: 46)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close search")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 4)
+        .frame(height: 46)
+        .glassEffect(.regular, in: .capsule)
+        .onAppear { searchFocused = true }
+    }
+
+    // MARK: Browsing
+
+    private var browseList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if isFiltering {
+                    searchResults
+                } else {
+                    viewRows
+                    foldersSection
+                }
+            }
+            .padding(.top, 10)
+            .padding(.bottom, Self.listBottomInset)
+        }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// Room under the last row for the bubble and pill floating at the bottom.
+    private static let listBottomInset: CGFloat = 130
 
     /// The sidebar's rows in its order (`SidebarViewItem.ordered`), less the ones hidden in Settings. Saved and
     /// Highlights stay: the drawer is the only way to them on iPhone.
@@ -499,112 +625,486 @@ private struct PhoneDrawer: View {
 
     // MARK: Folders and sources
 
+    /// The sources of a folder (nil = Unfiled) in sidebar order. The iPhone has no Pinned or Hidden groups, so
+    /// those are listed in their folder too; the opened-links holders are not subscriptions.
+    private func sources(in folderID: Int64?) -> [Source] {
+        model.allSources(inFolder: folderID).filter { !$0.isOpenedLinks }
+    }
+
     @ViewBuilder private var foldersSection: some View {
-        if !model.orderedFolders.isEmpty {
-            DrawerSectionLabel("Folders")
-            ForEach(model.orderedFolders) { folder in
-                DrawerRow(
-                    icon: "ph.folder",
-                    title: folder.title,
-                    count: model.sources(inFolder: folder.id).count,
-                    isCurrent: model.selectedFolderID == folder.id && model.selectedSourceID == nil
-                ) { pick { model.navigate(folderID: folder.id) } }
+        DrawerSectionLabel("Folders") {
+            Button("Edit") {
+                withAnimation(.smooth(duration: 0.2)) { isEditing = true }
+            }
+            .font(OFFont.ui(14, .semibold))
+            .foregroundStyle(.ofInk)
+            .buttonStyle(.plain)
+            .frame(minHeight: 28)
+            .contentShape(Rectangle())
+        }
+        ForEach(model.orderedFolders) { folder in
+            folderRow(folder, expandable: true)
+            if expanded.contains(AppModel.folderKey(folder.id)) {
+                sourceRows(sources(in: folder.id))
+            }
+        }
+        let unfiled = sources(in: nil)
+        if !unfiled.isEmpty {
+            let key = AppModel.folderKey(nil)
+            let toggle = { toggleExpanded(key) }
+            DrawerFolderRow(title: "Unfiled", count: unfiled.count, isExpanded: expanded.contains(key), open: toggle, toggle: toggle)
+            if expanded.contains(key) { sourceRows(unfiled) }
+        }
+    }
+
+    private func folderRow(_ folder: Folder, expandable: Bool) -> some View {
+        let key = AppModel.folderKey(folder.id)
+        let count = sources(in: folder.id).count
+        return DrawerFolderRow(
+            title: folder.title,
+            count: count,
+            isCurrent: model.selectedFolderID == folder.id && model.selectedSourceID == nil,
+            isExpanded: expandable ? expanded.contains(key) : nil,
+            open: { pick { model.navigate(folderID: folder.id) } },
+            toggle: expandable ? { toggleExpanded(key) } : nil
+        )
+        .contextMenu {
+            folderMenu(folder)
+        } preview: {
+            DrawerLift {
+                Image("ph.folder").renderingMode(.template).resizable().scaledToFit().frame(width: 24, height: 24)
+                Text(folder.title).font(OFFont.ui(17, .medium)).lineLimit(1)
+                Spacer(minLength: 12)
+                Text("\(count) \(count == 1 ? "source" : "sources")").font(OFFont.ui(14)).foregroundStyle(.ofMuted)
             }
         }
     }
 
-    @ViewBuilder private var sourcesSection: some View {
-        DrawerSectionLabel("Sources")
-        DrawerRow(icon: "ph.plus", title: "Add source") { pick { model.isAddSourcePresented = true } }
-        DrawerRow(icon: "ph.list", title: "Manage sources", action: manageSources)
+    private func sourceRows(_ list: [Source]) -> some View {
+        ForEach(list) { source in
+            sourceRow(source, detail: nil, indented: true)
+        }
+        .transition(.opacity)
     }
 
-    /// Copy Last 24 Hours / 7 Days of what the list shows, small rows at the end.
-    @ViewBuilder private var copySection: some View {
-        DrawerSectionLabel("Copy this list as Markdown")
-        DrawerRow(systemIcon: "doc.on.doc", title: "Last 24 Hours", compact: true) {
-            pick { model.copyDigest(model.currentDigestScope, days: 1) }
+    private func sourceRow(_ source: Source, detail: String?, indented: Bool) -> some View {
+        DrawerSourceRow(source: source, detail: detail, isIndented: indented, isCurrent: model.selectedSourceID == source.id) {
+            pick { model.navigate(sourceID: source.id) }
         }
-        DrawerRow(systemIcon: "doc.on.doc", title: "Last 7 Days", compact: true) {
-            pick { model.copyDigest(model.currentDigestScope, days: 7) }
+        .contextMenu {
+            sourceMenu(source)
+        } preview: {
+            DrawerLift {
+                SourceBadge(source: source, size: 24)
+                Text(source.title).font(OFFont.ui(17, .medium)).lineLimit(1)
+                Spacer(minLength: 12)
+                Text(source.host).font(OFFont.ui(14)).foregroundStyle(.ofMuted).lineLimit(1)
+            }
         }
     }
 
-    private var footer: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(Color.ofHairline).frame(height: 1).padding(.horizontal, 20).padding(.bottom, 8)
-            DrawerRow(icon: "ph.settings", title: "Settings") { pick { model.isSettingsPresented = true } }
+    private func toggleExpanded(_ key: String) {
+        withAnimation(.smooth(duration: 0.22)) {
+            if expanded.contains(key) { expanded.remove(key) } else { expanded.insert(key) }
         }
     }
+
+    // MARK: Search
+
+    /// Folders, then sources, whose name contains the query; a source shows the folder it is in.
+    @ViewBuilder private var searchResults: some View {
+        let q = trimmedQuery
+        let folders = model.orderedFolders.filter { $0.title.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        let found = SourceList.matching(model.sources.filter { !$0.isOpenedLinks }, query: q)
+        if folders.isEmpty, found.isEmpty {
+            Text("No folders or sources match \u{201C}\(q)\u{201D}")
+                .font(OFFont.ui(15))
+                .foregroundStyle(.ofMuted)
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+        }
+        if !folders.isEmpty {
+            DrawerSectionLabel("Folders")
+            ForEach(folders) { folderRow($0, expandable: false) }
+        }
+        if !found.isEmpty {
+            DrawerSectionLabel("Sources")
+            ForEach(found) { source in
+                sourceRow(source, detail: model.folders.first { $0.id == source.folderId }?.title ?? "Unfiled", indented: false)
+            }
+        }
+    }
+
+    // MARK: Menus
+
+    @ViewBuilder private func folderMenu(_ folder: Folder) -> some View {
+        Button {
+            open(.renameFolder(folder))
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        Button {
+            model.pendingAddSourceFolderID = folder.id
+            model.isAddSourcePresented = true
+        } label: {
+            Label("Add Source to \(folder.title)\u{2026}", systemImage: "plus")
+        }
+        CopyDigestButtons(scope: .folder(folder), icons: true)
+        Divider()
+        Button(role: .destructive) {
+            pendingFolderDelete = folder
+        } label: {
+            Label("Delete Folder\u{2026}", systemImage: "trash")
+        }
+    }
+
+    @ViewBuilder private func sourceMenu(_ source: Source) -> some View {
+        Button {
+            pick { model.navigate(sourceID: source.id) }
+        } label: {
+            Label("Open Feed", systemImage: "dot.radiowaves.up.forward")
+        }
+        if let url = URL(string: source.url), url.scheme != nil {
+            Button {
+                openURL(url)
+            } label: {
+                Label("Open Site", systemImage: OFIcon.external.rawValue)
+            }
+        }
+        Menu {
+            ForEach(model.orderedFolders) { folder in
+                Toggle(folder.title, isOn: moveBinding(source, to: folder.id))
+            }
+            Toggle("Unfiled", isOn: moveBinding(source, to: nil))
+        } label: {
+            Label("Move to Folder", systemImage: OFIcon.folder.rawValue)
+        }
+        Button {
+            open(.renameSource(source))
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        Divider()
+        Button(role: .destructive) {
+            pendingSourceDelete = source
+        } label: {
+            Label("Remove Source\u{2026}", systemImage: "trash")
+        }
+    }
+
+    /// Checked when the source is in that folder; checking it moves the source there.
+    private func moveBinding(_ source: Source, to folderID: Int64?) -> Binding<Bool> {
+        Binding(
+            get: { source.folderId == folderID },
+            set: { checked in
+                guard checked, source.folderId != folderID else { return }
+                run { try await model.moveSource(id: source.id, toFolder: folderID) }
+            })
+    }
+
+    // MARK: Editing
+
+    /// Edit mode: just the folders, each with a delete control and a drag handle.
+    private var editList: some View {
+        List {
+            DrawerSectionLabel("Folders")
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .moveDisabled(true)
+            if model.orderedFolders.isEmpty {
+                Text("No folders yet")
+                    .font(OFFont.ui(15))
+                    .foregroundStyle(.ofMuted)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 24, bottom: 8, trailing: 24))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .moveDisabled(true)
+            }
+            ForEach(model.orderedFolders) { folder in
+                editRow(folder)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 8))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparatorTint(.ofHairline)
+                    .deleteDisabled(true)
+            }
+            .onMove(perform: moveFolders)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 1)
+        .environment(\.editMode, .constant(.active))
+        .contentMargins(.bottom, Self.listBottomInset, for: .scrollContent)
+    }
+
+    private func editRow(_ folder: Folder) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                pendingFolderDelete = folder
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(Color.ofDanger, in: Circle())
+                    .frame(width: 34, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete \(folder.title)")
+            Image("ph.folder").renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 24, height: 24)
+                .foregroundStyle(.ofInk)
+            Text(folder.title)
+                .font(OFFont.ui(17, .medium))
+                .foregroundStyle(.ofInk)
+                .lineLimit(1)
+            Text("\(sources(in: folder.id).count)")
+                .font(OFFont.ui(14))
+                .monospacedDigit()
+                .foregroundStyle(.ofMuted)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func moveFolders(from: IndexSet, to: Int) {
+        var ids = model.orderedFolders.map(\.id)
+        ids.move(fromOffsets: from, toOffset: to)
+        Task { await model.reorderFolders(ids) }
+    }
+
+    // MARK: Bottom
+
+    /// Settings and Add source (or New folder and Done while editing), over a fade of the drawer's ground.
+    private var bottomBar: some View {
+        GlassEffectContainer(spacing: 16) {
+            HStack(spacing: 10) {
+                if isEditing {
+                    DrawerPill(title: "New folder") { open(.newFolder) }
+                    Spacer(minLength: 0)
+                    Button {
+                        withAnimation(.smooth(duration: 0.2)) { isEditing = false }
+                    } label: {
+                        Text("Done")
+                            .font(OFFont.ui(16, .semibold))
+                            .foregroundStyle(.ofInk)
+                            .padding(.horizontal, 22)
+                            .frame(height: 46)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                } else {
+                    settingsButton
+                    Spacer(minLength: 0)
+                    DrawerPill(title: "Add source") {
+                        model.pendingAddSourceFolderID = nil
+                        model.isAddSourcePresented = true
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 36)
+        .padding(.bottom, 22)
+        .background {
+            LinearGradient(colors: [Color.ofDrawer.opacity(0), Color.ofDrawer], startPoint: .top, endPoint: .bottom)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var settingsButton: some View {
+        Button {
+            pick { model.isSettingsPresented = true }
+        } label: {
+            Image("ph.settings")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 24, height: 24)
+                .foregroundStyle(.ofInk)
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel("Settings")
+    }
+
+    // MARK: Actions
 
     /// Runs `action`, then closes the drawer.
     private func pick(_ action: () -> Void) {
         action()
         close()
     }
+
+    private func open(_ p: DrawerPrompt) {
+        promptText = p.initial
+        prompt = p
+    }
+
+    private func commit(_ p: DrawerPrompt) {
+        let title = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title != p.initial else { return }
+        switch p {
+        case .newFolder:
+            run { try await model.createFolder(title: title) }
+        case .renameFolder(let folder):
+            run { try await model.renameFolder(id: folder.id, title: title) }
+        case .renameSource(let source):
+            run { try await model.renameSource(id: source.id, title: title) }
+        }
+    }
+
+    private func run(_ action: @escaping @MainActor () async throws -> Void) {
+        Task {
+            do { try await action() } catch { errorMessage = HTTP.message(error) }
+        }
+    }
 }
 
-/// "Folders", "Sources": a muted section label in the drawer.
-private struct DrawerSectionLabel: View {
-    let title: String
+/// The drawer's alerts: the name field (new folder, rename), the delete confirmations and errors.
+private struct DrawerDialogs: ViewModifier {
+    @Binding var prompt: DrawerPrompt?
+    @Binding var promptText: String
+    @Binding var pendingFolderDelete: Folder?
+    @Binding var pendingSourceDelete: Source?
+    @Binding var errorMessage: String?
+    let commit: (DrawerPrompt) -> Void
+    let deleteFolder: (Folder) -> Void
+    let deleteSource: (Source) -> Void
 
-    init(_ title: String) { self.title = title }
+    func body(content: Content) -> some View {
+        content
+            .alert(prompt?.title ?? "", isPresented: isSet($prompt), presenting: prompt) { p in
+                TextField("Name", text: $promptText)
+                    .textInputAutocapitalization(.words)
+                Button("Cancel", role: .cancel) {}
+                Button(p.confirm) { commit(p) }
+            } message: { p in
+                Text(p.message)
+            }
+            .alert(
+                pendingFolderDelete.map { "Delete \($0.title)?" } ?? "Delete folder?",
+                isPresented: isSet($pendingFolderDelete), presenting: pendingFolderDelete
+            ) { folder in
+                Button("Delete Folder", role: .destructive) { deleteFolder(folder) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Its sources move to Unfiled.")
+            }
+            .alert(
+                pendingSourceDelete.map { "Remove \($0.title)?" } ?? "Remove source?",
+                isPresented: isSet($pendingSourceDelete), presenting: pendingSourceDelete
+            ) { source in
+                Button("Remove Source", role: .destructive) { deleteSource(source) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Removing a source also removes its items.")
+            }
+            .alert("Something went wrong", isPresented: isSet($errorMessage)) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
+    }
+
+    private func isSet<T>(_ value: Binding<T?>) -> Binding<Bool> {
+        Binding(get: { value.wrappedValue != nil }, set: { if !$0 { value.wrappedValue = nil } })
+    }
+}
+
+/// A muted section label in the drawer ("Folders", "Sources"), with an optional control at its trailing side.
+private struct DrawerSectionLabel<Trailing: View>: View {
+    let title: String
+    let trailing: Trailing
+
+    init(_ title: String, @ViewBuilder trailing: () -> Trailing) {
+        self.title = title
+        self.trailing = trailing()
+    }
 
     var body: some View {
-        Text(title)
-            .font(OFFont.ui(13, .semibold))
-            .foregroundStyle(.ofMuted)
-            .lineLimit(1)
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 4)
-            .accessibilityAddTraits(.isHeader)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(OFFont.ui(13, .semibold))
+                .foregroundStyle(.ofMuted)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
+            trailing
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 4)
     }
 }
 
-/// A drawer row: icon, title with an optional subtitle, an optional count; the soft pill when current.
-private struct DrawerRow: View {
-    private enum Icon {
-        case asset(String)
-        case symbol(String)
-    }
+extension DrawerSectionLabel where Trailing == EmptyView {
+    init(_ title: String) { self.init(title) { EmptyView() } }
+}
 
-    private let icon: Icon
+/// The card a held row lifts into above its context menu.
+private struct DrawerLift<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack(spacing: 12) { content }
+            .foregroundStyle(.ofInk)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(minWidth: 280)
+            .background(Color.ofCard)
+    }
+}
+
+/// A big pill at the drawer's bottom: ink with light text, and the reverse in dark mode.
+private struct DrawerPill: View {
     let title: String
-    var subtitle: String?
-    var count: Int?
-    var compact = false
-    var isCurrent = false
     let action: () -> Void
 
-    init(icon: String, title: String, subtitle: String? = nil, count: Int? = nil, isCurrent: Bool = false, action: @escaping () -> Void) {
-        self.icon = .asset(icon)
-        self.title = title
-        self.subtitle = subtitle
-        self.count = count
-        self.isCurrent = isCurrent
-        self.action = action
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image("ph.plus").renderingMode(.template).resizable().scaledToFit().frame(width: 20, height: 20)
+                Text(title).font(OFFont.ui(17, .semibold)).lineLimit(1)
+            }
+            .foregroundStyle(Color(light: 0xFFFFFF, dark: 0x1B1B1A))
+            .padding(.leading, 18)
+            .padding(.trailing, 22)
+            .frame(height: 52)
+            .background(Capsule().fill(Color.ofInk))
+            .shadow(color: .black.opacity(0.18), radius: 11, y: 8)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
+}
 
-    /// A small row with an SF Symbol (the copy actions).
-    init(systemIcon: String, title: String, compact: Bool, action: @escaping () -> Void) {
-        self.icon = .symbol(systemIcon)
-        self.title = title
-        self.compact = compact
-        self.action = action
-    }
+/// A view row in the drawer: icon, title with an optional subtitle; the soft pill when current.
+private struct DrawerRow: View {
+    let icon: String
+    let title: String
+    var subtitle: String?
+    var isCurrent = false
+    let action: () -> Void
 
     var body: some View {
         // A swipe that ends over the row (closing the drawer) is not a tap on it.
         Button(action: { if !PhoneDrawerTouch.blocksRowTap { action() } }) {
             HStack(spacing: 13) {
-                iconView
+                Image(icon)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
                     .frame(width: 24, height: 24)
-                    .foregroundStyle(compact ? Color.ofMuted : Color.ofInk)
+                    .foregroundStyle(.ofInk)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(OFFont.ui(compact ? 15 : 17, compact ? .regular : .medium))
-                        .foregroundStyle(compact ? Color.ofMuted : Color.ofInk)
+                        .font(OFFont.ui(17, .medium))
+                        .foregroundStyle(.ofInk)
                         .lineLimit(1)
                     if let subtitle {
                         Text(subtitle)
@@ -614,15 +1114,9 @@ private struct DrawerRow: View {
                     }
                 }
                 Spacer(minLength: 8)
-                if let count {
-                    Text("\(count)")
-                        .font(OFFont.ui(14))
-                        .monospacedDigit()
-                        .foregroundStyle(.ofMuted)
-                }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, compact ? 7 : 8)
+            .padding(.vertical, 8)
             .background(isCurrent ? Color.ofNavSelection : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .padding(.horizontal, 10)
             .padding(.vertical, 1)
@@ -631,14 +1125,101 @@ private struct DrawerRow: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
+}
 
-    @ViewBuilder private var iconView: some View {
-        switch icon {
-        case .asset(let name):
-            Image(name).renderingMode(.template).resizable().scaledToFit()
-        case .symbol(let name):
-            Image(systemName: name).font(.system(size: 15))
+/// A folder row: icon, name, source count, and a chevron that shows or hides its sources. Tapping the name
+/// calls `open`; the chevron only calls `toggle`. Without `toggle` (search results) there is no chevron.
+private struct DrawerFolderRow: View {
+    let title: String
+    let count: Int
+    var isCurrent = false
+    /// Whether its sources are showing; nil when the row has no chevron.
+    var isExpanded: Bool?
+    let open: () -> Void
+    var toggle: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: { if !PhoneDrawerTouch.blocksRowTap { open() } }) {
+                HStack(spacing: 13) {
+                    Image("ph.folder")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .foregroundStyle(.ofInk)
+                    Text(title)
+                        .font(OFFont.ui(17, .medium))
+                        .foregroundStyle(.ofInk)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text("\(count)")
+                        .font(OFFont.ui(14))
+                        .monospacedDigit()
+                        .foregroundStyle(.ofMuted)
+                }
+                .padding(.leading, 14)
+                .padding(.trailing, toggle == nil ? 14 : 6)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(title), \(count) \(count == 1 ? "source" : "sources")")
+            if let toggle {
+                Button(action: { if !PhoneDrawerTouch.blocksRowTap { toggle() } }) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.ofFaint)
+                        .rotationEffect(.degrees(isExpanded == true ? 90 : 0))
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded == true ? "Hide sources in \(title)" : "Show sources in \(title)")
+            }
         }
+        .background(isCurrent ? Color.ofNavSelection : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 1)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+}
+
+/// A source row: its badge and title, indented under its folder; `detail` (the folder's name in search
+/// results) sits at the trailing side.
+private struct DrawerSourceRow: View {
+    let source: Source
+    var detail: String?
+    var isIndented = true
+    var isCurrent = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: { if !PhoneDrawerTouch.blocksRowTap { action() } }) {
+            HStack(spacing: 12) {
+                SourceBadge(source: source, size: 20)
+                Text(source.title)
+                    .font(OFFont.ui(15.5))
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let detail {
+                    Text(detail)
+                        .font(OFFont.ui(14))
+                        .foregroundStyle(.ofMuted)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isCurrent ? Color.ofNavSelection : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.leading, isIndented ? 36 : 10)
+            .padding(.trailing, 10)
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 }
 #endif
