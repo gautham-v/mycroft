@@ -109,6 +109,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     var autoplay: Bool = true
     /// Full-width player above the title.
     var theater: Bool = true
+    /// The captions under a video, following along as it plays.
+    var videoTranscript: Bool = true
+    /// The transcript under a video is folded to its heading.
+    var videoTranscriptCollapsed: Bool = false
     /// Copy as Markdown: a line put above the copied text (Settings → Integrations). Empty = none.
     var copyPrompt: String = ""
     /// Read aloud voice (AVSpeechSynthesisVoice identifier); nil is the best voice installed. Another
@@ -136,6 +140,8 @@ struct AppSettings: Codable, Equatable, Sendable {
         fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
+        videoTranscript = (try? c.decode(Bool.self, forKey: .videoTranscript)) ?? true
+        videoTranscriptCollapsed = (try? c.decode(Bool.self, forKey: .videoTranscriptCollapsed)) ?? false
         copyPrompt = (try? c.decode(String.self, forKey: .copyPrompt)) ?? ""
         speechVoice = (try? c.decodeIfPresent(String.self, forKey: .speechVoice)) ?? nil
         let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1

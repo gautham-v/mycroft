@@ -15,10 +15,12 @@ struct ReaderYouTubePlayer: View {
     var thumbnail: String?
     var durationSec: Int?
     var vertical = false
+    /// Shared with the transcript, which follows the position and seeks through it.
+    let controller: ReaderYouTubeController
 
     var body: some View {
         ReaderYouTubeStage(videoID: videoID, title: title, autoplay: autoplay, thumbnail: thumbnail,
-                           durationSec: durationSec, vertical: vertical)
+                           durationSec: durationSec, vertical: vertical, controller: controller)
             .aspectRatio(vertical ? 9 / 16 : 16 / 9, contentMode: .fit)
             .background(Color.black)
             .id(videoID)
@@ -32,28 +34,32 @@ private struct ReaderYouTubeStage: View {
     let thumbnail: String?
     let durationSec: Int?
     let vertical: Bool
+    let controller: ReaderYouTubeController
 
     @State private var started: Bool
+    /// Where the player starts: 0, or a transcript line clicked before it was loaded.
+    @State private var startTime: Double = 0
     /// The poster is gone: playback started, or the player failed or took too long and is shown as is.
     @State private var revealed = false
-    @State private var controller = ReaderYouTubeController()
     #if os(iOS)
     @State private var fullscreen: ReaderYouTubeFullscreenStart?
     #endif
 
-    init(videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?, vertical: Bool) {
+    init(videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?, vertical: Bool,
+         controller: ReaderYouTubeController) {
         self.videoID = videoID
         self.title = title
         self.thumbnail = thumbnail
         self.durationSec = durationSec
         self.vertical = vertical
+        self.controller = controller
         _started = State(initialValue: autoplay)
     }
 
     var body: some View {
         ZStack {
             if started {
-                ReaderYouTubeRepresentable(videoID: videoID, title: title, start: 0, inCover: false,
+                ReaderYouTubeRepresentable(videoID: videoID, title: title, start: Int(startTime), inCover: false,
                                            controller: controller, onEvent: handle)
             }
             if !revealed {
@@ -63,7 +69,11 @@ private struct ReaderYouTubeStage: View {
             }
         }
         .onAppear {
-            controller.start = { started = true }
+            controller.time = 0
+            controller.start = { time in
+                startTime = time
+                started = true
+            }
             ReaderYouTubeController.current = controller
         }
         .onDisappear {
@@ -97,6 +107,7 @@ private struct ReaderYouTubeStage: View {
         case .fullscreen: break
         #endif
         case .exitFullscreen: break
+        case .time(let time): controller.time = time
         }
     }
 }
@@ -216,26 +227,35 @@ private struct ReaderYouTubeFullscreen: View {
 #endif
 
 enum ReaderYouTubeEvent {
-    case playing, failed, fullscreen(Double), exitFullscreen(Double)
+    case playing, failed, fullscreen(Double), exitFullscreen(Double), time(Double)
 }
 
-/// Lets the stage reach the player's page (resume after the iPhone full-screen cover closes), and the
-/// window's key monitor reach the reader's player (Space plays or pauses it and ←/→ skip wherever focus is).
+/// Lets the stage reach the player's page (resume after the iPhone full-screen cover closes), the
+/// window's key monitor reach the reader's player (Space plays or pauses it and ←/→ skip wherever focus
+/// is), and the transcript follow and seek the video.
 @MainActor
+@Observable
 final class ReaderYouTubeController {
     /// The player in the reader, if it shows a video (the most recent one, with several panes).
     static weak var current: ReaderYouTubeController?
 
-    weak var webView: WKWebView?
-    /// Presses the poster's play button (before the player is loaded).
-    var start: (() -> Void)?
+    /// Seconds into the video, updated as playback crosses each second.
+    var time: Double = 0
+    @ObservationIgnored weak var webView: WKWebView?
+    /// Presses the poster's play button (before the player is loaded), starting at the given second.
+    @ObservationIgnored var start: ((Double) -> Void)?
 
     func togglePlayback() {
         if let webView {
             webView.evaluateJavaScript("window.odPlayer && window.odPlayer.toggle()")
         } else {
-            start?()
+            start?(0)
         }
+    }
+
+    /// Plays from `time`: seeks the player, or loads it starting there.
+    func play(from time: Double) {
+        if webView != nil { resume(at: time) } else { start?(time) }
     }
 
     /// Skips by `seconds` (negative goes back). Nothing before the player is loaded.
@@ -302,6 +322,7 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         case "failed": onEvent(.failed)
         case "fullscreen": onEvent(.fullscreen(time))
         case "exitFullscreen": onEvent(.exitFullscreen(time))
+        case "time": onEvent(.time(time))
         default: break
         }
     }

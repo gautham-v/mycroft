@@ -28,6 +28,15 @@ struct ReaderPane: Equatable, Sendable {
     var pinnedCount: Int { tabs.prefix { $0.isPinned }.count }
 }
 
+/// A reader tab being dragged: where it was picked up, so the other pane (or the right half of a
+/// lone pane) can take it.
+struct ReaderTabDrag: Equatable, Sendable {
+    let pane: Int
+    let tabID: UUID
+    /// What the drag carries, so a drop of anything else (text from another app) is ignored.
+    var payload: String { "openfeed-tab:\(tabID.uuidString)" }
+}
+
 /// Phone tab bar (openfeed-app.tsx): Feed / Sources / Saved / Settings.
 enum PhoneTab: String, Hashable, CaseIterable, Sendable {
     case feed, sources, saved, settings
@@ -78,6 +87,7 @@ enum SourceAddState: Equatable {
 @Observable
 final class AppModel {
     let services: OpenDispatchServices
+    @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
     // MARK: Navigation (read-only outside; use navigate(...))
@@ -138,6 +148,9 @@ final class AppModel {
     private(set) var focusedPane = 0
     /// The left pane's share of the reader's width in split view.
     var splitFraction: CGFloat = 0.5
+    /// The tab being dragged, from drag start until it drops or the pointer moves on (SwiftUI has no
+    /// drag-ended callback). The reader shows its drop targets only meanwhile.
+    var tabDrag: ReaderTabDrag?
     /// Collapsed sidebar folders: folder id as a string, or "unfiled". Persisted.
     var collapsedFolders: Set<String> {
         didSet { UserDefaults.standard.set(Array(collapsedFolders), forKey: Keys.collapsedFolders) }
@@ -652,6 +665,29 @@ final class AppModel {
             let copied = try await copy.markdown(forItem: item.id, prompt: prompt)
             return (copied, "Copied as Markdown" + (copied.wordCount > 0 ? " \u{00B7} \(copied.wordCount.formatted()) words" : ""))
         }
+    }
+
+    /// Puts a video's transcript (as the reader shows it) on the clipboard as timestamped Markdown.
+    func copyTranscript(_ transcript: Transcript, durationSec: Int?) {
+        let text = transcript.markdown(durationSec: durationSec)
+        let words = transcript.wordCount
+        runCopy {
+            (CopiedText(markdown: text, wordCount: words, itemCount: 1),
+             "Copied transcript" + (words > 0 ? " \u{00B7} \(words.formatted()) words" : ""))
+        }
+    }
+
+    // MARK: Transcripts
+
+    /// A video's transcript for the reader: YouTube's captions, fetched once per video while the app
+    /// runs. nil when the video has none or the fetch failed (tried again next time it opens).
+    func transcript(for item: FeedItem) async -> Transcript? {
+        if let cached = transcripts[item.id] { return cached }
+        guard let transcript = try? await services.copy.transcripts.transcript(for: item.item, source: item.source),
+              !transcript.segments.isEmpty else { return nil }
+        if transcripts.count >= 50 { transcripts.removeAll() }
+        transcripts[item.id] = transcript
+        return transcript
     }
 
     /// Puts a digest of the scope's last `days` days on the clipboard as Markdown. `filter` is the
@@ -1250,6 +1286,120 @@ final class AppModel {
         panes[pane].tabs.removeAll { !$0.isPinned && $0.id != keep.id }
         panes[pane].active = panes[pane].tabs.firstIndex { $0.id == keep.id } ?? 0
         pruneOpenItems()
+    }
+
+    /// Close the unpinned tabs after this one. The tab itself comes forward if the active one closed.
+    func closeTabsToRight(pane: Int, index: Int) {
+        guard canCloseTabsToRight(pane: pane, index: index) else { return }
+        let keep = panes[pane].tabs[index].id
+        let activeID = panes[pane].activeTab.id
+        for tab in panes[pane].tabs[(index + 1)...].reversed() where !tab.isPinned { rememberClosed(tab) }
+        let tabs = panes[pane].tabs
+        panes[pane].tabs = tabs.enumerated().filter { $0.offset <= index || $0.element.isPinned }.map(\.element)
+        panes[pane].active = panes[pane].tabs.firstIndex { $0.id == activeID }
+            ?? panes[pane].tabs.firstIndex { $0.id == keep } ?? 0
+        pruneOpenItems()
+    }
+
+    /// Whether an unpinned tab sits after this one (Close Tabs to the Right).
+    func canCloseTabsToRight(pane: Int, index: Int) -> Bool {
+        guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return false }
+        return panes[pane].tabs[(index + 1)...].contains { !$0.isPinned }
+    }
+
+    /// Split to Right / Move to the Other Pane. With one pane the tab opens a new right pane (the
+    /// sidebar folds away as for ⌥-click) and the left pane gets a new tab if it was the only one.
+    /// In a split the tab lands after the other pane's active tab (a pinned tab among that pane's pins)
+    /// and is shown there, or the tab that has its item comes forward instead. A pane left without
+    /// tabs closes with the split. Focus follows the tab.
+    func moveTab(pane: Int, index: Int, toPane dest: Int) {
+        guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        guard dest == (isSplit ? 1 - pane : 1) else { return }
+        settleFocusedTab()
+        let tab = panes[pane].tabs[index]
+        let wasLast = panes[pane].tabs.count == 1
+        if !isSplit {
+            sidebarCollapsedBeforeSplit = sidebarCollapsed
+            sidebarCollapsed = true
+            takeTab(pane: pane, index: index, orNew: true)
+            panes.append(ReaderPane(tabs: [tab]))
+            focusedPane = 1
+        } else {
+            let same = tab.itemID.flatMap { id in panes[dest].tabs.firstIndex { $0.itemID == id } }
+            if let same {
+                panes[dest].active = same
+            } else {
+                let at = tab.isPinned ? panes[dest].pinnedCount : max(panes[dest].active + 1, panes[dest].pinnedCount)
+                panes[dest].tabs.insert(tab, at: at)
+                panes[dest].active = at
+            }
+            if wasLast {
+                closePane(pane)
+            } else {
+                takeTab(pane: pane, index: index, orNew: false)
+                focusedPane = dest
+            }
+        }
+        if tab.isPinned { savePinnedTabs() }
+        pruneOpenItems()
+    }
+
+    /// Take a tab out of a pane; the pane then shows the tab closeTab would show (a new tab if it was the only one).
+    private func takeTab(pane: Int, index: Int, orNew: Bool) {
+        if panes[pane].tabs.count == 1 {
+            if orNew { panes[pane].tabs[0] = ReaderTab(isNew: true) }
+            return
+        }
+        panes[pane].tabs.remove(at: index)
+        let active = panes[pane].active
+        if index < active || active >= panes[pane].tabs.count { panes[pane].active = active - 1 }
+    }
+
+    /// Left and right trade places; the focus stays on the same content.
+    func swapPanes() {
+        guard isSplit else { return }
+        panes.swapAt(0, 1)
+        focusedPane = 1 - focusedPane
+        splitFraction = 1 - splitFraction
+        savePinnedTabs()
+    }
+
+    /// Combine Panes: the other pane's tabs join this one (those whose item it already has are dropped,
+    /// pinned tabs stay at the front), then the split closes. This pane keeps showing its active tab.
+    func combinePanes(into pane: Int) {
+        guard isSplit, panes.indices.contains(pane) else { return }
+        settleFocusedTab()
+        let other = 1 - pane
+        let activeID = panes[pane].activeTab.id
+        var tabs = panes[pane].tabs
+        var have = Set(tabs.compactMap(\.itemID))
+        for tab in panes[other].tabs {
+            if let id = tab.itemID, !have.insert(id).inserted { continue }
+            tabs.append(tab)
+        }
+        tabs = tabs.filter(\.isPinned) + tabs.filter { !$0.isPinned }
+        panes[pane] = ReaderPane(tabs: tabs, active: tabs.firstIndex { $0.id == activeID } ?? 0)
+        closePane(other)
+    }
+
+    /// A tab dropped on the other pane (or on the right half of a lone pane, which splits).
+    func dropTab(_ drag: ReaderTabDrag, toPane dest: Int) {
+        tabDrag = nil
+        guard panes.indices.contains(drag.pane),
+              let index = panes[drag.pane].tabs.firstIndex(where: { $0.id == drag.tabID }) else { return }
+        moveTab(pane: drag.pane, index: index, toPane: dest)
+    }
+
+    /// ⌃⌘←: the focused tab goes to the left pane.
+    var canMoveTabLeft: Bool { isSplit && focusedPane == 1 }
+
+    /// ⌃⌘→: the focused tab goes to the right pane, opening split view if it is closed.
+    var canMoveTabRight: Bool { !isSplit || focusedPane == 0 }
+
+    /// The focused pane's active tab to the other pane (`toRight` true: right pane, splitting if needed).
+    func moveActiveTab(toRight: Bool) {
+        guard toRight ? canMoveTabRight : canMoveTabLeft else { return }
+        moveTab(pane: focusedPane, index: panes[focusedPane].active, toPane: toRight ? 1 : 0)
     }
 
     /// ⌘W: close the focused tab (or pane). Returns false when there is only the one tab, so the

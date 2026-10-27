@@ -138,7 +138,7 @@ private struct SettingsTextSizePreview: View {
     }
 }
 
-/// Playback pane (PlaybackPane): autoplay and theater layout for YouTube sources, then Read aloud.
+/// Playback pane (PlaybackPane): autoplay, theater layout and transcripts for YouTube sources, then Read aloud.
 struct SettingsPlaybackPane: View {
     @Environment(AppModel.self) private var model
 
@@ -151,6 +151,9 @@ struct SettingsPlaybackPane: View {
             }
             SettingsRow(label: "Theater layout", hint: "Full-width player above the title") {
                 toggle("Theater layout", isOn: $model.settings.theater)
+            }
+            SettingsRow(label: "Transcripts", hint: "Show a video's captions under it, following along as it plays") {
+                toggle("Transcripts", isOn: $model.settings.videoTranscript)
             }
             SettingsReadAloudSection()
         }

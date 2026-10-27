@@ -16,8 +16,9 @@ import Foundation
 ///
 /// Messages to the `openDispatchYouTube` handler: `{type: "playing"}` once playback first starts,
 /// `{type: "failed"}` when the API or the video fails (the layer and bar are removed, YouTube's own
-/// player or error shows), `{type: "fullscreen" | "exitFullscreen", time}`. `window.odPlayer.resume(t)`
-/// seeks and plays, `window.odPlayer.toggle()` plays or pauses and `seekBy(s)` skips (Space and ←/→ in the app's window).
+/// player or error shows), `{type: "fullscreen" | "exitFullscreen", time}`, and `{type: "time", time}`
+/// whenever the position crosses a second (the transcript follows it). `window.odPlayer.resume(t)`
+/// seeks and plays (once the player is ready, if it isn't yet), `window.odPlayer.toggle()` plays or pauses and `seekBy(s)` skips (Space and ←/→ in the app's window).
 enum ReaderYouTubePage {
     static let handlerName = "openDispatchYouTube"
 
@@ -146,7 +147,7 @@ enum ReaderYouTubePage {
           var stage = $('stage'), iframe = $('yt'), track = $('track');
           var player = null, ready = false, failed = false, state = -1, started = false;
           var active = false, overBar = false, dragging = false, dragT = 0, lastSeek = 0, hideTimer = 0, lastTouch = 0;
-          var muted = false, ccOn = false, rate = 0;
+          var muted = false, ccOn = false, rate = 0, lastSecond = -1, pendingSeek = null;
           var canFS = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 
           function post(m) {
@@ -280,6 +281,8 @@ enum ReaderYouTubePage {
           function tick() {
             var s = player.getPlayerState();
             if (typeof s === 'number' && s !== state) setState(s); else render();
+            var second = Math.floor(now());
+            if (second !== lastSecond) { lastSecond = second; post({ type: 'time', time: now() }); }
           }
 
           window.onYouTubeIframeAPIReady = function () {
@@ -289,6 +292,7 @@ enum ReaderYouTubePage {
                 clearTimeout(failTimer);
                 muted = player.isMuted();
                 captionsOff();
+                if (pendingSeek !== null) { player.seekTo(pendingSeek, true); player.playVideo(); pendingSeek = null; }
                 setInterval(tick, 250);
                 tick();
                 update();
@@ -376,7 +380,11 @@ enum ReaderYouTubePage {
           });
 
           window.odPlayer = {
-            resume: function (t) { if (!ready) return; player.seekTo(t, true); player.playVideo(); },
+            resume: function (t) {
+              if (failed) return;
+              if (!ready) { pendingSeek = t; return; }
+              player.seekTo(t, true); player.playVideo();
+            },
             toggle: function () { if (failed) return; toggle(); poke(); },
             seekBy: function (d) { if (failed) return; seekBy(d); poke(); },
             fail: fail

@@ -48,6 +48,8 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["⌘", "W"], label: "Close the tab"),
             ShortcutEntry(keys: ["⇧", "⌘", "T"], label: "Reopen the last closed tab"),
             ShortcutEntry(keys: ["⌥", "⌘", "S"], label: "Split view on or off"),
+            ShortcutEntry(keys: ["⌃", "⌘", "←"], label: "Move the tab to the left pane"),
+            ShortcutEntry(keys: ["⌃", "⌘", "→"], label: "Move the tab to the right pane, or split to the right"),
         ]),
         ShortcutGroup(title: "App", items: [
             ShortcutEntry(keys: ["/"], label: "Search"),

@@ -112,6 +112,12 @@ struct OpenDispatchCommands: Commands {
             Button(model.isSplit ? "Close Split View" : "Split View") { model.toggleSplit() }
                 .keyboardShortcut("s", modifiers: [.command, .option])
                 .disabled(model.selectedItem == nil && !model.isSplit)
+            Button("Move Tab to Left Pane") { model.moveActiveTab(toRight: false) }
+                .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
+                .disabled(!model.canMoveTabLeft)
+            Button(model.isSplit ? "Move Tab to Right Pane" : "Split to Right") { model.moveActiveTab(toRight: true) }
+                .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
+                .disabled(!model.canMoveTabRight)
             Button("Show Next Tab") { model.selectTab(offset: 1) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
                 .disabled(model.panes[model.focusedPane].tabs.count < 2)

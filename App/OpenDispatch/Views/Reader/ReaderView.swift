@@ -25,6 +25,9 @@ struct ReaderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.ofSurface)
+        #if os(macOS)
+        .background { TabDragReset(active: model.tabDrag != nil) { model.tabDrag = nil } }
+        #endif
     }
 }
 

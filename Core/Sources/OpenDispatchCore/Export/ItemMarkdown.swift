@@ -34,28 +34,7 @@ enum ItemMarkdown {
     /// a new line when the speaker changes. Untimed segments become plain paragraphs.
     /// `long`: use `h:mm:ss` timestamps.
     static func transcriptText(_ transcript: Transcript, long: Bool) -> String {
-        struct Line {
-            var start: TimeInterval?
-            var speaker: String?
-            var text: String
-        }
-        var lines: [Line] = []
-        for seg in transcript.segments {
-            let text = MarkdownConverter.collapse(seg.text).trimmingCharacters(in: .whitespaces)
-            if text.isEmpty { continue }
-            let speaker = seg.speaker.map(oneLine).flatMap { $0.isEmpty ? nil : $0 }
-            if var cur = lines.last, let curStart = cur.start, let start = seg.start, cur.speaker == speaker {
-                let elapsed = start - curStart
-                let sentenceEnd = cur.text.last.map { ".?!\"”".contains($0) } ?? false
-                if elapsed < 40 && !(elapsed >= 20 && sentenceEnd) {
-                    cur.text += " " + text
-                    lines[lines.count - 1] = cur
-                    continue
-                }
-            }
-            lines.append(Line(start: seg.start, speaker: speaker, text: text))
-        }
-        return lines.map { line in
+        transcript.paragraphs.map { line in
             var out = ""
             if let start = line.start { out += "[" + timestamp(start, long: long) + "] " }
             if let speaker = line.speaker { out += MarkdownConverter.escape(speaker) + ": " }
