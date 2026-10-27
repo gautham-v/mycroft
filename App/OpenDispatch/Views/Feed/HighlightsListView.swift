@@ -17,7 +17,7 @@ struct FeedColumn: View {
 /// The Highlights view: the articles that have highlights, newest highlight activity first, built from
 /// the highlights table alone so it works for articles this device no longer has (or never had). Each row
 /// has the source badge, the title, how many highlights it has and the latest one's text. Opening one shows
-/// the article in the reader with its panel open; when the item is gone it is added back from the
+/// the article in the reader; when the item is gone it is added back from the
 /// highlights' own data if its source is here, else the original URL opens in the browser
 /// (HighlightStore.open).
 struct HighlightsListView: View {

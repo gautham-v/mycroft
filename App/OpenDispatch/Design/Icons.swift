@@ -66,6 +66,10 @@ enum OFIcon: String, CaseIterable {
     case quoted = "arrow.turn.down.right"
     /// Highlights & Notes (reader bar, sidebar row)
     case highlighter = "highlighter"
+    /// A highlight's note (its popover)
+    case note = "note.text"
+    /// Remove a highlight (its popover)
+    case trash = "trash"
 
     /// macOS draws its toolbar and sidebar icons from our own symbols (Resources/Assets.xcassets/Icons):
     /// thin, rounded 24-unit strokes like the Claude desktop app's, where SF Symbols read heavier. The

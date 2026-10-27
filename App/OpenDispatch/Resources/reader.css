@@ -31,6 +31,13 @@
   --hl-blue: rgba(10, 132, 255, 0.28);
   --hl-pink: rgba(255, 55, 95, 0.26);
   --hl-purple: rgba(175, 82, 222, 0.28);
+  /* The same colors solid, for the note markers (and the native swatches, HighlightColor.swatchHex). */
+  --hl-solid-yellow: #ffcc00;
+  --hl-solid-green: #34c759;
+  --hl-solid-blue: #0a84ff;
+  --hl-solid-pink: #ff375f;
+  --hl-solid-purple: #af52de;
+  --hl-solid-underline: #007aff;
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   /* Monospace is for <pre>/<code> in articles only. */
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -125,6 +132,30 @@ body { overflow-y: hidden; }
 ::highlight(od-hl-pink) { background-color: var(--hl-pink); }
 ::highlight(od-hl-purple) { background-color: var(--hl-purple); }
 ::highlight(od-hl-underline) { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
+/* A highlight the reader just scrolled to blinks once (reader-highlights.js flash). */
+::highlight(od-hl-flash) { background-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+/* Note markers: a ring with a square in the highlight's color, in the margin beside its first line. The
+   host is out of flow (absolute, no size) and sits after the article, so nothing reflows. */
+.od-note-markers { position: absolute; top: 0; left: 0; width: 0; height: 0; margin: 0; padding: 0; pointer-events: none; z-index: 2; }
+.od-note-marker {
+  position: absolute; box-sizing: border-box; width: 14px; height: 14px; margin: 0; padding: 0;
+  border: 1.5px solid var(--mark); border-radius: 50%; background: var(--surface);
+  pointer-events: auto; cursor: pointer; -webkit-appearance: none; appearance: none;
+  -webkit-user-select: none; user-select: none; transition: transform 0.12s ease-out;
+}
+.od-note-marker::before { content: ""; position: absolute; inset: -6px; }
+.od-note-marker::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  border-radius: 1px; background: var(--mark);
+}
+.od-note-marker:hover { transform: scale(1.15); }
+.od-note-marker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.od-note-marker[data-color="yellow"] { --mark: var(--hl-solid-yellow); }
+.od-note-marker[data-color="green"] { --mark: var(--hl-solid-green); }
+.od-note-marker[data-color="blue"] { --mark: var(--hl-solid-blue); }
+.od-note-marker[data-color="pink"] { --mark: var(--hl-solid-pink); }
+.od-note-marker[data-color="purple"] { --mark: var(--hl-solid-purple); }
+.od-note-marker[data-color="underline"] { --mark: var(--hl-solid-underline); }
 .prose-opendispatch[data-font="serif"] { font-family: var(--font-serif); }
 .prose-opendispatch[data-font="charter"] { font-family: var(--font-charter); }
 .prose-opendispatch[data-font="iowan"] { font-family: var(--font-iowan); }

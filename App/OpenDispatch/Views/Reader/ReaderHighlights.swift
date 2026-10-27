@@ -8,12 +8,10 @@ import UIKit
 #endif
 
 /// The article a reader pane shows, for the views inside it that deal with its highlights (the article's
-/// web view). Set by `highlightsPanel(item:pane:)` on the pane's scroll view.
+/// web view). Set by `readerHighlights(item:pane:compact:)` on the pane's scroll view.
 struct ReaderHighlightArticle: Equatable {
     var item: FeedItem
     var pane: Int
-    /// iPhone layout: the panel is a sheet, and a tap on a highlight opens a menu.
-    var compact: Bool
 
     var key: String { HighlightStore.key(for: item) }
 }
@@ -37,8 +35,8 @@ struct ReaderHighlightState {
 }
 
 /// Highlights in the article web view: pushes the article's highlights to the page (Resources/
-/// reader-highlights.js anchors and paints them), hears what the page reports (where they ended up, taps,
-/// the state of a right-click) and offers the Mac right-click and iPhone edit-menu items that make them.
+/// reader-highlights.js anchors and paints them and draws the note markers), hears what the page reports
+/// (where they ended up, taps, the state of a right-click) and offers the Mac right-click and iPhone edit-menu items that make them.
 /// Runs in the same content world as the height script, `WKContentWorld.defaultClient`.
 @MainActor
 final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
@@ -92,7 +90,8 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
     private func push() {
         guard pageReady, let state, let webView else { return }
         let list = state.highlights.map { h -> [String: String] in
-            ["id": h.id, "text": h.text, "prefix": h.prefix, "suffix": h.suffix, "color": h.color.rawValue]
+            ["id": h.id, "text": h.text, "prefix": h.prefix, "suffix": h.suffix, "color": h.color.rawValue,
+             "note": h.note.isEmpty ? "" : "1"]
         }
         guard let data = try? JSONSerialization.data(withJSONObject: list, options: [.sortedKeys]),
               let json = String(data: data, encoding: .utf8), json != pushed else { return }
@@ -114,7 +113,9 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
             let missing = Set(body["missing"] as? [String] ?? [])
             state.store.setResolution(.init(order: order, missing: missing), forKey: state.article.key)
         case "tap":
-            if let id = body["id"] as? String { state.store.tapped(id, pane: state.article.pane, compact: state.article.compact) }
+            if let id = body["id"] as? String, let rect = Self.rect(body["rect"]) {
+                state.store.showPopover(id, rect: rect, pane: state.article.pane)
+            }
         case "context":
             context = (Self.anchor(body["anchor"]), body["id"] as? String, Date())
         default:
@@ -125,6 +126,15 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
     private static func anchor(_ value: Any?) -> HighlightAnchor? {
         guard let d = value as? [String: Any], let text = d["text"] as? String, !text.isEmpty else { return nil }
         return HighlightAnchor(text: text, prefix: d["prefix"] as? String ?? "", suffix: d["suffix"] as? String ?? "")
+    }
+
+    /// A client-coordinates rect the page reported: {x, y, w, h}.
+    private static func rect(_ value: Any?) -> CGRect? {
+        guard let d = value as? [String: Any],
+              let x = (d["x"] as? NSNumber)?.doubleValue, let y = (d["y"] as? NSNumber)?.doubleValue,
+              let w = (d["w"] as? NSNumber)?.doubleValue, let h = (d["h"] as? NSNumber)?.doubleValue,
+              x.isFinite, y.isFinite, w.isFinite, h.isFinite else { return nil }
+        return CGRect(x: x, y: y, width: w, height: h)
     }
 
     /// The selection as an anchor, asked of the page now.
@@ -145,6 +155,12 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
         }
     }
 
+    /// Blinks a highlight in the page, after the reader has scrolled to it.
+    func flash(_ id: String) {
+        guard let webView else { return }
+        run("window.__odHL && window.__odHL.flash(\(Self.quote(id)));", in: webView)
+    }
+
     private func clearSelection() {
         guard let webView else { return }
         run("window.__odHL && window.__odHL.clearSelection();", in: webView)
@@ -157,18 +173,14 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
 
     // MARK: Making and changing highlights
 
-    /// Highlights the selection. With `note`, the panel opens on the new highlight's note.
+    /// Highlights the selection. With `note`, the note sheet opens on the new highlight.
     private func highlightSelection(color: HighlightColor, note: Bool, anchor known: HighlightAnchor?) {
         guard let state else { return }
         let make: (HighlightAnchor) -> Void = { [weak self] anchor in
             Task { @MainActor in
                 guard let h = await state.store.add(anchor, in: state.article.item, color: color) else { return }
                 self?.clearSelection()
-                if note {
-                    state.store.showPanel(pane: state.article.pane, compact: state.article.compact)
-                    state.store.focusNote = h.id
-                    state.store.point(at: h.id)
-                }
+                if note { state.store.editNote(h.id, pane: state.article.pane) }
             }
         }
         if let known { make(known) } else { selectionAnchor { if let a = $0 { make(a) } } }
@@ -176,9 +188,7 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
 
     func editNote(_ id: String) {
         guard let state else { return }
-        state.store.showPanel(pane: state.article.pane, compact: state.article.compact)
-        state.store.focusNote = id
-        state.store.point(at: id)
+        state.store.editNote(id, pane: state.article.pane)
     }
 
     // MARK: Mac right-click menu
@@ -242,7 +252,8 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
 // MARK: Colors
 
 extension HighlightColor {
-    /// The color's solid swatch: menu circles, the panel's color bars.
+    /// The color's solid swatch: menu circles, color bars, the popover's swatches (the page's note markers use
+    /// the same values, `--hl-solid-*` in reader.css).
     var swatchHex: UInt32 {
         switch self {
         case .yellow: 0xFFCC00

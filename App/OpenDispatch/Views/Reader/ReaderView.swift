@@ -174,7 +174,7 @@ struct ReaderItemView: View {
         }
         .scrollContentBackground(.hidden)
         .overlayScrollers()
-        .highlightsPanel(item: item, pane: pane, compact: compact)
+        .readerHighlights(item: item, pane: pane, compact: compact)
         // The article scrolls under the toolbar, which is frosted.
         .safeAreaInset(edge: .top, spacing: 0) {
             if !compact { toolbar }
@@ -281,7 +281,7 @@ struct ReaderItemView: View {
                 .accessibilityLabel(listenLabel)
             }
             if !isVideo {
-                HighlightsToolbarButton(pane: pane, compact: compact, size: buttonSize, glyph: glyphSize)
+                HighlightsToolbarButton(item: item, pane: pane, compact: compact, size: buttonSize, glyph: glyphSize)
             }
 
             if let url = itemURL {
