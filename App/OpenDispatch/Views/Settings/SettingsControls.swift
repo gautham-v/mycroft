@@ -56,7 +56,8 @@ struct SettingsSectionLabel: View {
 }
 
 /// A settings row: label (and optional hint) on the left, a control on the right, hairline on top.
-/// `stacked` puts the control under the label instead, for controls too wide to share a phone's row.
+/// `stacked` puts the control under the label instead, for controls too wide to share a phone's row;
+/// it gets the row's width to fit in (a long label truncates) instead of its ideal size.
 struct SettingsRow<Control: View>: View {
     let label: String
     var hint: String?
@@ -79,8 +80,13 @@ struct SettingsRow<Control: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            control()
-                .fixedSize()
+            if stacked {
+                control()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                control()
+                    .fixedSize()
+            }
         }
         .padding(.vertical, 10)
         .frame(minHeight: 52)

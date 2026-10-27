@@ -164,7 +164,8 @@ struct ReaderItemView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if compact {
+                // A video's own header shows the source and date under the player, so it skips this row.
+                if compact, !isVideo {
                     metaRow
                         .readerColumn(wide: false)
                         .padding(.top, 8)
