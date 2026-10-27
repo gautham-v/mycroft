@@ -7,7 +7,7 @@ import SwiftUI
 /// 1.8 s; an error shows in a small popover for 5 s.
 ///
 /// Given `share`, it is the desktop reader's Share button instead: the share glyph opens one menu with
-/// Share…, Copy Link and the send targets, and the same sending / sent / error feedback.
+/// Share…, Copy Link, Copy as Markdown and the send targets, and the same sending / sent / error feedback.
 ///
 ///     SendToView(item: item)                       // 30pt desktop button
 ///     SendToView(item: item, size: Metrics.touchTarget)   // phone
@@ -128,6 +128,8 @@ struct SendToView: View {
             Text("Share…")
         }
         Button("Copy Link") { ReaderPasteboard.copy(url) }
+        Button("Copy as Markdown") { model.copyMarkdown(item: item) }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
         Divider()
         if targets.isEmpty {
             Button("Set Up Send To…") { openIntegrationsSettings() }

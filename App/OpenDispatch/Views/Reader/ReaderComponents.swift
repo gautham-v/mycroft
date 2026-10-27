@@ -191,4 +191,14 @@ enum ReaderPasteboard {
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
         #endif
     }
+
+    /// Plain text (Copy as Markdown).
+    static func copy(_ string: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = string
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
+        #endif
+    }
 }

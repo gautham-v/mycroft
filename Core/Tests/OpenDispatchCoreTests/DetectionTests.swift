@@ -125,6 +125,10 @@ struct FeedDetectionHelperTests {
         #expect(FeedDetection.findChannelID(inHTML: #""externalId":"UC0123456789abcdefghij_-""#) == "UC0123456789abcdefghij_-")
         #expect(FeedDetection.findChannelID(inHTML: "<link href=\"/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA\">") == "UCsBjURrPoezykLs9EqgamOA")
         #expect(FeedDetection.findChannelID(inHTML: "<html>nothing</html>") == nil)
+        // A channel page lists featured channels' "channelId"s before its own id (@Fireship → Beyond Fireship).
+        let channelPage = #"<link rel="canonical" href="https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA"> "channelId":"UC2Xd-TjJByJyK2w1zNwY0zQ" "externalId":"UCsBjURrPoezykLs9EqgamOA""#
+        #expect(FeedDetection.findChannelID(inHTML: channelPage) == "UCsBjURrPoezykLs9EqgamOA")
+        #expect(FeedDetection.findChannelID(inHTML: #""channelId":"UC2Xd-TjJByJyK2w1zNwY0zQ" "externalId":"UCsBjURrPoezykLs9EqgamOA""#) == "UCsBjURrPoezykLs9EqgamOA")
     }
 
     @Test func alternateFeeds() {

@@ -248,6 +248,9 @@ struct SourcesView: View {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
+            Divider()
+            CopyDigestButtons(scope: .folder(folder), icons: true)
+            Divider()
             Button(role: .destructive) {
                 pendingFolderDelete = folder
             } label: {
@@ -309,6 +312,8 @@ struct SourcesView: View {
                 Label("Open site", systemImage: OFIcon.external.rawValue)
             }
         }
+        Divider()
+        CopyDigestButtons(scope: .source(source), icons: true)
         Divider()
         Button(role: .destructive) {
             pendingDelete = source

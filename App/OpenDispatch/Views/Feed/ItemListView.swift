@@ -488,6 +488,7 @@ private struct RowMenu: View {
                     Text("Share…")
                 }
                 Button("Copy Link") { ReaderPasteboard.copy(url) }
+                Button("Copy as Markdown") { model.copyMarkdown(item: item) }
                 Divider()
                 let targets = model.integrations.configuredTargets
                 if targets.isEmpty {

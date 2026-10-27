@@ -153,6 +153,7 @@ struct SidebarView: View {
                 SidebarViewRow(view: view, active: isActive(view)) {
                     model.navigate(view: view)
                 }
+                .contextMenu { CopyDigestButtons(scope: .view(view)) }
                 if view == .saved {
                     SidebarHighlightsRow(count: highlights.count, active: model.showsHighlights) {
                         model.showHighlights()
@@ -373,6 +374,8 @@ struct SidebarView: View {
         Button("Rename") { editing = .renameFolder(folder.id) }
         Button("New Folder") { editing = .newFolder(withSource: nil) }
         Divider()
+        CopyDigestButtons(scope: .folder(folder))
+        Divider()
         Button(model.allSources(inFolder: folder.id).isEmpty ? "Delete Folder" : "Delete Folder (Keep Sources)", role: .destructive) {
             deleteFolder(folder.id)
         }
@@ -402,6 +405,8 @@ struct SidebarView: View {
             Divider()
             Button("New Folder…") { editing = .newFolder(withSource: source.id) }
         }
+        Divider()
+        CopyDigestButtons(scope: .source(source))
         Divider()
         Button("Remove Source…", role: .destructive) { pendingDelete = source }
     }

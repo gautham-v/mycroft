@@ -28,6 +28,11 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - Search across titles, summaries, authors and article text (/ or ⌘F).
 - Save, Open original, Share and Send to from the reader.
 
+**Copy as Markdown**
+- Copy an item as Markdown to paste into whatever AI you use (or anywhere else): title, source, date, link and the full article text. Videos get their description and YouTube's captions; podcasts get their show notes and the episode's transcript when the feed has one (`<podcast:transcript>`). It's in the reader's Share menu, a row's right-click menu and Edit → Copy as Markdown (⇧⌘C); on iPhone, in the share sheet.
+- Right-click a view, folder or source in the sidebar (or use the filter menu on iPhone) for Copy Last 24 Hours / Copy Last 7 Days: each item's title, source, time, link and a short summary, ready to paste with "brief me on this".
+- Settings → Integrations can add a line above everything you copy, such as "Summarize this in 5 bullets". The app itself has no AI. YouTube captions come from unofficial endpoints and may stop working when YouTube changes them.
+
 **Highlights and notes**
 - Select text in an article and highlight it in yellow, green, blue, pink or purple, or underline it. On the Mac, Control-click (right-click) the selection: the colors and Add Note… come first in the menu, like Apple Books. Control-click a highlight to change its color, edit its note or remove it. On iPhone the edit menu of a selection has Highlight and Add Note, and tapping a highlight offers the same changes.
 - The highlighter button in the reader bar opens Highlights & Notes: this article's highlights in reading order with their notes (editable in place), a click scrolls the article to one, and Copy as Markdown. On iPhone it is a sheet.
@@ -62,6 +67,7 @@ Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
 | o or Enter | Open the original in the browser |
 | s | Save or unsave |
 | ⇧⌘R | Reload the article (extract it again) |
+| ⇧⌘C | Copy the item as Markdown |
 | ⇧⌘L | Listen to the article (read aloud), pause or resume |
 | g then a / s / v / p | All / Saved / Video / Podcasts |
 | ⌘-click | Open in a new tab |

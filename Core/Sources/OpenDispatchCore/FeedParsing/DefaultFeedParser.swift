@@ -28,15 +28,25 @@ public struct DefaultFeedParser: FeedParser {
     /// matched by guid (or Atom id) across every entry first, then by link. Links keep their query; only the
     /// fragment and a trailing slash are ignored.
     public func itemHTML(in data: Data, guid: String, url: String) -> String? {
-        guard let raw = try? Self.rawFeed(data) else { return nil }
-        let key = FeedParsingSupport.linkMatchKey(url)
-        let match = raw.items.first { ($0.guid ?? $0.id) == guid }
-            ?? raw.items.first { item in item.link.map { FeedParsingSupport.linkMatchKey($0) == key } ?? false }
-        guard let match else { return nil }
+        guard let match = Self.rawItem(in: data, guid: guid, url: url) else { return nil }
         return match.contentEncoded ?? match.content ?? match.itunesSummary
     }
 
+    /// The entry's `<podcast:transcript>` tracks, matched like `itemHTML`; urls are as written (the caller
+    /// resolves relative ones against the feed URL).
+    public func itemTranscripts(in data: Data, guid: String, url: String) -> [FeedTranscriptTrack] {
+        Self.rawItem(in: data, guid: guid, url: url)?.transcripts ?? []
+    }
+
     // MARK: - Internals
+
+    /// The entry with this guid (or Atom id) across every entry first, then by link.
+    static func rawItem(in data: Data, guid: String, url: String) -> FeedParsingSupport.RawItem? {
+        guard let raw = try? rawFeed(data) else { return nil }
+        let key = FeedParsingSupport.linkMatchKey(url)
+        return raw.items.first { ($0.guid ?? $0.id) == guid }
+            ?? raw.items.first { item in item.link.map { FeedParsingSupport.linkMatchKey($0) == key } ?? false }
+    }
 
     static func rawFeed(_ data: Data) throws -> FeedParsingSupport.RawFeed {
         guard data.contains(where: { $0 > 0x20 }) else { throw FeedParserError.invalidFeed("empty response") }

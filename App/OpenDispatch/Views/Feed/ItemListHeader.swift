@@ -121,7 +121,8 @@ struct FeedSearchButton: View {
 
 /// iPhone filter toolbar button (replaces the old view chips): a Menu with the content type (All,
 /// Articles, Posts, Video, Podcasts; Feed tab only) and the hn100 / labs / blogs filter, both single
-/// selection. The symbol fills while anything but All / no filter is active.
+/// selection, then Copy Last 24 Hours / 7 Days of what the list shows. The symbol fills while anything
+/// but All / no filter is active.
 struct FeedFilterMenu: View {
     @Environment(AppModel.self) private var model
     /// Show the content-type section (the Feed tab's home list, not Saved or a source/folder feed).
@@ -147,6 +148,9 @@ struct FeedFilterMenu: View {
                 ForEach(Self.filters, id: \.0) { filter, label in
                     Toggle(label, isOn: filterBinding(filter))
                 }
+            }
+            Section("Copy as Markdown") {
+                CopyDigestButtons(scope: model.currentDigestScope, filter: model.filter, icons: true)
             }
         } label: {
             Label("Filter", systemImage: isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")

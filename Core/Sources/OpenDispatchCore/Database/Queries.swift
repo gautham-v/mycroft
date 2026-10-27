@@ -56,6 +56,7 @@ public enum Queries {
             let cols = [Item.Columns.title, Item.Columns.summary, Item.Columns.author, Item.Columns.contentHtml]
             c.append(cols.map { SQL("\($0) LIKE \(pat) ESCAPE '\\'").sqlExpression }.joined(operator: .or))
         }
+        if let since = q.since { c.append(Item.Columns.publishedAt >= since) }
         if let cur = q.cursor {
             c.append(Item.Columns.publishedAt < cur.publishedAt
                 || (Item.Columns.publishedAt == cur.publishedAt && Item.Columns.id < cur.id))

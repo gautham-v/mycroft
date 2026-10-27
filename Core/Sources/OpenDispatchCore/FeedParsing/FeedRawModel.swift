@@ -44,6 +44,8 @@ extension FeedParsingSupport {
         var itunesImage: String?
         var itunesSummary: String?
         var itunesAuthor: String?
+        /// Every `podcast:transcript` element, in document order.
+        var transcripts: [FeedTranscriptTrack] = []
     }
 
     static func rawFeed(_ root: XMLElementNode) throws -> RawFeed {
@@ -148,6 +150,11 @@ extension FeedParsingSupport {
         item.itunesImage = nonEmpty(image?.attributes["href"]) ?? image?.trimmedText
         item.itunesSummary = e.child("itunes:summary")?.trimmedText
         item.itunesAuthor = e.child("itunes:author")?.trimmedText
+        item.transcripts = e.elements.filter { $0.localName == "transcript" && $0.name.contains(":") }.compactMap { t in
+            guard let url = nonEmpty(t.attributes["url"]) else { return nil }
+            return FeedTranscriptTrack(url: url, type: nonEmpty(t.attributes["type"]), language: nonEmpty(t.attributes["language"]),
+                                       rel: nonEmpty(t.attributes["rel"]))
+        }
     }
 
     /// rss-parser getLink: the first link with this rel (a link without rel counts as "alternate"), else the first link.
