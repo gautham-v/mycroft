@@ -28,7 +28,11 @@ struct SettingsReadAloudSection: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .tint(.ofInk)
-                    .fixedSize()
+                    // On a phone the picker takes the row's width and truncates a long voice name instead of
+                    // pushing the row past the screen.
+                    .fixedSize(horizontal: !compact, vertical: false)
+                    .lineLimit(1)
+                    .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                     Button("Preview") { speech.preview(voice: model.settings.speechVoice, speed: model.settings.speechRate) }
                         .buttonStyle(SettingsPaneButtonStyle())
                         .accessibilityLabel("Preview the voice")

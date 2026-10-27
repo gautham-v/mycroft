@@ -21,19 +21,17 @@ struct SettingsAboutPane: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        FeedMarkIcon(size: 16)
-                        Text("OpenDispatch")
-                            .font(OFFont.ui(17, .semibold))
-                            .tracking(-0.17)
-                            .foregroundStyle(.ofInk)
-                    }
+                    Text("OpenDispatch")
+                        .font(OFFont.ui(17, .semibold))
+                        .tracking(-0.17)
+                        .foregroundStyle(.ofInk)
                     Text(version)
                         .font(OFFont.ui(12.5))
                         .foregroundStyle(.ofMuted)
                         .textSelection(.enabled)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 14)
             .overlay(alignment: .top) { SettingsHairline() }
 
