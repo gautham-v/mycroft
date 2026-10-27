@@ -14,25 +14,27 @@ struct SettingsAppearancePane: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(title: "Appearance", hint: "Applies on this device.")
-            SettingsRow(label: "Theme") {
-                SettingsSegmented(label: "Theme", selection: $model.settings.theme, options: [
-                    (.light, "Light"), (.system, "System"), (.dark, "Dark"),
-                ])
+            SettingsCard {
+                SettingsRow(label: "Theme") {
+                    SettingsSegmented(label: "Theme", selection: $model.settings.theme, options: [
+                        (.light, "Light"), (.system, "System"), (.dark, "Dark"),
+                    ])
+                }
+                SettingsRow(label: "Reader font", hint: compact ? nil : "Headline and body in the article view",
+                            stacked: compact) {
+                    SettingsSegmented(label: "Reader font", selection: $model.settings.readerFont,
+                                      options: ReaderFontSetting.allCases.map { ($0, $0.label) })
+                }
+                SettingsRow(label: "Text size", hint: "\(OFFont.bodySize(model.settings.textSize).formatted()) pt") {
+                    SettingsTextSizeStepper(size: $model.settings.textSize)
+                }
+                SettingsRow(label: "Line spacing") {
+                    SettingsSegmented(label: "Line spacing", selection: $model.settings.lineSpacing,
+                                      options: LineSpacingSetting.allCases.map { ($0, $0.label) })
+                }
+                SettingsTextSizePreview(font: model.settings.readerFont, size: model.settings.textSize,
+                                        leading: model.settings.lineSpacing)
             }
-            SettingsRow(label: "Reader font", hint: compact ? nil : "Headline and body in the article view",
-                        stacked: compact) {
-                SettingsSegmented(label: "Reader font", selection: $model.settings.readerFont,
-                                  options: ReaderFontSetting.allCases.map { ($0, $0.label) })
-            }
-            SettingsRow(label: "Text size", hint: "\(OFFont.bodySize(model.settings.textSize).formatted()) pt") {
-                SettingsTextSizeStepper(size: $model.settings.textSize)
-            }
-            SettingsRow(label: "Line spacing") {
-                SettingsSegmented(label: "Line spacing", selection: $model.settings.lineSpacing,
-                                  options: LineSpacingSetting.allCases.map { ($0, $0.label) })
-            }
-            SettingsTextSizePreview(font: model.settings.readerFont, size: model.settings.textSize,
-                                    leading: model.settings.lineSpacing)
             if !compact {
                 SettingsRow(label: "Reader width", hint: "Width of the article column") {
                     SettingsSegmented(label: "Reader width", selection: $model.settings.readerWidth, options: [
@@ -82,7 +84,7 @@ private struct SettingsTextSizeStepper: View {
             stepButton("Larger text", glyph: 16, to: size.larger)
         }
         .padding(2)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.ofCode))
+        .background(RoundedRectangle(cornerRadius: compact ? 12 : 6, style: .continuous).fill(compact ? Color.ofSettingsInset : Color.ofCode))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Text size")
         .accessibilityValue(size.label)
@@ -114,6 +116,7 @@ private struct SettingsTextSizePreview: View {
     let font: ReaderFontSetting
     let size: TextSizeSetting
     let leading: LineSpacingSetting
+    @Environment(\.settingsCompact) private var compact
 
     var body: some View {
         let headline = OFFont.headlineSize(size, wide: false) * 0.62
@@ -130,8 +133,9 @@ private struct SettingsTextSizePreview: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.ofGround))
-        .padding(.bottom, 10)
+        .background(RoundedRectangle(cornerRadius: compact ? 16 : 8, style: .continuous).fill(compact ? Color.ofSettingsInset : Color.ofGround))
+        .padding(.vertical, compact ? 12 : 0)
+        .padding(.bottom, compact ? 0 : 10)
         .accessibilityHidden(true)
         .animation(.easeOut(duration: 0.12), value: size)
         .animation(.easeOut(duration: 0.12), value: leading)
@@ -146,14 +150,16 @@ struct SettingsPlaybackPane: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(title: "Playback", hint: "Video autoplay and layout for YouTube sources, and the voice for reading articles aloud.")
-            SettingsRow(label: "Autoplay on select", hint: "Start playing when you open a video") {
-                toggle("Autoplay on select", isOn: $model.settings.autoplay)
-            }
-            SettingsRow(label: "Theater layout", hint: "Full-width player above the title") {
-                toggle("Theater layout", isOn: $model.settings.theater)
-            }
-            SettingsRow(label: "Transcripts", hint: "Show a video's captions under it, following along as it plays") {
-                toggle("Transcripts", isOn: $model.settings.videoTranscript)
+            SettingsCard {
+                SettingsRow(label: "Autoplay on select", hint: "Start playing when you open a video") {
+                    toggle("Autoplay on select", isOn: $model.settings.autoplay)
+                }
+                SettingsRow(label: "Theater layout", hint: "Full-width player above the title") {
+                    toggle("Theater layout", isOn: $model.settings.theater)
+                }
+                SettingsRow(label: "Transcripts", hint: "Show a video's captions under it, following along as it plays") {
+                    toggle("Transcripts", isOn: $model.settings.videoTranscript)
+                }
             }
             SettingsReadAloudSection()
         }

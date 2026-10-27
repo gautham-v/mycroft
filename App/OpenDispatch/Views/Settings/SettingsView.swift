@@ -20,8 +20,10 @@ extension SettingsTab {
 /// Port of src/components/settings-dialog.tsx. Hosted by the macOS in-window overlay (SettingsOverlay),
 /// the iOS Settings tab, and the iOS/iPad sheet (`model.showSettings(_:)`).
 /// - Regular width (macOS overlay, iPad sheet): the web's 140pt nav column on ground + a scrolling pane on surface.
-/// - Compact width (iPhone): a list of sections; each opens its pane. When opened as a sheet with a tab
-///   (e.g. Send to → Integrations), that pane is pushed right away.
+/// - Compact width (iPhone): `SettingsPhoneRoot`, a header and grouped cards; each pane is pushed, and
+///   the Sources pane's job moves to the Manage sources screen (`SourcesView`). When opened as a sheet
+///   with a tab (e.g. Send to → Integrations), that pane is pushed right away; opening the sheet
+///   without one (the default is Sources) shows the root.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     #if os(iOS)
@@ -52,11 +54,11 @@ struct SettingsView: View {
         .environment(\.settingsCompact, compact)
         .onAppear {
             pane = model.settingsTab
-            if compact, model.isSettingsPresented, pushed == nil { pushed = pane }
+            if compact, model.isSettingsPresented, pushed == nil, pane != .sources { pushed = pane }
         }
         .onChange(of: model.settingsTab) { _, tab in
             pane = tab
-            if compact, model.isSettingsPresented { pushed = pane }
+            if compact, model.isSettingsPresented, tab != .sources { pushed = pane }
         }
         .task { await model.loadIntegrations() }
         .sheet(isPresented: $isShortcutsShown) {
@@ -147,70 +149,10 @@ struct SettingsView: View {
 
     // MARK: Compact width
 
-    private var phoneRoot: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(SettingsPane.allCases) { p in
-                    // Shortcuts and theater layout still make sense on phones; all panes are listed.
-                    Button {
-                        select(p)
-                        pushed = p
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: p.symbol)
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(.ofMuted)
-                                .frame(width: 24)
-                            Text(p.label)
-                                .font(OFFont.ui(16))
-                                .foregroundStyle(.ofInk)
-                            Spacer()
-                            OFIcon.chevron.image
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.ofFaint)
-                        }
-                        .frame(minHeight: Metrics.touchTarget + 6)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .overlay(alignment: .bottom) {
-                        if p != SettingsPane.allCases.last { SettingsHairline().padding(.leading, 36) }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-        }
-        .background(Color.ofSurface)
-        .navigationTitle("Settings")
+    @ViewBuilder private var phoneRoot: some View {
         #if os(iOS)
-        // No title text in the bar on any iPhone tab; the pane list speaks for itself.
-        .toolbar(removing: .title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarRole(.editor)
-        #endif
-        .navigationDestination(item: $pushed) { p in
-            ScrollView {
-                paneContent(p)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(Color.ofSurface)
-            .navigationTitle(p.label)
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .environment(\.settingsCompact, true)
-        }
-        #if os(iOS)
-        .toolbar {
-            if model.isSettingsPresented {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { model.isSettingsPresented = false }
-                }
-            }
+        SettingsPhoneRoot(pushed: $pushed, onAddSource: { isAddSourceShown = true }, onSelect: select) { p in
+            paneContent(p)
         }
         #endif
     }

@@ -286,6 +286,47 @@ struct SettingsOPMLStatus: Equatable {
     var error: Bool
 }
 
+/// Import OPML for a row or button that has no result line beneath it (the phone's Settings and Sources
+/// screens): picks the file, imports it, refreshes so the new sources load, and reports the summary in
+/// an alert.
+private struct SettingsOPMLImporter: ViewModifier {
+    @Binding var isPresented: Bool
+    @Environment(AppModel.self) private var model
+    @State private var status: SettingsOPMLStatus?
+
+    func body(content: Content) -> some View {
+        content
+            .fileImporter(isPresented: $isPresented, allowedContentTypes: [.openDispatchOPML, .xml]) { result in
+                switch result {
+                case .success(let url): Task { await importFile(url) }
+                case .failure(let error): status = .init(text: "Import failed: \(HTTP.message(error))", error: true)
+                }
+            }
+            .alert("Import OPML", isPresented: Binding(get: { status != nil }, set: { if !$0 { status = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(status?.text ?? "")
+            }
+    }
+
+    private func importFile(_ url: URL) async {
+        do {
+            let r = try await model.importOPML(from: url)
+            status = .init(text: SettingsOPMLButtons.summary(r), error: r.added == 0 && !r.errors.isEmpty)
+            if r.added > 0 { Task { await model.refresh(force: true) } }
+        } catch {
+            status = .init(text: "Import failed: \(HTTP.message(error))", error: true)
+        }
+    }
+}
+
+extension View {
+    /// Presents the OPML file picker when `isPresented` turns true, then imports the file.
+    func opmlImporter(isPresented: Binding<Bool>) -> some View {
+        modifier(SettingsOPMLImporter(isPresented: isPresented))
+    }
+}
+
 /// Import OPML / Export OPML buttons (OpmlButtons). The result line is shown by the parent.
 struct SettingsOPMLButtons: View {
     @Binding var status: SettingsOPMLStatus?

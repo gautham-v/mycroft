@@ -1,13 +1,18 @@
+#if os(iOS)
 import OpenDispatchCore
 import SwiftUI
 
-/// Phone Sources tab. Port of src/components/sources-page.tsx (ordering from source-tree.ts via
-/// AppModel.orderedFolders / sources(inFolder:)).
+/// iPhone "Sources" screen, pushed on a surrounding NavigationStack (from the Feed's drawer, or from
+/// Settings → Manage sources). Port of src/components/sources-page.tsx (ordering from source-tree.ts via
+/// AppModel.orderedFolders / sources(inFolder:)), laid out as grouped cards on the warm ground.
 ///
-/// Folders are sections; the folder header opens everything in that folder, a source row opens that
-/// source's feed (pushed, with back to Sources). Unfiled shows only when it has sources. Beyond the web
-/// page, rows swipe to delete and long-press for Move to / Rename / Open site / Delete, folder headers
-/// long-press for Rename / Delete, and the toolbar "+" menu adds a source or a folder.
+/// The screen leads with a card for adding: a field that takes a link or a name (Return opens the add
+/// sheet with it), Import OPML and New folder. Then each folder is a muted label over a card of its
+/// sources (badge, title, host); the label opens everything in that folder, a source row opens that
+/// source's feed (pushed, with back to Sources; from the Settings sheet, the sheet closes and the Feed
+/// shows it). Unfiled comes last and shows only when it has sources. Beyond the web page, rows swipe to
+/// delete and long-press for Move to / Rename / Open site / Delete, and folder labels long-press for
+/// Rename / Delete.
 struct SourcesView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -55,22 +60,26 @@ struct SourcesView: View {
     @State private var pendingDelete: Source?
     @State private var pendingFolderDelete: Folder?
     @State private var errorMessage: String?
+    /// The add field's text, and the sheet it opens. The sheet is this screen's own: Settings is itself
+    /// a sheet, where the root's add sheet could not present.
+    @State private var addText = ""
+    @State private var isAddPresented = false
+    @State private var isImportingOPML = false
 
     var body: some View {
         dialogs(navigation(content))
     }
 
-    /// The list alone under the system navigation bar (no title text); "+" sits in the toolbar.
+    /// The list under the system navigation bar and its back button, titled "Sources".
     private var content: some View {
         list
             .background(Color.ofSurface)
-            #if os(iOS)
+            .navigationTitle("Sources")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarRole(.editor)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) { addMenu }
+            .sheet(isPresented: $isAddPresented) {
+                AddSourceView().environment(model)
             }
+            .opmlImporter(isPresented: $isImportingOPML)
     }
 
     private func navigation(_ view: some View) -> some View {
@@ -151,43 +160,43 @@ struct SourcesView: View {
         Binding(get: { pendingFolderDelete != nil }, set: { if !$0 { pendingFolderDelete = nil } })
     }
 
-    // MARK: Toolbar
-
-    private var addMenu: some View {
-        Menu {
-            Button {
-                model.isAddSourcePresented = true
-            } label: {
-                Label("Add source", systemImage: OFIcon.plus.rawValue)
-            }
-            Button {
-                open(.newFolder(withSource: nil))
-            } label: {
-                Label("New folder", systemImage: OFIcon.folder.rawValue)
-            }
-        } label: {
-            Label("Add", systemImage: OFIcon.plus.rawValue)
-        }
-        .tint(Color.primary)
-        .accessibilityLabel("Add")
-    }
-
     // MARK: List
 
+    /// A List rather than a ScrollView of cards so rows keep swipe actions, context menus and pull to
+    /// refresh. Each section's rows draw their own slice of the card (see `cardRow`).
     private var list: some View {
         List {
+            Section {
+                addField
+                    .cardRow(.first)
+                Button {
+                    isImportingOPML = true
+                } label: {
+                    GroupedRow(title: "Import OPML") { GroupedIcon(systemName: "square.and.arrow.down") }
+                }
+                .buttonStyle(GroupedRowButtonStyle())
+                .cardRow(.middle)
+                Button {
+                    open(.newFolder(withSource: nil))
+                } label: {
+                    GroupedRow(title: "New folder") { GroupedIcon(systemName: OFIcon.folder.rawValue) }
+                }
+                .buttonStyle(GroupedRowButtonStyle())
+                .cardRow(.last)
+            }
             ForEach(model.orderedFolders) { folder in
                 let sources = model.allSources(inFolder: folder.id)
                 Section {
                     if sources.isEmpty {
                         Text("No sources")
-                            .font(OFFont.ui(13))
+                            .font(OFFont.ui(15))
                             .foregroundStyle(.ofFaint)
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 8)
-                            .sourcesRowChrome()
+                            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                            .cardRow(.only)
                     } else {
-                        ForEach(sources) { sourceRow($0) }
+                        ForEach(Array(sources.enumerated()), id: \.element.id) { index, source in
+                            sourceRow(source).cardRow(.at(index, of: sources.count))
+                        }
                     }
                 } header: {
                     folderHeader(folder, count: sources.count)
@@ -196,52 +205,71 @@ struct SourcesView: View {
             let unfiled = model.allSources(inFolder: nil)
             if !unfiled.isEmpty {
                 Section {
-                    ForEach(unfiled) { sourceRow($0) }
+                    ForEach(Array(unfiled.enumerated()), id: \.element.id) { index, source in
+                        sourceRow(source).cardRow(.at(index, of: unfiled.count))
+                    }
                 } header: {
-                    Text("Unfiled")
-                        .font(OFFont.ui(13, .semibold))
-                        .tracking(0.13)
-                        .foregroundStyle(.ofMuted)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: .infinity, minHeight: Metrics.touchTarget, alignment: .leading)
-                        .sourcesHeaderChrome()
+                    sectionLabel("Unfiled")
+                        .listRowInsets(EdgeInsets())
+                        .background(Color.ofSurface)
                 }
-            }
-            Section {
-                addSourceRow
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .listSectionSeparator(.hidden)
         .environment(\.defaultMinListRowHeight, 1)
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .refreshable { await model.refresh(force: true) }
     }
 
+    /// The top card's first row: paste a link, or search by name. Return opens the add sheet with the
+    /// text in its field (AddSourceView runs the detection and the search).
+    private var addField: some View {
+        HStack(spacing: 10) {
+            OFIcon.search.image
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.ofMuted)
+            TextField("Paste a link, or search by name", text: $addText)
+                .font(OFFont.ui(16))
+                .foregroundStyle(.ofInk)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .submitLabel(.search)
+                .onSubmit(submitAddText)
+                .accessibilityLabel("Paste a link, or search by name")
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 48)
+        .background(Color.ofCardInset, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, -4)
+        .padding(.top, 16)
+        .padding(.bottom, 6)
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(OFFont.ui(15, .medium))
+            .foregroundStyle(.ofMuted)
+            .lineLimit(1)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The folder's name as the muted label above its card; it opens everything in the folder.
     private func folderHeader(_ folder: Folder, count: Int) -> some View {
         Button {
             openFeed(.folder(folder.id))
         } label: {
-            HStack(spacing: 12) {
-                Text(folder.title)
-                    .font(OFFont.ui(13, .semibold))
-                    .tracking(0.13)
-                    .foregroundStyle(.ofMuted)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(count)")
-                    .font(OFFont.ui(13, .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(.ofFaint)
-                OFIcon.chevron.image
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.ofFaint)
-            }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: Metrics.touchTarget)
-            .contentShape(Rectangle())
+            sectionLabel(folder.title)
         }
-        .buttonStyle(SourcesRowButtonStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel("Show everything in \(folder.title)")
+        .listRowInsets(EdgeInsets())
+        .background(Color.ofSurface)
         .contextMenu {
             Button {
                 open(.renameFolder(folder))
@@ -257,27 +285,17 @@ struct SourcesView: View {
                 Label(count == 0 ? "Delete folder" : "Delete folder (keep sources)", systemImage: "trash")
             }
         }
-        .sourcesHeaderChrome()
     }
 
     private func sourceRow(_ source: Source) -> some View {
         Button {
             openFeed(.source(source.id))
         } label: {
-            HStack(spacing: 12) {
-                SourceBadge(source: source, size: 24)
-                Text(source.title)
-                    .font(OFFont.ui(15))
-                    .foregroundStyle(.ofInk)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+            GroupedRow(title: source.title, subtitle: source.host) {
+                SourceBadge(source: source, size: 30)
             }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: Metrics.touchTarget)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(SourcesRowButtonStyle())
-        .sourcesRowChrome()
+        .buttonStyle(GroupedRowButtonStyle())
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 pendingDelete = source
@@ -322,30 +340,6 @@ struct SourcesView: View {
         }
     }
 
-    private var addSourceRow: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(Color.ofHairline).frame(height: 1).padding(.top, 12).padding(.bottom, 12)
-            Button {
-                model.isAddSourcePresented = true
-            } label: {
-                HStack(spacing: 12) {
-                    OFIcon.plus.image
-                        .font(.system(size: 18, weight: .regular))
-                        .frame(width: 24, height: 24)
-                    Text("Add source").font(OFFont.ui(15, .medium))
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.ofAccent)
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: Metrics.touchTarget)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(SourcesRowButtonStyle())
-        }
-        .padding(.bottom, 16)
-        .sourcesRowChrome()
-    }
-
     // MARK: Actions
 
     private func openFeed(_ r: Route) {
@@ -353,7 +347,22 @@ struct SourcesView: View {
         case .source(let id): model.navigate(sourceID: id)
         case .folder(let id): model.navigate(folderID: id)
         }
-        route = r
+        // In the Settings sheet there is no stack to show the feed in: close the sheet and let the Feed
+        // behind it show what was just selected.
+        if model.isSettingsPresented {
+            model.isSettingsPresented = false
+        } else {
+            route = r
+        }
+    }
+
+    /// Return in the add field: open the add sheet with its text.
+    private func submitAddText() {
+        let text = addText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        model.pendingAddSourceURL = text
+        addText = ""
+        isAddPresented = true
     }
 
     private func moveBinding(_ source: Source, to folderId: Int64?) -> Binding<Bool> {
@@ -390,32 +399,43 @@ struct SourcesView: View {
     }
 }
 
-/// Row press feedback: rounded hover background (rounded-lg, --hover) while pressed.
-private struct SourcesRowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(configuration.isPressed ? Color.ofHover : Color.clear)
-            )
+/// Where a row sits in its card, which decides its corners and whether a hairline follows it.
+private struct CardPosition {
+    let isFirst: Bool
+    let isLast: Bool
+
+    static let first = CardPosition(isFirst: true, isLast: false)
+    static let middle = CardPosition(isFirst: false, isLast: false)
+    static let last = CardPosition(isFirst: false, isLast: true)
+    static let only = CardPosition(isFirst: true, isLast: true)
+
+    static func at(_ index: Int, of count: Int) -> CardPosition {
+        CardPosition(isFirst: index == 0, isLast: index == count - 1)
     }
 }
 
 private extension View {
-    /// Plain list row: no separator, surface background, 8pt side inset (px-2), no vertical inset.
-    func sourcesRowChrome() -> some View {
-        self
-            .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+    /// A list row drawn as a slice of a white card: 16pt in from the screen, 20pt of content padding,
+    /// 26pt corners on the card's ends, and a hairline inset 20pt between rows.
+    func cardRow(_ position: CardPosition) -> some View {
+        let radius = Metrics.cardRadius
+        return self
+            .padding(.horizontal, 20)
+            .overlay(alignment: .bottom) {
+                if !position.isLast {
+                    Rectangle().fill(Color.ofHairline).frame(height: 1).padding(.horizontal, 20)
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .listRowSeparator(.hidden)
-            .listRowBackground(Color.ofSurface)
-    }
-
-    /// Section header with the same insets as rows, on the surface (headers stick while scrolling).
-    func sourcesHeaderChrome() -> some View {
-        self
-            .padding(.top, 12)
-            .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-            .background(Color.ofSurface)
+            .listRowBackground(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: position.isFirst ? radius : 0, bottomLeadingRadius: position.isLast ? radius : 0,
+                    bottomTrailingRadius: position.isLast ? radius : 0, topTrailingRadius: position.isFirst ? radius : 0,
+                    style: .continuous)
+                    .fill(Color.ofCard)
+                    .padding(.horizontal, 16)
+            )
     }
 }
 
@@ -423,3 +443,5 @@ private extension View {
     NavigationStack { SourcesView() }
         .environment(AppModel.preview())
 }
+#endif
+

@@ -72,47 +72,50 @@ struct SettingsDataPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(title: "Data", hint: "Everything is stored on this device. iCloud sync copies sources, folders, saved items and settings to your other devices.")
-            syncRow
-            locationRow
-            SettingsRow(label: "Refresh", hint: refreshHint) {
-                Picker("Refresh", selection: $refreshMinutes) {
-                    ForEach(RefreshIntervalSetting.options, id: \.0) { option in
-                        Text(option.1).tag(option.0)
+            SettingsCard {
+                syncRow
+                locationRow
+                SettingsRow(label: "Refresh", hint: refreshHint) {
+                    Picker("Refresh", selection: $refreshMinutes) {
+                        ForEach(RefreshIntervalSetting.options, id: \.0) { option in
+                            Text(option.1).tag(option.0)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .tint(.ofInk)
+                    .fixedSize()
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(.ofInk)
-                .fixedSize()
-            }
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                SettingsRow(label: "Last refresh", hint: lastRefreshHint(now: context.date)) {
-                    Button(model.isRefreshing ? "Refreshing…" : "Refresh now") {
-                        Task { await model.refresh(force: true) }
-                    }
-                    .buttonStyle(SettingsPaneButtonStyle())
-                    .disabled(model.isRefreshing)
-                }
-            }
-            SettingsRow(label: "Cached articles", hint: cacheHint) {
-                if confirmingClear {
-                    HStack(spacing: 6) {
-                        Button("Keep") { confirmingClear = false }
-                            .buttonStyle(SettingsSmallButtonStyle())
-                        Button("Clear") { Task { await clearCache() } }
-                            .buttonStyle(SettingsSmallButtonStyle(fill: .ofDanger))
-                            .keyboardShortcut(.defaultAction)
-                    }
-                } else {
-                    Button(clearing ? "Clearing…" : "Clear") { confirmingClear = true }
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    SettingsRow(label: "Last refresh", hint: lastRefreshHint(now: context.date)) {
+                        Button(model.isRefreshing ? "Refreshing…" : "Refresh now") {
+                            Task { await model.refresh(force: true) }
+                        }
                         .buttonStyle(SettingsPaneButtonStyle())
-                        .disabled(clearing || cachedCount == 0)
+                        .disabled(model.isRefreshing)
+                    }
+                }
+                SettingsRow(label: "Cached articles", hint: cacheHint) {
+                    if confirmingClear {
+                        HStack(spacing: 6) {
+                            Button("Keep") { confirmingClear = false }
+                                .buttonStyle(SettingsSmallButtonStyle())
+                            Button("Clear") { Task { await clearCache() } }
+                                .buttonStyle(SettingsSmallButtonStyle(fill: .ofDanger))
+                                .keyboardShortcut(.defaultAction)
+                        }
+                    } else {
+                        Button(clearing ? "Clearing…" : "Clear") { confirmingClear = true }
+                            .buttonStyle(SettingsPaneButtonStyle())
+                            .disabled(clearing || cachedCount == 0)
+                    }
                 }
             }
             if let clearStatus {
                 Text(clearStatus.text)
                     .font(OFFont.ui(12))
                     .foregroundStyle(clearStatus.error ? Color.ofDanger : Color.ofMuted)
+                    .padding(.horizontal, compact ? 20 : 0)
                     .padding(.bottom, 8)
             }
         }
@@ -155,9 +158,9 @@ struct SettingsDataPane: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Database").font(OFFont.ui(14)).foregroundStyle(.ofInk)
+                    Text("Database").font(OFFont.ui(compact ? 17 : 14)).foregroundStyle(.ofInk)
                     Text(dbSize.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "SQLite")
-                        .font(OFFont.ui(12))
+                        .font(OFFont.ui(compact ? 13.5 : 12))
                         .foregroundStyle(.ofMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -170,7 +173,7 @@ struct SettingsDataPane: View {
             }
             if let url = databaseURL {
                 Text(Self.displayPath(url))
-                    .font(OFFont.ui(11.5))
+                    .font(OFFont.ui(compact ? 12.5 : 11.5))
                     .foregroundStyle(.ofMuted)
                     .textSelection(.enabled)
                     .lineLimit(compact ? 3 : 2)
@@ -178,8 +181,8 @@ struct SettingsDataPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, 10)
-        .overlay(alignment: .top) { SettingsHairline() }
+        .padding(.vertical, compact ? 12 : 10)
+        .settingsTopHairline()
     }
 
     private var refreshHint: String {

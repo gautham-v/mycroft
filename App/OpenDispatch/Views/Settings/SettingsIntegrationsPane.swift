@@ -66,7 +66,7 @@ struct SettingsIntegrationsPane: View {
                     .foregroundStyle(.ofAccent)
                 Text(state.readwiseConfigured ? ". Paste a new one to replace it." : ".")
             }
-            .font(OFFont.ui(12))
+            .font(OFFont.ui(compact ? 13.5 : 12))
             .foregroundStyle(.ofMuted)
             .lineLimit(2)
 
@@ -102,15 +102,14 @@ struct SettingsIntegrationsPane: View {
                 .padding(.top, 12)
             }
         }
-        .padding(.vertical, 12)
-        .overlay(alignment: .top) { SettingsHairline() }
+        .settingsSectionChrome()
     }
 
     private var webhookSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             header("Webhook", on: state.webhookConfigured, status: state.webhookConfigured ? "On" : "Not set up")
             Text("Each sent item is POSTed as JSON: id, url, title, author, published_at, summary, source.")
-                .font(OFFont.ui(12))
+                .font(OFFont.ui(compact ? 13.5 : 12))
                 .foregroundStyle(.ofMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -136,8 +135,7 @@ struct SettingsIntegrationsPane: View {
 
             if state.webhookConfigured { actions(.webhook, testLabel: "Send a test") }
         }
-        .padding(.vertical, 12)
-        .overlay(alignment: .top) { SettingsHairline() }
+        .settingsSectionChrome()
     }
 
     private var footer: some View {
@@ -162,15 +160,16 @@ struct SettingsIntegrationsPane: View {
                 .disabled(!dirty || saving)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(.top, 12)
-        .overlay(alignment: .top) { SettingsHairline() }
+        .padding(.top, compact ? 0 : 12)
+        .padding(.bottom, compact ? 22 : 0)
+        .overlay(alignment: .top) { if !compact { SettingsHairline() } }
         .animation(.easeOut(duration: 0.15), value: saved)
     }
 
     private var copySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Copy as Markdown")
-                .font(OFFont.ui(14))
+                .font(OFFont.ui(compact ? 17 : 14))
                 .foregroundStyle(.ofInk)
             TextField("Start copied text with", text: Binding(
                 get: { promptDraft ?? model.settings.copyPrompt },
@@ -181,20 +180,19 @@ struct SettingsIntegrationsPane: View {
             .onSubmit { commitPrompt() }
             .padding(.top, 6)
             Text("Added above the copied text, for when you always ask your AI the same thing.")
-                .font(OFFont.ui(12))
+                .font(OFFont.ui(compact ? 13.5 : 12))
                 .foregroundStyle(.ofMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 6)
         }
-        .padding(.vertical, 12)
-        .padding(.top, 12)
-        .overlay(alignment: .top) { SettingsHairline() }
+        .padding(.top, compact ? 0 : 12)
+        .settingsSectionChrome()
     }
 
     private func header(_ title: String, on: Bool, status: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(title)
-                .font(OFFont.ui(14))
+                .font(OFFont.ui(compact ? 17 : 14))
                 .foregroundStyle(.ofInk)
             Spacer(minLength: 0)
             Text(status)
