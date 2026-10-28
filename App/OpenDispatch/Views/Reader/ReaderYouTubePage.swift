@@ -7,12 +7,16 @@ import Foundation
 /// flashes its title, center icon, More videos and logo for a few seconds whenever playback starts, so
 /// `frameStyleScript` hides them inside YouTube's frame.
 ///
-/// Mouse: click plays or pauses, double-click toggles full screen. Touch: a tap shows or hides the bar.
+/// Mouse: click plays or pauses, double-click toggles full screen. Touch: a tap shows or hides the bar (after a
+/// beat, to tell it from a double-tap), a double-tap on the left or right half skips 10 s back or forward like
+/// YouTube's app, and further taps on that side within 0.7 s keep skipping, the sum shown on that side.
 /// Keys: Space, ←/→ (5 s), F, M, C. Captions start off; the bar's CC button turns them on.
 ///
 /// Full screen is the element Fullscreen API where WebKit has it (Mac, iPad). On iPhone it doesn't, so
 /// the page asks the app instead (`nativeFullscreen`): the app pauses here and opens a full-screen
-/// cover running this page with `inCover`, whose button closes it again.
+/// cover running this page with `inCover`, whose button closes it again. `nativeFullscreen` is also what marks
+/// the iOS page: its bar gets bigger icons and 48px touch targets (the `touch` class), and a second row for the
+/// scrubber on a narrow screen.
 ///
 /// Messages to the `openDispatchYouTube` handler: `{type: "playing"}` once playback first starts,
 /// `{type: "failed"}` when the API or the video fails (the layer and bar are removed, YouTube's own
@@ -45,7 +49,8 @@ enum ReaderYouTubePage {
 
     /// `src`, `title` and `poster` must already be attribute-escaped.
     static func html(src: String, title: String, poster: String, nativeFullscreen: Bool, inCover: Bool) -> String {
-        #"""
+        let chevrons = String(repeating: #"<svg viewBox="0 0 24 24" fill="white"><path d="M7 5.5v13L18 12z"/></svg>"#, count: 3)
+        return #"""
         <!doctype html>
         <html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
@@ -100,9 +105,42 @@ enum ReaderYouTubePage {
         /* Touch: 44pt tap areas around the icons, whatever their drawn size. */
         @media (hover:none){#mute{display:none}
           #bar button{padding:calc((44px - var(--i))/2);margin:calc((var(--i) - 44px)/2)}}
-        @media (prefers-reduced-motion:reduce){.ctl,#knob{transition:none}}
+        /* iOS: bigger glyphs, 48px targets with 48px between icon centers, a thick scrubber with its knob always
+           drawn, and the bar's own text a size up. Under 600px wide (iPhone upright) the scrubber takes its own
+           row above the buttons, and the remaining time becomes the total after the position. */
+        #tot{display:none}
+        #stage.touch{--i:28px;--k:22px;--tr:5px;font-size:15px}
+        #stage.touch #bar{gap:20px;padding:10px 20px 12px}
+        #stage.touch #bar button{padding:calc((48px - var(--i))/2);margin:calc((var(--i) - 48px)/2)}
+        #stage.touch #track{height:48px}
+        #stage.touch #knob{transform:scale(1)}
+        #stage.touch #speed{font-size:16px}
+        @media (max-width:600px){
+          #stage.touch{--i:26px}
+          #stage.touch #bar{flex-wrap:wrap;gap:12px 14px;padding:0 16px 10px}
+          #stage.touch #track{order:-1;flex:1 0 100%;min-width:0}
+          #stage.touch #left{display:none}
+          #stage.touch #tot{display:block;margin-left:-6px;opacity:.7}
+          #stage.touch #bar #cc{margin-left:auto}
+        }
+        /* The double-tap skip: a half ellipse on the side tapped, three chevrons running outward over the total. */
+        .skip{position:absolute;top:0;bottom:0;width:36%;display:flex;flex-direction:column;align-items:center;
+          justify-content:center;gap:8px;background:rgba(255,255,255,.2);opacity:0;transition:opacity .25s ease;
+          pointer-events:none}
+        #skipL{left:0;border-radius:0 50% 50% 0/0 50% 50% 0}
+        #skipR{right:0;border-radius:50% 0 0 50%/50% 0 0 50%}
+        .skip.go{opacity:1;transition:opacity .08s ease}
+        .chs{display:flex}
+        #skipL .chs{transform:scaleX(-1)}
+        .chs svg{width:calc(var(--i)*.8);height:calc(var(--i)*.8);opacity:.3}
+        .skip.go .chs svg{animation:chev .6s ease-in-out infinite}
+        .chs svg:nth-child(2){animation-delay:.15s!important}
+        .chs svg:nth-child(3){animation-delay:.3s!important}
+        @keyframes chev{0%,100%{opacity:.3}50%{opacity:1}}
+        .skip b{font-weight:650;font-size:max(13px,calc(var(--i)*.6))}
+        @media (prefers-reduced-motion:reduce){.ctl,#knob,.skip{transition:none}.skip.go .chs svg{animation:none;opacity:1}}
         </style></head>
-        <body><div id="stage">
+        <body><div id="stage"\#(nativeFullscreen ? " class=\"touch\"" : "")>
           <iframe id="yt" src="\#(src)" title="\#(title)"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -112,6 +150,8 @@ enum ReaderYouTubePage {
               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/>
               <path d="M4.2 3.8v4.6h4.6"/></svg></button>
           </div>
+          <div id="skipL" class="skip"><div class="chs">\#(chevrons)</div><b></b></div>
+          <div id="skipR" class="skip"><div class="chs">\#(chevrons)</div><b></b></div>
           <div id="scrim" class="ctl"></div>
           <button id="big" class="round ctl" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M7.5 4.8v14.4L19.5 12z"
             fill="currentColor"/></svg></button>
@@ -119,7 +159,7 @@ enum ReaderYouTubePage {
             <button id="play" aria-label="Play or pause"><svg class="off-play" viewBox="0 0 24 24"><path d="M7.5 4.8v14.4L19.5 12z"
               fill="currentColor"/></svg><svg class="on-play" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.8"
               width="4.2" height="14.4" rx="1"/><rect x="13.8" y="4.8" width="4.2" height="14.4" rx="1"/></svg></button>
-            <span id="cur" class="t">0:00</span>
+            <span id="cur" class="t">0:00</span><span id="tot" class="t"></span>
             <div id="track" role="slider" aria-label="Position"><i id="rail"></i><i id="buf"></i><i id="fill"></i><b id="knob"></b></div>
             <span id="left" class="t"></span>
             <button id="mute" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M3.5 9.2h3.6L12 5v14l-4.9-4.2H3.5z"
@@ -167,6 +207,7 @@ enum ReaderYouTubePage {
             var d = duration(), t = dragging ? dragT : now(), f = d ? Math.min(1, t / d) : 0;
             $('cur').textContent = fmt(t);
             $('left').textContent = d ? '−' + fmt(d - t) : '';
+            $('tot').textContent = d ? '/ ' + fmt(d) : '';
             $('fill').style.width = $('knob').style.left = f * 100 + '%';
             $('buf').style.width = (ready ? player.getVideoLoadedFraction() || 0 : 0) * 100 + '%';
             track.setAttribute('aria-valuetext', fmt(t) + ' of ' + fmt(d));
@@ -302,6 +343,26 @@ enum ReaderYouTubePage {
             } });
           };
 
+          // Double-tap skip (touch): the second tap on a side within TAP_GAP skips, and so does any tap on the
+          // same side while the feedback from the last skip is still up (STREAK), adding to the total shown.
+          var SKIP = 10, TAP_GAP = 260, STREAK = 700;
+          var lastTap = null, tapTimer = 0, streak = null, skipTimer = 0;
+          function skip(side) {
+            var total = streak && streak.side === side ? streak.total + SKIP : SKIP;
+            streak = { side: side, total: total };
+            seekBy(side * SKIP);
+            var el = $(side < 0 ? 'skipL' : 'skipR'), other = $(side < 0 ? 'skipR' : 'skipL');
+            other.classList.remove('go');
+            el.querySelector('b').textContent = total + ' seconds';
+            el.classList.add('go');
+            clearTimeout(skipTimer);
+            skipTimer = setTimeout(function () { el.classList.remove('go'); streak = null; }, STREAK);
+            hide();
+          }
+          function tap() {
+            if (stage.classList.contains('show') && isPlaying()) hide(); else poke();
+          }
+
           // Mouse: click plays or pauses, double-click is full screen. Touch: a tap shows or hides the bar.
           $('shield').addEventListener('click', function (e) {
             if (Date.now() - lastTouch < 800) return;
@@ -312,7 +373,13 @@ enum ReaderYouTubePage {
           $('shield').addEventListener('touchend', function (e) {
             e.preventDefault();
             lastTouch = Date.now();
-            if (stage.classList.contains('show') && isPlaying()) hide(); else poke();
+            var r = this.getBoundingClientRect(), side = e.changedTouches[0].clientX < r.left + r.width / 2 ? -1 : 1;
+            clearTimeout(tapTimer);
+            if (ready && (lastTap === side || streak && streak.side === side)) { lastTap = null; skip(side); return; }
+            if (lastTap !== null) tap();
+            streak = null;
+            lastTap = side;
+            tapTimer = setTimeout(function () { lastTap = null; tap(); }, TAP_GAP);
           });
           stage.addEventListener('mousemove', function () { if (Date.now() - lastTouch > 800) poke(); });
           stage.addEventListener('mouseleave', function () { overBar = false; hide(); });
