@@ -108,6 +108,8 @@ final class AppModel {
     /// The iPhone's Explore page (drawer row) is showing instead of an item list. Any other navigation
     /// turns it off. (On the Mac and iPad Explore is the New Tab page, which is not a navigation state.)
     private(set) var showsExplore = false
+    /// Bumped when Explore is picked on the iPhone, so its page puts the cursor in the search field.
+    private(set) var exploreFocusRequests = 0
     /// Hide Read Items: items read before this moment are left out of the list. Moved on when the list is
     /// navigated or refreshed, so what you read while a list shows stays until then.
     private var hideReadCutoff = Date()
@@ -470,9 +472,10 @@ final class AppModel {
     }
 
     /// Show the iPhone's Explore page (the drawer's first row). The Mac and iPad open the New Tab page instead.
-    func showExplore() {
+    func showExplore(focusingSearch: Bool = true) {
         setNav(view: .all, source: nil, folder: nil)
         showsExplore = true
+        if focusingSearch { exploreFocusRequests += 1 }
     }
 
     private func setNav(view: FeedView, source: Int64?, folder: Int64?, startingWith rows: [FeedItem] = []) {
@@ -720,12 +723,13 @@ final class AppModel {
         }
         // opendispatch://explore?q=<query>: Explore (the iPhone page, the New Tab page elsewhere), searching q if given.
         if action == "explore" {
+            let q = query?.first(where: { $0.name == "q" })?.value ?? ""
             #if os(iOS)
-            if UIDevice.current.userInterfaceIdiom == .phone { showExplore() } else { openLocation() }
+            if UIDevice.current.userInterfaceIdiom == .phone { showExplore(focusingSearch: q.isEmpty) } else { openLocation() }
             #else
             openLocation()
             #endif
-            if let q = query?.first(where: { $0.name == "q" })?.value, !q.isEmpty { explore.search(q) }
+            if !q.isEmpty { explore.search(q) }
             return
         }
         guard action == "add" else { return }

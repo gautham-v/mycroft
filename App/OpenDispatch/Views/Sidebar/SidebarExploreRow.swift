@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Explore row at the top of the sidebar: a compass and the name in the accent. It opens the New Tab page
+/// The Explore row at the top of the sidebar: a compass and the name. It opens the New Tab page
 /// (search for videos, podcasts and sources, or open a link) with its field focused. Looks like SidebarViewRow;
 /// it is a way in, not a place the list shows, so it is never the selected row.
 struct SidebarExploreRow: View {
@@ -21,7 +21,7 @@ struct SidebarExploreRow: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(.ofAccent)
+            .foregroundStyle(.ofInk)
             .padding(.horizontal, SidebarStyle.rowPadding)
             .frame(height: Metrics.sidebarRowHeight)
             .contentShape(Rectangle())

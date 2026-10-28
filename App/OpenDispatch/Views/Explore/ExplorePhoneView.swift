@@ -15,6 +15,8 @@ struct ExplorePhoneView: View {
     @Environment(\.isFeedStackPushed) private var isFeedStackPushed
     @State private var filter: Filter = .all
     @FocusState private var focused: Bool
+    /// The last `AppModel.exploreFocusRequests` acted on, so coming back from the reader doesn't raise the keyboard.
+    @State private var handledFocusRequest = 0
 
     private enum Filter: String, CaseIterable {
         case all = "All", videos = "Videos", episodes = "Episodes", sources = "Sources"
@@ -46,6 +48,18 @@ struct ExplorePhoneView: View {
             set: { presented in if !presented, model.selectedItemID != nil { model.select(nil) } })
         ) {
             ReaderView()
+        }
+        .onAppear(perform: focusIfRequested)
+        .onChange(of: model.exploreFocusRequests) { focusIfRequested() }
+    }
+
+    /// Picking Explore in the drawer puts the cursor in the search field, once the drawer has slid away.
+    private func focusIfRequested() {
+        guard handledFocusRequest != model.exploreFocusRequests else { return }
+        handledFocusRequest = model.exploreFocusRequests
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            focused = true
         }
     }
 
