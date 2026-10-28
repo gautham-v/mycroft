@@ -167,8 +167,13 @@ enum ReaderText {
     }
 
     /// host + directory + file name without extension and without size/crop/duplicate suffixes.
+    /// A resizing proxy that carries the original in its query (NPR's Brightspot `…/resize/1100/?url=…`)
+    /// is keyed by that original, so each size of it matches.
     private static func imageStem(_ url: String) -> String? {
         guard let comps = URLComponents(string: url), let host = comps.host else { return nil }
+        if let inner = comps.queryItems?.lazy.compactMap(\.value).first(where: { $0.hasPrefix("http://") || $0.hasPrefix("https://") }) {
+            return imageStem(inner)
+        }
         let path = comps.path
         guard let slash = path.lastIndex(of: "/") else { return nil }
         var name = String(path[path.index(after: slash)...]).lowercased()
