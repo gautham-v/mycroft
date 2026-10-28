@@ -248,37 +248,159 @@ private struct PhoneBottomBar: View {
 }
 
 /// The pill of page dots, one per content view with the current one stretched to a capsule. Tapping it opens a
-/// menu of the views in page order, the current one checked.
+/// menu of the views in page order, the current one checked. Holding it a moment scrubs, like the Home
+/// Screen's dots: sliding sideways switches the list a view per `scrubStep`, at once rather than sliding, with
+/// a tick each and the view's name over the pill.
 private struct PhonePageDots: View {
     @Environment(AppModel.self) private var model
+    @Environment(PhoneChrome.self) private var chrome: PhoneChrome?
+    @State private var menu = PhoneViewsMenu()
+    /// The view the scrub started on, and the one it is on now (nil when not scrubbing).
+    @State private var scrubStart = 0
+    @State private var scrubIndex: Int?
+    /// Held past the long press; goes false when the finger lifts or the touch is cancelled.
+    @GestureState private var isHolding = false
+    /// When the last scrub ended: lifting the finger from a scrub can also end a tap, which must not open the menu.
+    @State private var scrubEndedAt = Date.distantPast
+
+    /// Finger travel that moves the scrub one view.
+    private static let scrubStep: CGFloat = 28
 
     var body: some View {
         let pages = model.phonePages
-        let current = model.phonePageIndex
-        Menu {
-            ForEach(pages, id: \.self) { view in
-                Toggle(view.title, isOn: Binding(
-                    get: { pages.firstIndex(of: view) == current },
-                    set: { _ in model.navigate(view: view) }))
+        let current = scrubIndex ?? model.phonePageIndex
+        let scrubbing = scrubIndex != nil
+        HStack(spacing: scrubbing ? 12 : 5) {
+            ForEach(Array(pages.enumerated()), id: \.offset) { index, _ in
+                Capsule()
+                    .fill(index == current ? Color.ofInk : Color.ofFaint)
+                    .frame(width: index == current ? 18 : 6, height: 6)
             }
-        } label: {
-            HStack(spacing: 5) {
-                ForEach(Array(pages.enumerated()), id: \.offset) { index, _ in
-                    Capsule()
-                        .fill(index == current ? Color.ofInk : Color.ofFaint)
-                        .frame(width: index == current ? 18 : 6, height: 6)
-                }
-            }
-            .animation(.smooth(duration: 0.2), value: current)
-            .padding(.horizontal, 18)
-            .frame(height: 46)
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        // Opening upward from the bottom, iOS would otherwise list the views bottom to top.
-        .menuOrder(.fixed)
+        .padding(.horizontal, scrubbing ? 24 : 18)
+        .animation(.smooth(duration: 0.2), value: current)
+        .animation(.smooth(duration: 0.2), value: scrubbing)
+        .frame(height: 46)
+        .contentShape(Capsule())
+        .background { PhoneViewsMenuAnchor(menu: menu) }
         .glassEffect(.regular.interactive(), in: .capsule)
+        .overlay(alignment: .top) {
+            if let scrubIndex, pages.indices.contains(scrubIndex) {
+                Text(pages[scrubIndex].title)
+                    .font(OFFont.ui(15, .semibold))
+                    .foregroundStyle(.ofInk)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .glassEffect(.regular, in: .capsule)
+                    .fixedSize()
+                    .offset(y: -46)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.smooth(duration: 0.15), value: scrubbing)
+        .onTapGesture(perform: presentMenu)
+        .simultaneousGesture(scrubGesture(pages: pages))
+        .onChange(of: isHolding) { _, holding in
+            if !holding { endScrub() }
+        }
+        .sensoryFeedback(trigger: scrubIndex) { old, new in
+            guard new != nil else { return nil }
+            return old == nil ? .impact(weight: .light) : .selection
+        }
+        .accessibilityElement()
         .accessibilityLabel("\(model.listTitle), switch view")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { presentMenu() }
+        .accessibilityAdjustableAction { direction in
+            guard let index = model.phonePageIndex else { return }
+            let next = direction == .increment ? index + 1 : index - 1
+            if pages.indices.contains(next) { model.navigate(view: pages[next]) }
+        }
+    }
+
+    private func presentMenu() {
+        guard scrubIndex == nil, Date().timeIntervalSince(scrubEndedAt) > 0.3 else { return }
+        let model = model
+        menu.present(pages: model.phonePages, current: model.phonePageIndex) { model.navigate(view: $0) }
+    }
+
+    private func scrubGesture(pages: [FeedView]) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.25, maximumDistance: 10)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .updating($isHolding) { value, state, _ in
+                if case .second(true, _) = value { state = true }
+            }
+            .onChanged { value in
+                guard case .second(true, let drag) = value else { return }
+                if scrubIndex == nil { beginScrub() }
+                guard let scrubIndex else { return }
+                let steps = Int(((drag?.translation.width ?? 0) / Self.scrubStep).rounded())
+                let target = min(pages.count - 1, max(0, scrubStart + steps))
+                guard target != scrubIndex, pages.indices.contains(target) else { return }
+                self.scrubIndex = target
+                let view = pages[target]
+                model.navigate(view: view, startingWith: chrome?.peekItems[view] ?? [])
+            }
+    }
+
+    /// Starts scrubbing from the list's view, unless the list is mid-slide from a swipe, and loads the first
+    /// rows of every view so each can show at once as the scrub reaches it.
+    private func beginScrub() {
+        guard let index = model.phonePageIndex, let chrome,
+              !chrome.isSliding, !chrome.isSwapping, chrome.pageOffset == 0 else { return }
+        chrome.isScrubbing = true
+        scrubStart = index
+        scrubIndex = index
+        let model = model
+        let pages = model.phonePages
+        Task {
+            for view in pages where view != pages[index] {
+                guard let page = try? await model.database.items(ItemQuery(view: view, limit: PhonePagePeek.rows)) else { continue }
+                chrome.peekItems[view] = page.items
+            }
+        }
+    }
+
+    private func endScrub() {
+        guard scrubIndex != nil else { return }
+        scrubIndex = nil
+        scrubEndedAt = Date()
+        chrome?.isScrubbing = false
+    }
+}
+
+/// Presents the views menu from the dots pill on a tap. The pill can't be a SwiftUI Menu: a menu opens on
+/// touch-down, which leaves no hold for scrubbing. So a hidden UIKit button under the pill (for the menu's
+/// position) holds the menu, and a tap asks it to present.
+@MainActor private final class PhoneViewsMenu {
+    weak var button: UIButton?
+
+    func present(pages: [FeedView], current: Int?, select: @escaping @MainActor (FeedView) -> Void) {
+        guard let button else { return }
+        button.menu = UIMenu(children: pages.enumerated().map { index, view in
+            UIAction(title: view.title, state: index == current ? .on : .off) { _ in select(view) }
+        })
+        button.performPrimaryAction()
+    }
+}
+
+private struct PhoneViewsMenuAnchor: UIViewRepresentable {
+    let menu: PhoneViewsMenu
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .custom)
+        button.showsMenuAsPrimaryAction = true
+        // Opening upward from the bottom, iOS would otherwise list the views bottom to top.
+        button.preferredMenuElementOrder = .fixed
+        // Touches belong to the pill's gestures; the button only presents.
+        button.isUserInteractionEnabled = false
+        menu.button = button
+        return button
+    }
+
+    func updateUIView(_ button: UIButton, context: Context) {
+        menu.button = button
     }
 }
 

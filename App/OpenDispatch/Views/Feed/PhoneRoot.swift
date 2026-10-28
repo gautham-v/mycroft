@@ -11,6 +11,8 @@ import UIKit
     var pageOffset: CGFloat = 0
     /// The list is switching to the view it slid to (a couple of frames): swipes wait for it.
     var isSwapping = false
+    /// A finger is scrubbing the page dots (`PhonePageDots`): sideways swipes leave the list alone.
+    @ObservationIgnored var isScrubbing = false
     /// The views on either side of the list, kept while a view change slides so the page sliding in
     /// beside the list doesn't change under the finger when the view switches.
     var previousPage: FeedView?
@@ -274,7 +276,7 @@ struct PhoneRoot: View {
     /// between views takes it from there. Otherwise, from the left edge, rightwards on the first view (or
     /// on a list that isn't one of the five views) it opens the drawer, else it moves between the views.
     private func swipeBegin(startX: CGFloat, velocity: CGFloat) -> PhoneSwipeMode? {
-        guard swipesEnabled, !chrome.isSwapping else { return nil }
+        guard swipesEnabled, !chrome.isSwapping, !chrome.isScrubbing else { return nil }
         if isOpen { return velocity < 0 ? .drawer : nil }
         if chrome.isSliding || chrome.pageOffset != 0 {
             chrome.stopSliding()
