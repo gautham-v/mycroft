@@ -164,8 +164,9 @@ struct ReaderItemView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // A video's own header shows the source and date under the player, so it skips this row.
-                if compact, !isVideo {
+                // A video's own header shows the source and date under the player, and a post's author row
+                // shows its author, age and network, so both skip this row.
+                if compact, !isVideo, !isPost {
                     metaRow
                         .readerColumn(wide: false)
                         .padding(.top, 8)
@@ -343,6 +344,7 @@ struct ReaderItemView: View {
             switch content {
             case .ok:
                 ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
+                                     post: isPost ? ReaderHTML.Post(published: item.item.publishedAt, host: itemURL?.host) : nil,
                                      onReload: { model.reloadArticle(item) },
                                      onCopyMarkdown: { model.copyMarkdown(item: item) }, speechPage: speechPage)
             case .loading:

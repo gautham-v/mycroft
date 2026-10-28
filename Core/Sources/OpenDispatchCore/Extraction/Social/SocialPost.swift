@@ -99,7 +99,7 @@ struct SocialPost {
     private func user(_ a: Author) -> TweetExtraction.User { .init(name: a.name.isEmpty ? a.handle : a.name, handle: a.handle, avatar: a.avatar) }
 
     private static func bodyHTML(_ paragraphs: [String]) -> String {
-        paragraphs.isEmpty ? "" : "<div class=\"x-body\">\(paragraphs.map { "<p>\($0)</p>" }.joined())</div>"
+        paragraphs.isEmpty ? "" : "<div class=\"x-body\">\(paragraphs.map(TweetExtraction.paragraphHTML).joined())</div>"
     }
 
     /// The reader markup: author row, text, media, the quoted post, the link card, a footer.
@@ -111,7 +111,7 @@ struct SocialPost {
         var cardHTML = ""
         if let c = card { cardHTML = TweetExtraction.cardHTML(href: c.href, title: c.title, domain: c.domain, image: c.image) }
         guard !paragraphs.isEmpty || !media.isEmpty || quote != nil || card != nil else { return nil }
-        let foot = TweetExtraction.footHTML(date: date.map(TweetExtraction.dateLine), canonical: url, network: network.name)
+        let foot = TweetExtraction.footHTML(date: date)
         let html = ArticleSanitizer.sanitize(
             "<div class=\"x-post\">\(TweetExtraction.whoHTML(user(author), date: nil, profile: author.profile))\(Self.bodyHTML(paragraphs))\(TweetExtraction.mediaHTML(media))\(quoted)\(cardHTML)\(foot)</div>"
         ).trimmingCharacters(in: .whitespacesAndNewlines)

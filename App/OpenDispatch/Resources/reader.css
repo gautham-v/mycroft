@@ -290,7 +290,16 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-post > * + *,
 .prose-opendispatch .x-quote > * + * { margin-top: 0; }
 .prose-opendispatch .x-who { display: flex; align-items: center; gap: 8px; font-size: 15px; line-height: 1.2; min-width: 0; }
-.prose-opendispatch .x-post > .x-who { gap: 10px; }
+/* The post's own author row is its header: name over "@handle · 2h", the network's icon on the right. The age and
+   icon come from ReaderHTML.Post as --post-age and --post-icon. */
+.prose-opendispatch .x-post > .x-who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0; }
+.prose-opendispatch .x-post > .x-who .x-avatar { grid-column: 1; grid-row: 1 / span 2; margin-right: 10px; }
+.prose-opendispatch .x-post > .x-who .x-name { grid-column: 2; grid-row: 1; align-self: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prose-opendispatch .x-post > .x-who .x-handle { grid-column: 2; grid-row: 2; align-self: start; margin-top: 3px; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prose-opendispatch .x-post > .x-who .x-handle::after { content: var(--post-age, ""); padding-left: 0.3em; display: inline-block; }
+.prose-opendispatch .x-post > .x-who::after { content: ""; grid-column: 3; grid-row: 1 / span 2; width: 20px; height: 20px; margin-left: 12px; border-radius: 5px; background: var(--post-icon, none) center / cover no-repeat; }
+.prose-opendispatch .x-post > .x-who:not(:has(.x-avatar)) .x-name,
+.prose-opendispatch .x-post > .x-who:not(:has(.x-avatar)) .x-handle { grid-column: 1 / span 2; }
 .prose-opendispatch .x-avatar { width: 40px; height: 40px; border-radius: 50%; margin: 0; flex: none; object-fit: cover; }
 .prose-opendispatch .x-quote .x-avatar { width: 22px; height: 22px; }
 .prose-opendispatch .x-name { font-weight: 600; color: var(--ink); }
@@ -316,6 +325,8 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-card-text { display: grid; gap: 2px; align-content: center; padding: 10px 14px; font-size: 14px; line-height: 1.35; }
 .prose-opendispatch .x-card-domain { color: var(--muted); font-size: 13px; }
 .prose-opendispatch .x-card-title { color: var(--ink); font-weight: 500; }
-.prose-opendispatch .x-foot { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); padding-top: 4px; }
-.prose-opendispatch .x-open { color: var(--body); text-decoration: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; }
-.prose-opendispatch .x-open:hover { background: var(--hover); }
+.prose-opendispatch .x-foot { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--hairline); }
+/* Posts read before the toolbar's open button replaced it still carry an "Open on X" link. */
+.prose-opendispatch .x-open { display: none; }
+.prose-opendispatch .x-body ul { margin: 0; padding-left: 1.1em; }
+.prose-opendispatch .x-body li + li { margin-top: 0.3em; }

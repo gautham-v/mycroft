@@ -19,6 +19,19 @@ enum ReaderHTML {
         var columnCSS: String { columnWidth.map { "\(Int($0))px" } ?? "none" }
     }
 
+    /// A post's author row shows its age and its network's icon (reader.css reads them as --post-age and
+    /// --post-icon). Generated content, so the highlight index and read aloud never see the age change.
+    struct Post: Equatable {
+        var published: Date
+        /// The post's host ("x.com"), for the network's favicon.
+        var host: String?
+
+        var css: String {
+            let icon = host.flatMap { URLHost.faviconURL(host: $0) }.map { "; --post-icon: url('\($0.absoluteString)')" } ?? ""
+            return "; --post-age: '· \(RelativeTime.format(published))'\(icon)"
+        }
+    }
+
     /// reader.css from the app bundle, read once.
     @MainActor static let stylesheet: String = {
         guard let url = Bundle.main.url(forResource: "reader", withExtension: "css"),
@@ -27,7 +40,8 @@ enum ReaderHTML {
     }()
 
     /// The full document. `hero` is an image URL shown above the content (already de-duplicated by the caller).
-    @MainActor static func document(body: String, hero: String?, appearance a: Appearance) -> String {
+    /// `post` is set for posts; the age is as of loading.
+    @MainActor static func document(body: String, hero: String?, appearance a: Appearance, post: Post? = nil) -> String {
         let themeAttr: String = switch a.theme {
         case .system: ""
         case .light: " data-theme=\"light\""
@@ -44,7 +58,7 @@ enum ReaderHTML {
         <style>\(stylesheet)</style>
         </head>
         <body>
-        <article class="prose-opendispatch" style="--column: \(a.columnCSS)" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-leading="\(a.leading.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
+        <article class="prose-opendispatch" style="\(ReaderWebSupport.escapeAttribute("--column: \(a.columnCSS)\(post?.css ?? "")"))" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-leading="\(a.leading.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
         </body>
         </html>
         """
@@ -102,6 +116,7 @@ struct ReaderArticleWebView: View {
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
+    var post: ReaderHTML.Post? = nil
     var onReload: (() -> Void)? = nil
     var onCopyMarkdown: (() -> Void)? = nil
     /// Read aloud's bridge to this web view (ReaderSpeechPage.swift).
@@ -122,7 +137,7 @@ struct ReaderArticleWebView: View {
 
     var body: some View {
         ReaderArticleWebViewRepresentable(
-            html: html, hero: hero, baseURL: baseURL, appearance: appearance, onReload: onReload,
+            html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post, onReload: onReload,
             onCopyMarkdown: onCopyMarkdown, bridge: bridge,
             highlight: article.map { ReaderHighlightState(store: highlights, article: $0, highlights: highlights.highlights(forKey: $0.key)) },
             speechPage: speechPage
@@ -277,7 +292,8 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     }
     #endif
 
-    func update(_ webView: WKWebView, html: String, hero: String?, baseURL: URL?, appearance: ReaderHTML.Appearance) {
+    func update(_ webView: WKWebView, html: String, hero: String?, baseURL: URL?, appearance: ReaderHTML.Appearance,
+                post: ReaderHTML.Post?) {
         let key = "\(baseURL?.absoluteString ?? "")\n\(hero ?? "")\n\(html.count)\n\(html.hashValue)"
         if key != loadedKey {
             loadedKey = key
@@ -285,7 +301,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
             documentURL = baseURL
             bridge.pageWillLoad()
             speechPage?.documentWillChange()
-            webView.loadHTMLString(ReaderHTML.document(body: html, hero: hero, appearance: appearance), baseURL: baseURL)
+            webView.loadHTMLString(ReaderHTML.document(body: html, hero: hero, appearance: appearance, post: post), baseURL: baseURL)
         } else if appearance != self.appearance {
             self.appearance = appearance
             // ObjC entry point: the Swift overlay variant needs libswiftWebKit.dylib, absent on iOS 18.
@@ -300,6 +316,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
+    let post: ReaderHTML.Post?
     let onReload: (() -> Void)?
     let onCopyMarkdown: (() -> Void)?
     let bridge: ReaderHighlightBridge
@@ -320,7 +337,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
         context.coordinator.onCopyMarkdown = onCopyMarkdown
         if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
-        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
+        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post)
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {
@@ -336,6 +353,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let hero: String?
     let baseURL: URL?
     let appearance: ReaderHTML.Appearance
+    let post: ReaderHTML.Post?
     let onReload: (() -> Void)?
     let onCopyMarkdown: (() -> Void)?
     let bridge: ReaderHighlightBridge
@@ -356,7 +374,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
         context.coordinator.onCopyMarkdown = onCopyMarkdown
         if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
-        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance)
+        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post)
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {

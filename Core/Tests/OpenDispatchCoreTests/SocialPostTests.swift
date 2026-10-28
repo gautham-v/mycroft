@@ -58,7 +58,7 @@ struct SocialPostTests {
         #expect(html.contains("<div class=\"x-post\">"))
         #expect(html.contains("<span class=\"x-name\">Simon Willison</span>"))
         #expect(html.contains("<a class=\"x-card\" href=\"https://simonwillison.net/2026/Oct/23/kimi-k31-pro/\""))
-        #expect(html.contains("Open on Bluesky"))
+        #expect(html.contains("<div class=\"x-foot\">") && !html.contains("Open on"))
     }
 
     @Test func blueskyImagesAndNoText() throws {
@@ -203,7 +203,7 @@ struct SocialPostTests {
         #expect(item.thumbnailUrl?.contains("videocover-high") == true)
         let html = try #require(post.render()?.contentHtml)
         #expect(html.contains("<video src=\"https://dms.licdn.com/playlist/vid/v2/x/mp4-720p/"))
-        #expect(html.contains("Open on LinkedIn"))
+        #expect(html.contains("<div class=\"x-foot\">") && !html.contains("Open on"))
         #expect(!html.contains("redir/redirect"))
     }
 

@@ -103,14 +103,27 @@ enum TweetExtraction {
         return f
     }()
 
+    private static let stampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "h:mm a · MMM d, yyyy"
+        return f
+    }()
+
     /// A date line ("Oct 25, 2026") in the system time zone.
     static func dateLine(_ date: Date) -> String { dateFormatter.string(from: date) }
 
-    /// `\"created_at_ms\":1792865465000` after `from`, as a date line.
-    static func tweetDate(_ raw: String, from: Int) -> String? {
+    /// The footer's time and date ("3:21 PM · Oct 25, 2026") in the system time zone.
+    static func stampLine(_ date: Date) -> String { stampFormatter.string(from: date) }
+
+    /// `\"created_at_ms\":1792865465000` after `from`.
+    static func tweetTime(_ raw: String, from: Int) -> Date? {
         guard let m = datePattern.firstMatch(raw, from: from), let ms = m[1].flatMap({ Double($0) }) else { return nil }
-        return dateLine(Date(timeIntervalSince1970: ms / 1000))
+        return Date(timeIntervalSince1970: ms / 1000)
     }
+
+    /// `tweetTime` as a date line.
+    static func tweetDate(_ raw: String, from: Int) -> String? { tweetTime(raw, from: from).map(dateLine) }
 
     /// A string binding of the post's link card.
     static func cardString(_ card: String, key: String) -> String? {
@@ -185,9 +198,41 @@ enum TweetExtraction {
         return "<a class=\"x-card\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span><span class=\"x-card-title\">\(DOM.escapeHTML(title))</span></span></a>"
     }
 
-    /// The footer: the date and a link to the post on its network.
-    static func footHTML(date: String?, canonical: String, network: String) -> String {
-        "<div class=\"x-foot\"><span>\(DOM.escapeHTML(date ?? ""))</span><a class=\"x-open\" href=\"\(DOM.escapeAttr(canonical))\">Open on \(network)</a></div>"
+    /// The footer: when the post went up. (The reader's toolbar opens the post on its network.)
+    static func footHTML(date: Date?) -> String {
+        date.map { "<div class=\"x-foot\"><span>\(DOM.escapeHTML(stampLine($0)))</span></div>" } ?? ""
+    }
+
+    /// A paragraph's inner HTML, lines split at <br>, as blocks: runs of two or more bulleted lines ("• a", "- b")
+    /// become a list, so wrapped items indent under their text instead of under the bullet.
+    static func paragraphHTML(_ inner: String) -> String {
+        let lines = inner.components(separatedBy: "<br>")
+        let bullets = lines.map(bulletItem)
+        let listed = bullets.indices.map { i in
+            bullets[i] != nil && ((i > 0 && bullets[i - 1] != nil) || (i + 1 < bullets.count && bullets[i + 1] != nil))
+        }
+        var out = ""
+        var i = 0
+        while i < lines.count {
+            var j = i
+            while j < lines.count, listed[j] == listed[i] { j += 1 }
+            if listed[i] {
+                out += "<ul>\(bullets[i..<j].map { "<li>\($0 ?? "")</li>" }.joined())</ul>"
+            } else {
+                let text = lines[i..<j].joined(separator: "<br>").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { out += "<p>\(text)</p>" }
+            }
+            i = j
+        }
+        return out
+    }
+
+    /// A line's text after a leading bullet ("•", "·", "▪", "◦", "-", "–", "*" and a space), or nil.
+    static func bulletItem(_ line: String) -> String? {
+        let t = line.drop { $0.isWhitespace }
+        guard let first = t.first, "•·▪◦‣-–*".contains(first), t.dropFirst().first?.isWhitespace == true else { return nil }
+        let rest = t.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest.isEmpty ? nil : rest
     }
 
     static func bodyHTML(_ text: String, links: Links, drop: String? = nil) -> String {
@@ -198,7 +243,7 @@ enum TweetExtraction {
             return s.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty }
         if paras.isEmpty { return "" }
-        return "<div class=\"x-body\">\(paras.map { "<p>\(tweetInline($0, links: links))</p>" }.joined())</div>"
+        return "<div class=\"x-body\">\(paras.map { paragraphHTML(tweetInline($0, links: links)) }.joined())</div>"
     }
 
     /// Escape a paragraph of post text; link URLs (t.co expanded) and @mentions; keep line breaks.
@@ -270,7 +315,7 @@ enum TweetExtraction {
             }
         }
 
-        let foot = footHTML(date: tweetDate(raw, from: 0), canonical: canonical, network: "X")
+        let foot = footHTML(date: tweetTime(raw, from: 0))
         let html = ArticleSanitizer.sanitize(
             "<div class=\"x-post\">\(whoHTML(author, date: nil))\(bodyHTML(text, links: links, drop: card.isEmpty ? nil : cardURL))\(mediaHTML(media))\(quoted)\(card)\(foot)</div>"
         ).trimmingCharacters(in: .whitespacesAndNewlines)

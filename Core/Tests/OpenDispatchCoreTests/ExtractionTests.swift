@@ -491,9 +491,19 @@ struct ExtractionTweetTests {
         #expect(html.contains("href=\"https://x.com/bob\""))
         #expect(html.contains("href=\"https://example.com/post\""))
         #expect(html.contains(">example.com/post</a>"))
-        let day = Date(timeIntervalSince1970: 1792865465).formatted(.dateTime.locale(Locale(identifier: "en_US_POSIX")).month(.abbreviated).day().year())
-        #expect(html.contains("<span>\(day)</span>"))
-        #expect(html.contains("Open on X"))
+        let stamp = TweetExtraction.stampLine(Date(timeIntervalSince1970: 1792865465))
+        #expect(stamp.hasSuffix(" · " + Date(timeIntervalSince1970: 1792865465).formatted(.dateTime.locale(Locale(identifier: "en_US_POSIX")).month(.abbreviated).day().year())))
+        #expect(html.contains("<div class=\"x-foot\"><span>\(stamp)</span></div>"))
+        #expect(!html.contains("Open on"))
+    }
+
+    @Test func bulletedLinesBecomeAList() {
+        let html = TweetExtraction.paragraphHTML("he watches your mentions and:<br>• finds every post<br>• skips spam<br>thanks")
+        #expect(html == "<p>he watches your mentions and:</p><ul><li>finds every post</li><li>skips spam</li></ul><p>thanks</p>")
+        // A single bulleted line, or a dash inside a sentence, stays text.
+        #expect(TweetExtraction.paragraphHTML("- only one<br>then more") == "<p>- only one<br>then more</p>")
+        #expect(TweetExtraction.paragraphHTML("a - b<br>c - d") == "<p>a - b<br>c - d</p>")
+        #expect(TweetExtraction.paragraphHTML("- a<br>- b") == "<ul><li>a</li><li>b</li></ul>")
     }
 
     @Test func mediaOnlyPost() throws {
