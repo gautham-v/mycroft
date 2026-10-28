@@ -9,8 +9,8 @@ import UIKit
 @MainActor @Observable final class PhoneChrome {
     /// How far the list is displaced sideways (following the finger, then the slide on a view change).
     var pageOffset: CGFloat = 0
-    /// A view change is sliding out and in: swipes are ignored until it lands.
-    var isPaging = false
+    /// The list is switching to the view it slid to (a couple of frames): swipes wait for it.
+    var isSwapping = false
     /// The views on either side of the list, kept while a view change slides so the page sliding in
     /// beside the list doesn't change under the finger when the view switches.
     var previousPage: FeedView?
@@ -18,6 +18,72 @@ import UIKit
     /// The first rows of the views beside the list, so the page sliding in shows them instead of an empty
     /// screen.
     var peekItems: [FeedView: [FeedItem]] = [:]
+
+    /// Where the slide was when the current swipe caught it (0 from rest).
+    @ObservationIgnored var swipeBase: CGFloat = 0
+
+    // A spring driven frame by frame rather than a SwiftUI animation, so `pageOffset` is always where the
+    // list is on screen and a swipe can catch the slide mid-flight.
+    @ObservationIgnored private var link: CADisplayLink?
+    @ObservationIgnored private var target: CGFloat = 0
+    @ObservationIgnored private var velocity: CGFloat = 0
+    @ObservationIgnored private var lastTime: CFTimeInterval = 0
+    @ObservationIgnored private var onLand: (() -> Void)?
+
+    /// The list is sliding on its own (not under the finger).
+    var isSliding: Bool { link != nil }
+
+    /// Slides the list to `target`, starting at `velocity` (points per second), and calls `onLand` there.
+    func slide(to target: CGFloat, velocity: CGFloat, onLand: (() -> Void)? = nil) {
+        stopSliding()
+        self.target = target
+        self.velocity = velocity
+        self.onLand = onLand
+        lastTime = CACurrentMediaTime()
+        let link = CADisplayLink(target: PhoneSlideTicker(self), selector: #selector(PhoneSlideTicker.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    /// Stops the slide where it is (a swipe caught it).
+    func stopSliding() {
+        link?.invalidate()
+        link = nil
+        onLand = nil
+    }
+
+    /// One frame of a critically damped spring (no overshoot) that settles in about a quarter second.
+    fileprivate func step(_ link: CADisplayLink) {
+        let now = link.targetTimestamp
+        let dt = min(1.0 / 30, max(0, now - lastTime))
+        lastTime = now
+        let omega: CGFloat = 2 * .pi / 0.3
+        let x = pageOffset - target
+        let decay = exp(-omega * dt)
+        let nextX = (x + (velocity + omega * x) * dt) * decay
+        velocity = (velocity - omega * (velocity + omega * x) * dt) * decay
+        if abs(nextX) < 1, abs(velocity) < 60 {
+            pageOffset = target
+            let landed = onLand
+            stopSliding()
+            landed?()
+        } else {
+            pageOffset = target + nextX
+        }
+    }
+}
+
+/// The display link's target: CADisplayLink retains it, and it holds the chrome weakly.
+private final class PhoneSlideTicker: NSObject {
+    weak var chrome: PhoneChrome?
+
+    init(_ chrome: PhoneChrome) { self.chrome = chrome }
+
+    @MainActor @objc func tick(_ link: CADisplayLink) {
+        guard let chrome else { return link.invalidate() }
+        chrome.step(link)
+    }
 }
 
 extension AppModel {
@@ -155,7 +221,7 @@ struct PhoneRoot: View {
 
     /// Loads the first rows of the views on either side of the list (local queries).
     private func loadPeeks() async {
-        if !chrome.isPaging { syncNeighbors() }
+        if chrome.pageOffset == 0, !chrome.isSwapping { syncNeighbors() }
         guard let index = model.phonePageIndex else { return }
         let pages = model.phonePages
         for neighbor in [index - 1, index + 1] where pages.indices.contains(neighbor) {
@@ -204,16 +270,22 @@ struct PhoneRoot: View {
     }
 
     /// What a horizontal swipe that starts at `startX` moving at `velocity` (points per second) does, or
-    /// nil to leave it alone. Open drawer: swiping left closes it. Closed: from the left edge, rightwards
-    /// on the first view (or on a list that isn't one of the five views) it opens the drawer, otherwise
-    /// it moves between the views.
+    /// nil to leave it alone. Open drawer: swiping left closes it. A swipe that catches the list sliding
+    /// between views takes it from there. Otherwise, from the left edge, rightwards on the first view (or
+    /// on a list that isn't one of the five views) it opens the drawer, else it moves between the views.
     private func swipeBegin(startX: CGFloat, velocity: CGFloat) -> PhoneSwipeMode? {
-        guard swipesEnabled, !chrome.isPaging else { return nil }
+        guard swipesEnabled, !chrome.isSwapping else { return nil }
         if isOpen { return velocity < 0 ? .drawer : nil }
+        if chrome.isSliding || chrome.pageOffset != 0 {
+            chrome.stopSliding()
+            chrome.swipeBase = chrome.pageOffset
+            return .pager
+        }
         if startX < Self.edgeWidth, velocity > 0 { return .drawer }
         if let index = model.phonePageIndex, !model.isSearchOpen {
             if index == 0 && velocity > 0 { return .drawer }
             syncNeighbors()
+            chrome.swipeBase = 0
             return .pager
         }
         return velocity > 0 ? .drawer : nil
@@ -224,9 +296,11 @@ struct PhoneRoot: View {
         case .drawer:
             drag = isOpen ? min(0, max(-drawerWidth, translation)) : min(drawerWidth, max(0, translation))
         case .pager:
-            guard let index = model.phonePageIndex else { return }
-            let atEnd = (translation > 0 && index == 0) || (translation < 0 && index == model.phonePages.count - 1)
-            chrome.pageOffset = translation * (atEnd ? 0.3 : 1)
+            // Follows the finger between the pages there are, and drags with resistance past them.
+            let raw = chrome.swipeBase + translation
+            let low: CGFloat = chrome.nextPage == nil ? 0 : -pageWidth
+            let high: CGFloat = chrome.previousPage == nil ? 0 : pageWidth
+            chrome.pageOffset = raw < low ? low + (raw - low) * 0.3 : raw > high ? high + (raw - high) * 0.3 : raw
         }
     }
 
@@ -238,44 +312,47 @@ struct PhoneRoot: View {
             settle(open: predicted > drawerWidth / 2)
         case .pager:
             PhoneDrawerTouch.endedAt = Date()
-            let pages = model.phonePages
-            let projected = translation + velocity * 0.12
-            if let index = model.phonePageIndex {
-                if projected < -Self.pageThreshold, index < pages.count - 1 {
-                    page(to: pages[index + 1], forward: true, velocity: velocity, pageWidth: pageWidth)
-                    return
-                }
-                if projected > Self.pageThreshold, index > 0 {
-                    page(to: pages[index - 1], forward: false, velocity: velocity, pageWidth: pageWidth)
-                    return
-                }
+            let target = pageTarget(velocity: velocity, pageWidth: pageWidth)
+            let view = target < 0 ? chrome.nextPage : target > 0 ? chrome.previousPage : nil
+            chrome.slide(to: target, velocity: velocity) {
+                if let view { swap(to: view) }
             }
-            withAnimation(.smooth(duration: 0.28)) { chrome.pageOffset = 0 }
         }
     }
 
-    /// Slides the list out the way the finger went, carrying on at the finger's speed, with the next view's
-    /// page (`PhonePagePeek`) coming in beside it. Once it lands the list switches to that view, starting
-    /// from the page's rows so it can take the page's place on the next frame, and moves back under it.
-    private func page(to view: FeedView, forward: Bool, velocity: CGFloat, pageWidth: CGFloat) {
-        let target = (forward ? -1 : 1) * pageWidth
-        let remaining = target - chrome.pageOffset
-        // The spring's initial velocity is in units of the distance left to travel per second.
-        let initial = remaining == 0 ? 0 : max(0, min(8, velocity / remaining))
-        chrome.isPaging = true
-        withAnimation(.interpolatingSpring(duration: 0.3, bounce: 0, initialVelocity: initial)) {
-            chrome.pageOffset = target
-        } completion: {
-            model.navigate(view: view, startingWith: chrome.peekItems[view] ?? [])
-            Task { @MainActor in
-                // A couple of frames for the list to redraw with the new rows at its top.
-                try? await Task.sleep(for: .milliseconds(34))
-                var jump = Transaction()
-                jump.disablesAnimations = true
-                withTransaction(jump) { chrome.pageOffset = 0 }
-                chrome.isPaging = false
-                syncNeighbors()
-            }
+    /// Where a released swipe lands: this view (0), or the next (−width) or previous (+width) one. A flick
+    /// goes on to the next stop its way; a slow release from rest changes view past `pageThreshold`, and one
+    /// that caught the list mid-slide goes to the nearest.
+    private func pageTarget(velocity: CGFloat, pageWidth: CGFloat) -> CGFloat {
+        let offset = chrome.pageOffset
+        var stops: [CGFloat] = [0]
+        if chrome.nextPage != nil { stops.append(-pageWidth) }
+        if chrome.previousPage != nil { stops.append(pageWidth) }
+        if abs(velocity) > 250 {
+            return velocity < 0
+                ? stops.filter { $0 < offset - 0.5 }.max() ?? stops.min() ?? 0
+                : stops.filter { $0 > offset + 0.5 }.min() ?? stops.max() ?? 0
+        }
+        let projected = offset + velocity * 0.12
+        if chrome.swipeBase == 0 {
+            guard abs(projected) > Self.pageThreshold else { return 0 }
+            let side = projected < 0 ? -pageWidth : pageWidth
+            return stops.contains(side) ? side : 0
+        }
+        return stops.min { abs($0 - projected) < abs($1 - projected) } ?? 0
+    }
+
+    /// The list has slid all the way to `view`'s page (`PhonePagePeek`): switch it to that view, starting
+    /// from the page's rows so it can take the page's place a couple of frames later, and move it back
+    /// under the page.
+    private func swap(to view: FeedView) {
+        chrome.isSwapping = true
+        model.navigate(view: view, startingWith: chrome.peekItems[view] ?? [])
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(34))
+            chrome.pageOffset = 0
+            chrome.isSwapping = false
+            syncNeighbors()
         }
     }
 }

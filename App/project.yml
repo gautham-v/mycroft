@@ -43,6 +43,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.news
+        # iPhone: lets the view-swipe slide (a CADisplayLink) run at 120 Hz on ProMotion screens.
+        CADisableMinimumFrameDurationOnPhone: true
         # Sparkle (macOS): the appcast is attached to the latest GitHub release; updates are signed
         # with the EdDSA key in the login keychain. The installer runs as an XPC service (sandbox).
         SUFeedURL: https://github.com/gautham-v/opendispatch/releases/latest/download/appcast.xml
