@@ -32,6 +32,11 @@ struct RootView: View {
                 if let tab = UserDefaults.standard.string(forKey: "OFSettingsTab").flatMap(SettingsTab.init(rawValue:)) {
                     model.showSettings(tab)
                 }
+                // And Explore: launch with `-OFExplore "claude code"`.
+                if let q = UserDefaults.standard.string(forKey: "OFExplore"),
+                   let url = URL(string: "opendispatch://explore?q=" + (q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")) {
+                    model.handleOpenURL(url)
+                }
             }
             #endif
             .openDispatchAutoRefresh()

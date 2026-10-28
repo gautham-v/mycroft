@@ -84,6 +84,8 @@ final class AppModel {
     let services: OpenDispatchServices
     /// Read state and History.
     let history: HistoryStore
+    /// Explore: the last search and its results, shared by the New Tab pages and the iPhone's Explore page.
+    let explore: ExploreStore
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
@@ -103,6 +105,9 @@ final class AppModel {
     /// The History view (sidebar, the iPhone drawer) is showing instead of an item list: what was opened,
     /// newest first, which HistoryStore lists. Any other navigation turns it off.
     private(set) var showsHistory = false
+    /// The iPhone's Explore page (drawer row) is showing instead of an item list. Any other navigation
+    /// turns it off. (On the Mac and iPad Explore is the New Tab page, which is not a navigation state.)
+    private(set) var showsExplore = false
     /// Hide Read Items: items read before this moment are left out of the list. Moved on when the list is
     /// navigated or refreshed, so what you read while a list shows stays until then.
     private var hideReadCutoff = Date()
@@ -262,6 +267,7 @@ final class AppModel {
     init(services: OpenDispatchServices) {
         self.services = services
         history = HistoryStore(database: services.database)
+        explore = ExploreStore(services: services)
         let defaults = UserDefaults.standard
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
         collapsedFolders = Set(defaults.stringArray(forKey: Keys.collapsedFolders) ?? [])
@@ -330,7 +336,9 @@ final class AppModel {
     var isInSourceFeed: Bool { selectedSourceID != nil || selectedFolderID != nil }
 
     /// Header title: source title, folder title, or the view name.
-    var listTitle: String { showsHighlights ? "Highlights" : showsHistory ? "History" : activeSource?.title ?? activeFolder?.title ?? selectedView.title }
+    var listTitle: String {
+        showsHighlights ? "Highlights" : showsHistory ? "History" : showsExplore ? "Explore" : activeSource?.title ?? activeFolder?.title ?? selectedView.title
+    }
 
     /// Search field placeholder: "Search" in All, else "Search <title>".
     var searchPlaceholder: String { listTitle == "All" ? "Search" : "Search \(listTitle)" }
@@ -461,10 +469,17 @@ final class AppModel {
         showsHistory = true
     }
 
+    /// Show the iPhone's Explore page (the drawer's first row). The Mac and iPad open the New Tab page instead.
+    func showExplore() {
+        setNav(view: .all, source: nil, folder: nil)
+        showsExplore = true
+    }
+
     private func setNav(view: FeedView, source: Int64?, folder: Int64?, startingWith rows: [FeedItem] = []) {
         let changed = view != selectedView || source != selectedSourceID || folder != selectedFolderID || !searchQuery.isEmpty
         showsHighlights = false
         showsHistory = false
+        showsExplore = false
         if changed { hideReadCutoff = Date() }
         selectedView = view
         selectedSourceID = source
@@ -536,7 +551,7 @@ final class AppModel {
 
     /// j/k: select the next (1) or previous (-1) item; prefetches the next page near the end.
     func moveSelection(by step: Int) {
-        guard !items.isEmpty, !showsHighlights, !showsHistory else { return }
+        guard !items.isEmpty, !showsHighlights, !showsHistory, !showsExplore else { return }
         let from = selectedItem?.id
         let i = items.firstIndex { $0.id == from } ?? -1
         let target = i < 0 ? 0 : min(max(i + step, 0), items.count - 1)
@@ -625,7 +640,7 @@ final class AppModel {
             result = try await services.content.content(forItem: item.id, refresh: refresh)
         }
         didFetchContent(item.id, result)
-        if item.id == selectedItemID, !showsHighlights, !showsHistory { prefetcher.readAhead(from: item.id, in: items, step: readingStep) }
+        if item.id == selectedItemID, !showsHighlights, !showsHistory, !showsExplore { prefetcher.readAhead(from: item.id, in: items, step: readingStep) }
         return result
     }
 
@@ -701,6 +716,16 @@ final class AppModel {
         if action == "settings" {
             let tab = query?.first { $0.name == "tab" }?.value.flatMap { SettingsTab(rawValue: $0.lowercased()) }
             showSettings(tab ?? .sources)
+            return
+        }
+        // opendispatch://explore?q=<query>: Explore (the iPhone page, the New Tab page elsewhere), searching q if given.
+        if action == "explore" {
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .phone { showExplore() } else { openLocation() }
+            #else
+            openLocation()
+            #endif
+            if let q = query?.first(where: { $0.name == "q" })?.value, !q.isEmpty { explore.search(q) }
             return
         }
         guard action == "add" else { return }
@@ -1313,6 +1338,40 @@ final class AppModel {
         panes[p].tabs[t].isNew = false
         panes[p].tabs[t].openingURL = nil
         return nil
+    }
+
+    /// An Explore result, once stored (`ExploreStore.open`), shown from the New Tab page `tabID`: it fills
+    /// that tab like a link typed in the address field, or with `inNewTab` (⌘-click) opens in a tab after it
+    /// and leaves the page, with its results, where it was. A tab that already has the item comes forward
+    /// instead. If the tab was closed or filled meanwhile, the item opens in a new tab.
+    func openExplored(_ item: FeedItem, tabID: UUID, inNewTab: Bool) {
+        for p in panes.indices {
+            if let t = panes[p].tabs.firstIndex(where: { $0.itemID == item.id }) {
+                activateTab(pane: p, index: t)
+                return
+            }
+        }
+        openItems[item.id] = item
+        var found: (pane: Int, tab: Int)?
+        for p in panes.indices {
+            if let t = panes[p].tabs.firstIndex(where: { $0.id == tabID && $0.isNew }) { found = (p, t) }
+        }
+        guard let (p, t) = found else {
+            openInNewTab(item)
+            return
+        }
+        settleFocusedTab()
+        focusedPane = p
+        if inNewTab {
+            let at = max(t + 1, panes[p].pinnedCount)
+            panes[p].tabs.insert(ReaderTab(itemID: item.id), at: at)
+            panes[p].active = at
+        } else {
+            panes[p].active = t
+            panes[p].tabs[t].itemID = item.id
+            panes[p].tabs[t].isNew = false
+            panes[p].tabs[t].openingURL = nil
+        }
     }
 
     /// Pin or unpin a tab. Pinning fixes the tab's item and moves it to the end of the pins; unpinning

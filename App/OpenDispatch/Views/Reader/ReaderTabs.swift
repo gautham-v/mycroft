@@ -35,21 +35,30 @@ struct ReaderPaneView: View {
     }
 }
 
-/// A new tab (+ or ⌘T): the bar, then an address field for any link (⌘L), what was read last (History)
-/// and the latest saved items. Opening anything, from here or the list, fills this tab.
+/// A new tab (+ or ⌘T) is Explore: a field that searches videos, podcast episodes and sources to follow, or
+/// opens any link (⌘L). With nothing searched it lists recent searches, what was read last (History) and
+/// the latest saved items; with a query, the results (the column widens). Opening anything, from here or
+/// the list, fills this tab. The last results stay, so the next new tab shows them again.
 struct NewTabView: View {
     let pane: Int
     @Environment(AppModel.self) private var model
     @State private var saved: [FeedItem] = []
 
+    private var isSearching: Bool { !model.explore.query.isEmpty }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                NewTabAddressField(pane: pane)
-                recentlyRead
-                section("Saved", saved)
+                ExploreSearchField(pane: pane)
+                if isSearching {
+                    ExploreDesktopResults(pane: pane)
+                } else {
+                    ExploreRecentSearches(pane: pane)
+                    recentlyRead
+                    section("Saved", saved)
+                }
             }
-            .frame(maxWidth: 440)
+            .frame(maxWidth: isSearching ? 720 : 440)
             .padding(.horizontal, 24)
             .padding(.vertical, 56)
             .frame(maxWidth: .infinity)
@@ -106,72 +115,6 @@ struct NewTabView: View {
             .foregroundStyle(.ofMuted)
             .padding(.leading, 8)
             .padding(.bottom, 4)
-    }
-}
-
-/// The New Tab page's address field: Return opens the link in this tab, reading it like any article
-/// (a YouTube link plays like a channel's video). Focused when the page appears in the focused pane and
-/// on ⌘L. While the link's page loads, the field holds it with a spinner; a problem shows underneath.
-private struct NewTabAddressField: View {
-    let pane: Int
-    @Environment(AppModel.self) private var model
-    @State private var text = ""
-    @State private var error: String?
-    @FocusState private var focused: Bool
-
-    private var openingURL: String? {
-        model.panes.indices.contains(pane) ? model.panes[pane].activeTab.openingURL : nil
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                OFIcon.globe.image
-                    .font(.system(size: 13))
-                    .foregroundStyle(.ofMuted)
-                    .accessibilityHidden(true)
-                TextField("", text: $text, prompt: Text("Enter a link to read").foregroundStyle(.ofFaint))
-                    .textFieldStyle(.plain)
-                    .font(OFFont.ui(14))
-                    .foregroundStyle(.ofInk)
-                    .autocorrectionDisabled()
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .submitLabel(.go)
-                    #endif
-                    .focused($focused)
-                    .disabled(openingURL != nil)
-                    .accessibilityLabel("Link to open")
-                    .onSubmit(open)
-                    .onChange(of: text) { error = nil }
-                if openingURL != nil {
-                    ProgressView().controlSize(.small)
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
-            .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.ofAccent.opacity(focused ? 0.6 : 0), lineWidth: 1)
-            )
-            if let error {
-                Text(error)
-                    .font(OFFont.ui(12))
-                    .foregroundStyle(.ofDanger)
-                    .padding(.leading, 2)
-            }
-        }
-        .onAppear { if pane == model.focusedPane { focused = true } }
-        .onChange(of: model.addressFocusRequests) { if pane == model.focusedPane { focused = true } }
-    }
-
-    private func open() {
-        let link = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !link.isEmpty, openingURL == nil else { return }
-        model.focusPane(pane)
-        Task { error = await model.openLink(link, inPane: pane) }
     }
 }
 
@@ -337,7 +280,7 @@ struct ReaderTabStrip: View {
         let item = model.item(for: tab)
         let isHovered = hovered == tab.id
         let opening = tab.isNew ? tab.openingURL : nil
-        let title = opening.map(URLHost.host(of:)) ?? (tab.isNew ? "New Tab" : item?.item.title ?? "Nothing selected")
+        let title = opening.map(URLHost.host(of:)) ?? (tab.isNew ? "Explore" : item?.item.title ?? "Nothing selected")
         // The window's only tab, already empty, has nothing to close.
         let closable = count > 1 || model.isSplit || !tab.isNew
         return Group {
@@ -350,6 +293,12 @@ struct ReaderTabStrip: View {
                 HStack(spacing: 7) {
                     if opening != nil {
                         ProgressView().controlSize(.mini).frame(width: 14, height: 14)
+                    } else if tab.isNew {
+                        Image("ph.explore")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
                     } else if let item {
                         SourceBadge(host: item.source.host, title: item.source.title, size: 14)
                     }

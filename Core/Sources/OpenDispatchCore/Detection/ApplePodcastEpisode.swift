@@ -73,6 +73,7 @@ enum ApplePodcastEpisode {
     private struct Result: Decodable {
         var wrapperType: String?
         var trackId: Int64?
+        var collectionId: Int64?
         var trackName: String?
         var collectionName: String?
         var description: String?
@@ -102,14 +103,54 @@ enum ApplePodcastEpisode {
         guard let r = episodes.first(where: { $0.trackId.map(String.init) == link.episodeID }),
               let audio = r.episodeUrl.flatMap(nonEmpty), let title = r.trackName.flatMap(nonEmpty)
         else { return (nil, feedURL, episodes.count) }
-        let parsed = ParsedItem(
-            guid: canonicalURL(link), url: pageURL(r.trackViewUrl, link: link), title: title,
-            summary: (r.description.flatMap(nonEmpty) ?? r.shortDescription.flatMap(nonEmpty)),
-            author: r.collectionName.flatMap(nonEmpty),
-            publishedAt: r.releaseDate.flatMap(ISO8601.date(from:)) ?? now,
-            thumbnailUrl: r.artworkUrl600.flatMap(nonEmpty), durationSec: r.trackTimeMillis.map { $0 / 1000 },
-            audioUrl: audio)
+        let parsed = parsedItem(
+            link: link, viewURL: r.trackViewUrl, title: title, summary: r.description.flatMap(nonEmpty) ?? r.shortDescription.flatMap(nonEmpty),
+            show: r.collectionName.flatMap(nonEmpty), published: r.releaseDate.flatMap(ISO8601.date(from:)), artwork: r.artworkUrl600.flatMap(nonEmpty),
+            durationSec: r.trackTimeMillis.map { $0 / 1000 }, audio: audio, now: now)
         return (parsed, feedURL, episodes.count)
+    }
+
+    /// The item stored for an episode, however it was found (a pasted link's lookup, an Explore search hit).
+    private static func parsedItem(link: Link, viewURL: String?, title: String, summary: String?, show: String?, published: Date?,
+                                   artwork: String?, durationSec: Int?, audio: String, now: Date) -> ParsedItem {
+        ParsedItem(
+            guid: canonicalURL(link), url: pageURL(viewURL, link: link), title: title, summary: summary, author: show,
+            publishedAt: published ?? now, thumbnailUrl: artwork, durationSec: durationSec, audioUrl: audio)
+    }
+
+    // MARK: Explore
+
+    /// How many episodes of one show an Explore search keeps, so a show with many matches doesn't flood the results.
+    static let searchPerShow = 2
+
+    /// The episodes in an iTunes Search answer (`entity=podcastEpisode`), which lists them in the same shape as a lookup.
+    /// At most `perShow` of each show and `limit` in all, in the answer's order; hits missing an id or a title are left out.
+    static func exploreEpisodes(search data: Data, country: String, perShow: Int = searchPerShow, limit: Int) throws -> [ExploreEpisode] {
+        let results = try JSONDecoder().decode(Response.self, from: data).results ?? []
+        var perShowCount: [Int64: Int] = [:]
+        var seen: Set<Int64> = []
+        var out: [ExploreEpisode] = []
+        for r in results where r.wrapperType == nil || r.wrapperType == "podcastEpisode" {
+            guard out.count < limit, let id = r.trackId, let showID = r.collectionId, let title = r.trackName.flatMap(nonEmpty),
+                  seen.insert(id).inserted, perShowCount[showID, default: 0] < perShow else { continue }
+            perShowCount[showID, default: 0] += 1
+            out.append(ExploreEpisode(
+                id: String(id), title: title, show: r.collectionName.flatMap(nonEmpty) ?? "", showID: String(showID),
+                published: r.releaseDate.flatMap(ISO8601.date(from:)), durationSeconds: r.trackTimeMillis.map { $0 / 1000 },
+                artworkUrl: r.artworkUrl600.flatMap(nonEmpty), audioUrl: r.episodeUrl.flatMap(nonEmpty),
+                appleUrl: canonicalURL(Link(country: country, showID: String(showID), episodeID: String(id))),
+                summary: r.description.flatMap(nonEmpty) ?? r.shortDescription.flatMap(nonEmpty),
+                feedUrl: r.feedUrl.flatMap(nonEmpty), pageUrl: r.trackViewUrl))
+        }
+        return out
+    }
+
+    /// The item for an Explore hit, equal to what opening its Apple link stores (`item(lookup:link:)`). nil when the hit
+    /// has no audio URL or its address isn't an episode's.
+    static func item(explore e: ExploreEpisode, now: Date = Date()) -> ParsedItem? {
+        guard let link = link(e.appleUrl), let audio = e.audioUrl.flatMap(nonEmpty) else { return nil }
+        return parsedItem(link: link, viewURL: e.pageUrl, title: e.title, summary: e.summary, show: nonEmpty(e.show), published: e.published,
+                          artwork: e.artworkUrl, durationSec: e.durationSeconds, audio: audio, now: now)
     }
 
     // MARK: Feed

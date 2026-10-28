@@ -98,9 +98,9 @@ extension AppModel {
         }
     }
 
-    /// Where the list sits among `phonePages`; nil when it shows a folder, a source, Saved, Highlights or History.
+    /// Where the list sits among `phonePages`; nil when it shows a folder, a source, Saved, Highlights, History or Explore.
     var phonePageIndex: Int? {
-        guard !isInSourceFeed, !showsHighlights, !showsHistory else { return nil }
+        guard !isInSourceFeed, !showsHighlights, !showsHistory, !showsExplore else { return nil }
         return phonePages.firstIndex(of: selectedView)
     }
 }
@@ -787,22 +787,29 @@ private struct PhoneDrawer: View {
     /// Room under the last row for the bubble and pill floating at the bottom.
     private static let listBottomInset: CGFloat = 130
 
-    /// The sidebar's rows in its order (`SidebarViewItem.ordered`), less the ones hidden in Settings. Saved,
-    /// Highlights and History stay: the drawer is the only way to them on iPhone.
+    /// The sidebar's rows in its order (`SidebarViewItem.ordered`), less the ones hidden in Settings. Explore,
+    /// Saved, Highlights and History stay: the drawer is the only way to them on iPhone. Explore sits first,
+    /// apart from the views by a hairline.
     @ViewBuilder private var viewRows: some View {
         ForEach(SidebarViewItem.ordered.filter { item in
             switch item {
-            case .view(.saved), .highlights, .history: true
+            case .explore, .view(.saved), .highlights, .history: true
             default: !model.isSidebarViewHidden(item)
             }
         }) { item in
             switch item {
+            case .explore:
+                DrawerRow(icon: "ph.explore", title: "Explore", isCurrent: model.showsExplore) {
+                    pick { model.showExplore() }
+                }
+                Rectangle().fill(Color.ofHairline).frame(height: 1).padding(.horizontal, 24).padding(.vertical, 6)
             case .view(let view):
                 DrawerRow(
                     icon: Self.icon(view),
                     title: view.title,
                     subtitle: view == .all ? "Everything from your \(sourceCount) \(sourceCount == 1 ? "source" : "sources")" : nil,
                     isCurrent: model.selectedView == view && !model.isInSourceFeed && !model.showsHighlights && !model.showsHistory
+                        && !model.showsExplore
                 ) { pick { model.navigate(view: view) } }
             case .highlights:
                 DrawerRow(icon: "ph.highlights", title: "Highlights", isCurrent: model.showsHighlights) {

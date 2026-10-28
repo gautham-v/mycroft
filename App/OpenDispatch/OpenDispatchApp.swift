@@ -99,6 +99,7 @@ struct OpenDispatchCommands: Commands {
             // Same order as the sidebar.
             ForEach(SidebarViewItem.ordered) { item in
                 switch item {
+                case .explore: Button("Explore") { model.openLocation() }
                 case .view(let view): Button(view.title) { model.navigate(view: view) }
                 case .highlights: Button("Highlights") { model.showHighlights() }
                 case .history: Button("History") { model.showHistory() }

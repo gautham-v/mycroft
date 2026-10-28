@@ -112,6 +112,15 @@ public enum OpenedLinks {
         return t.isEmpty ? nil : t
     }
 
+    /// The item for an Explore video, from what the search result shows: no description, and the date it was opened
+    /// (the result only says "2 weeks ago").
+    public static func item(video: ExploreVideo, now: Date = Date()) -> ParsedItem {
+        let url = canonicalURL(video.watchUrl, videoID: video.id)
+        return ParsedItem(
+            guid: url, url: url, title: video.title, author: video.channel.isEmpty ? nil : video.channel, publishedAt: now,
+            thumbnailUrl: "https://i.ytimg.com/vi/\(video.id)/hqdefault.jpg", videoId: video.id, durationSec: video.durationSeconds)
+    }
+
     /// The item for a link whose page couldn't be read: its address as the title, opened now.
     public static func fallbackItem(url: String, videoID: String?, now: Date = Date()) -> ParsedItem {
         let host = URLHost.host(of: url)

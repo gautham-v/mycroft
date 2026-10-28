@@ -1069,3 +1069,24 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
 - Sources and Settings tabs: no title text; Sources' "+" menu is a toolbar item. The iPhone reader uses the
   system navigation bar (system back button; Save / Open original / Share / `SendToView(inSystemToolbar: true)`
   in the bar) and its meta row scrolls with the article. iPad/macOS keep the custom reader toolbar row.
+
+### Explore (Core) — 2026-10-28
+- `ExploreSearching` (Explore/ExploreSearch.swift), implemented by `DefaultExploreSearch` (Explore/DefaultExploreSearch.swift); each
+  section is its own call, 8 s timeout, and `OpenDispatchServices.explore` holds it.
+  - `videos(_:) -> ExploreVideoResults`: POSTs YouTube's innertube `search` (WEB client, no key, `hl`/`gl` from the locale) and walks the
+    answer for `videoRenderer`s and `channelRenderer`s, so a reshuffled page still yields what is left. Videos: up to 20, deduplicated,
+    without live/upcoming streams (no `lengthText`) and Shorts; `views`/`published`/`duration` are YouTube's own wording, and
+    `ExploreVideo.durationSeconds` reads `duration` as a clock time. Channels (up to 5) are `SourceSearchResult`s of kind `.youtube`
+    (videos.xml feed, avatar as `imageUrl` with `https:` added), subtitle "YouTube · 4.32M subscribers" ("YouTube" alone when the
+    count is missing). The handle and subscriber count come in either order in `subscriberCountText`/`videoCountText`; the handle is
+    told by its `@`.
+  - `episodes(_:) -> [ExploreEpisode]`: iTunes `search?media=podcast&entity=podcastEpisode&limit=50&country=<region>`, at most 2 per show
+    (a name query otherwise returns one show's whole back catalog) and 20 in all. `appleUrl` is `ApplePodcastEpisode.canonicalURL` with the
+    region as the store. `ExploreEpisode` also carries `summary`, `feedUrl` and `pageUrl` (iTunes' `trackViewUrl`) so opening needs no lookup.
+  - Both throw `HTTPError.status` for a non-2xx answer and a decoding error for a body that isn't JSON; the UI shows each section's failure alone.
+- `openExploreEpisode(_:)`: stores the item from the hit with no request, the same item `openLink(appleUrl)` stores
+  (`ApplePodcastEpisode.item(explore:)` and `item(lookup:link:)` share one constructor): guid = `appleUrl`, feed `OpenedLinks.episodesFeedURL`, audio
+  URL, show as author, artwork, date, duration, show notes. An episode already opened is returned as is. A hit without an audio URL goes through `openLink`.
+- `openExploreVideo(_:)`: stores under the pasted link's address (`OpenedLinks.videosFeedURL`), so the same video opened either way is one row.
+  The watch page is still read (6 s) because the description is only there; when it can't be, the item is built from the hit (title, channel as
+  author, length, `hqdefault` thumbnail; `OpenedLinks.item(video:)`) rather than the "YouTube video" fallback. An opened video is returned as is, without a request.

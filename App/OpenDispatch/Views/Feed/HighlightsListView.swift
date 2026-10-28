@@ -6,6 +6,7 @@ import AppKit
 
 /// The list column: the Highlights or History view when one is showing, else the item list. Both are
 /// navigation states of AppModel (`showsHighlights`, `showsHistory`), so they need no item query of their own.
+/// On the iPhone the Explore page is a third (`showsExplore`).
 /// `isPhoneHome` marks the iPhone stack's home list (PhoneRoot).
 struct FeedColumn: View {
     @Environment(AppModel.self) private var model
@@ -16,6 +17,10 @@ struct FeedColumn: View {
             HighlightsListView()
         } else if model.showsHistory {
             HistoryListView()
+        } else if isPhoneHome, model.showsExplore {
+            #if os(iOS)
+            ExplorePhoneView()
+            #endif
         } else {
             ItemListView(isPhoneHome: isPhoneHome)
         }

@@ -21,11 +21,13 @@ public struct OpenDispatchServices: Sendable {
     public let content: ContentService
     public let copy: CopyService
     public let sponsorBlock: any SponsorBlockFetching
+    public let explore: any ExploreSearching
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
         extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService,
-        search: any SourceSearching = DefaultSourceSearch(), sponsorBlock: any SponsorBlockFetching = DefaultSponsorBlock()
+        search: any SourceSearching = DefaultSourceSearch(), sponsorBlock: any SponsorBlockFetching = DefaultSponsorBlock(),
+        explore: any ExploreSearching = DefaultExploreSearch()
     ) {
         self.database = database
         self.feedParser = feedParser
@@ -37,6 +39,7 @@ public struct OpenDispatchServices: Sendable {
         self.refresh = refresh
         self.search = search
         self.sponsorBlock = sponsorBlock
+        self.explore = explore
         self.content = ContentService(database: database, extractor: extractor)
         self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }
@@ -96,6 +99,32 @@ public struct OpenDispatchServices: Sendable {
             return try await database.insertOpenedLink(OpenedLinks.fallbackItem(url: url, videoID: videoID))
         }
         item.title = OpenedLinks.cleanedTitle(item.title, url: url) ?? OpenedLinks.fallbackItem(url: url, videoID: videoID).title
+        return try await database.insertOpenedLink(item)
+    }
+
+    /// An Explore video as an opened video (OpenedLinks), so it plays in the reader. Stored under the same address as the
+    /// pasted link, from its watch page like `openLink` does (the description is only there), but the search hit stands in for
+    /// what the page doesn't give: if it can't be read in time the video still opens with its title, channel and length,
+    /// not as "YouTube video".
+    public func openExploreVideo(_ video: ExploreVideo) async throws -> FeedItem {
+        let url = OpenedLinks.canonicalURL(video.watchUrl, videoID: video.id)
+        if let opened = try await database.openedLink(feedUrl: OpenedLinks.videosFeedURL, url: url) { return opened }
+        let hit = OpenedLinks.item(video: video)
+        guard var item = await scraper.fetchLinkItem(url: url, videoID: video.id, timeout: 6) else {
+            return try await database.insertOpenedLink(hit)
+        }
+        item.title = OpenedLinks.cleanedTitle(item.title, url: url).flatMap { $0 == url ? nil : $0 } ?? hit.title
+        item.author = item.author.flatMap { $0.isEmpty ? nil : $0 } ?? hit.author
+        item.durationSec = item.durationSec ?? hit.durationSec
+        return try await database.insertOpenedLink(item)
+    }
+
+    /// An Explore episode as an opened episode (OpenedLinks), played by the podcast player. The search hit has everything the
+    /// Apple link's lookup would give, so it is stored as it is, with no request. A hit without an audio URL goes through
+    /// `openLink`, which finds the episode in the show's feed.
+    public func openExploreEpisode(_ episode: ExploreEpisode) async throws -> FeedItem {
+        guard let item = ApplePodcastEpisode.item(explore: episode) else { return try await openLink(episode.appleUrl) }
+        if let opened = try await database.openedLink(feedUrl: OpenedLinks.episodesFeedURL, url: item.guid) { return opened }
         return try await database.insertOpenedLink(item)
     }
 

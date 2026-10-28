@@ -169,6 +169,11 @@ struct SidebarView: View {
     @ViewBuilder
     private func viewRow(_ item: SidebarViewItem) -> some View {
         switch item {
+        case .explore:
+            SidebarExploreRow {
+                model.openLocation()
+            }
+            .contextMenu { hideButton(item) }
         case .view(let view):
             SidebarViewRow(view: view, active: isActive(item)) {
                 model.navigate(view: view)
@@ -202,6 +207,8 @@ struct SidebarView: View {
 
     private func isActive(_ item: SidebarViewItem) -> Bool {
         switch item {
+        case .explore:
+            false
         case .view(let view):
             model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
                 && !model.showsHistory

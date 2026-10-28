@@ -1,0 +1,484 @@
+{
+ "estimatedResults": "1000000",
+ "contents": {
+  "twoColumnSearchResultsRenderer": {
+   "primaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "itemSectionRenderer": {
+        "contents": [
+         {
+          "videoRenderer": {
+           "videoId": "nEaJMdM1djM",
+           "title": {
+            "runs": [
+             {
+              "text": "Did the AI bubble just pop?"
+             }
+            ]
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Fireship",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                "canonicalBaseUrl": "/@Fireship"
+               }
+              }
+             }
+            ]
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "946 thousand views"
+             }
+            },
+            "simpleText": "946K views"
+           },
+           "viewCountText": {
+            "simpleText": "946,698 views"
+           },
+           "publishedTimeText": {
+            "simpleText": "7 hours ago"
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "5 minutes, 25 seconds"
+             }
+            },
+            "simpleText": "5:25"
+           },
+           "navigationEndpoint": {
+            "watchEndpoint": {
+             "videoId": "nEaJMdM1djM"
+            }
+           }
+          }
+         },
+         {
+          "channelRenderer": {
+           "channelId": "UCsBjURrPoezykLs9EqgamOA",
+           "title": {
+            "simpleText": "Fireship"
+           },
+           "navigationEndpoint": {
+            "browseEndpoint": {
+             "browseId": "UCsBjURrPoezykLs9EqgamOA",
+             "canonicalBaseUrl": "/@Fireship"
+            }
+           },
+           "thumbnail": {
+            "thumbnails": [
+             {
+              "url": "//yt3.ggpht.com/3fPNbkf_xPyCleq77ZhcxyeorY97NtMHVNUbaAON_RBDH9ydL4hJkjxC8x_4mpuopkB8oI7Ct6Y=s88-c-k-c0x00ffffff-no-rj-mo",
+              "width": 88,
+              "height": 88
+             },
+             {
+              "url": "//yt3.ggpht.com/3fPNbkf_xPyCleq77ZhcxyeorY97NtMHVNUbaAON_RBDH9ydL4hJkjxC8x_4mpuopkB8oI7Ct6Y=s176-c-k-c0x00ffffff-no-rj-mo",
+              "width": 176,
+              "height": 176
+             }
+            ]
+           },
+           "subscriberCountText": {
+            "simpleText": "@Fireship"
+           },
+           "videoCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "4.32 million subscribers"
+             }
+            },
+            "simpleText": "4.32M subscribers"
+           }
+          }
+         },
+         {
+          "shelfRenderer": {
+           "title": {
+            "simpleText": "Latest from Fireship"
+           },
+           "content": {
+            "verticalListRenderer": {
+             "items": [
+              {
+               "videoRenderer": {
+                "videoId": "G_em1hHPnXY",
+                "title": {
+                 "runs": [
+                  {
+                   "text": "China just dropped a new frontier model... and nobody can explain how"
+                  }
+                 ]
+                },
+                "ownerText": {
+                 "runs": [
+                  {
+                   "text": "Fireship",
+                   "navigationEndpoint": {
+                    "browseEndpoint": {
+                     "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                     "canonicalBaseUrl": "/@Fireship"
+                    }
+                   }
+                  }
+                 ]
+                },
+                "shortViewCountText": {
+                 "accessibility": {
+                  "accessibilityData": {
+                   "label": "1.9 million views"
+                  }
+                 },
+                 "simpleText": "1.9M views"
+                },
+                "viewCountText": {
+                 "simpleText": "1,979,835 views"
+                },
+                "publishedTimeText": {
+                 "simpleText": "2 days ago"
+                },
+                "lengthText": {
+                 "accessibility": {
+                  "accessibilityData": {
+                   "label": "6 minutes, 26 seconds"
+                  }
+                 },
+                 "simpleText": "6:26"
+                },
+                "navigationEndpoint": {
+                 "watchEndpoint": {
+                  "videoId": "G_em1hHPnXY"
+                 }
+                }
+               }
+              },
+              {
+               "videoRenderer": {
+                "videoId": "SMGg7iisHmc",
+                "title": {
+                 "runs": [
+                  {
+                   "text": "The most vulnerable week in internet history..."
+                  }
+                 ]
+                },
+                "ownerText": {
+                 "runs": [
+                  {
+                   "text": "Fireship",
+                   "navigationEndpoint": {
+                    "browseEndpoint": {
+                     "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                     "canonicalBaseUrl": "/@Fireship"
+                    }
+                   }
+                  }
+                 ]
+                },
+                "shortViewCountText": {
+                 "accessibility": {
+                  "accessibilityData": {
+                   "label": "1.8 million views"
+                  }
+                 },
+                 "simpleText": "1.8M views"
+                },
+                "viewCountText": {
+                 "simpleText": "1,813,343 views"
+                },
+                "publishedTimeText": {
+                 "simpleText": "5 days ago"
+                },
+                "lengthText": {
+                 "accessibility": {
+                  "accessibilityData": {
+                   "label": "6 minutes, 4 seconds"
+                  }
+                 },
+                 "simpleText": "6:04"
+                },
+                "navigationEndpoint": {
+                 "watchEndpoint": {
+                  "videoId": "SMGg7iisHmc"
+                 }
+                }
+               }
+              }
+             ]
+            }
+           }
+          }
+         },
+         {
+          "gridShelfViewModel": {
+           "contents": [
+            {
+             "shortsLockupViewModel": {
+              "entityId": "shorts-shelf-item-Z8omJ59hNfY",
+              "accessibilityText": "real eyes realize AI lies, 3 million views - play Short",
+              "onTap": {
+               "innertubeCommand": {
+                "reelWatchEndpoint": {
+                 "videoId": "Z8omJ59hNfY"
+                }
+               }
+              }
+             }
+            }
+           ]
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "zv6B6PQOuHE",
+           "title": {
+            "runs": [
+             {
+              "text": "The last real programmers are dying out..."
+             }
+            ]
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Fireship",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                "canonicalBaseUrl": "/@Fireship"
+               }
+              }
+             }
+            ]
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "1.5 million views"
+             }
+            },
+            "simpleText": "1.5M views"
+           },
+           "viewCountText": {
+            "simpleText": "1,597,457 views"
+           },
+           "publishedTimeText": {
+            "simpleText": "6 days ago"
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "5 minutes, 56 seconds"
+             }
+            },
+            "simpleText": "5:56"
+           },
+           "navigationEndpoint": {
+            "watchEndpoint": {
+             "videoId": "zv6B6PQOuHE"
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "b2tjnxX8IHU",
+           "title": {
+            "runs": [
+             {
+              "text": "Did Google just dethrone OpenAI and Anthropic?"
+             }
+            ]
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Fireship",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                "canonicalBaseUrl": "/@Fireship"
+               }
+              }
+             }
+            ]
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "1.9 million views"
+             }
+            },
+            "simpleText": "1.9M views"
+           },
+           "viewCountText": {
+            "simpleText": "1,949,007 views"
+           },
+           "publishedTimeText": {
+            "simpleText": "8 days ago"
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "6 minutes, 33 seconds"
+             }
+            },
+            "simpleText": "6:33"
+           },
+           "navigationEndpoint": {
+            "watchEndpoint": {
+             "videoId": "b2tjnxX8IHU"
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "wajoP_5Cpw8",
+           "title": {
+            "runs": [
+             {
+              "text": "Every app on Earth is now open source... whether it likes it or not"
+             }
+            ]
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Fireship",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                "canonicalBaseUrl": "/@Fireship"
+               }
+              }
+             }
+            ]
+           },
+           "viewCountText": {
+            "runs": [
+             {
+              "text": "1,204"
+             },
+             {
+              "text": " watching"
+             }
+            ]
+           },
+           "navigationEndpoint": {
+            "watchEndpoint": {
+             "videoId": "wajoP_5Cpw8"
+            }
+           }
+          }
+         },
+         {
+          "channelRenderer": {
+           "channelId": "UC2Xd-TjJByJyK2w1zNwY0zQ",
+           "title": {
+            "simpleText": "Beyond Fireship"
+           },
+           "navigationEndpoint": {
+            "browseEndpoint": {
+             "browseId": "UC2Xd-TjJByJyK2w1zNwY0zQ",
+             "canonicalBaseUrl": "/@beyondfireship"
+            }
+           },
+           "thumbnail": {
+            "thumbnails": [
+             {
+              "url": "//yt3.ggpht.com/UjQ03W3C4Wm_WGj_J5ktcd6OJFV1rrVeJrtvtXQ6q_UUvvJcpZ6edLJWDZsToyB0G_huIZtM9Q=s88-c-k-c0x00ffffff-no-rj-mo",
+              "width": 88,
+              "height": 88
+             },
+             {
+              "url": "//yt3.ggpht.com/UjQ03W3C4Wm_WGj_J5ktcd6OJFV1rrVeJrtvtXQ6q_UUvvJcpZ6edLJWDZsToyB0G_huIZtM9Q=s176-c-k-c0x00ffffff-no-rj-mo",
+              "width": 176,
+              "height": 176
+             }
+            ]
+           },
+           "subscriberCountText": {
+            "simpleText": "@beyondfireship"
+           },
+           "videoCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "463 thousand subscribers"
+             }
+            },
+            "simpleText": "463K subscribers"
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "zv6B6PQOuHE",
+           "title": {
+            "runs": [
+             {
+              "text": "The last real programmers are dying out..."
+             }
+            ]
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Fireship",
+              "navigationEndpoint": {
+               "browseEndpoint": {
+                "browseId": "UCsBjURrPoezykLs9EqgamOA",
+                "canonicalBaseUrl": "/@Fireship"
+               }
+              }
+             }
+            ]
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "1.5 million views"
+             }
+            },
+            "simpleText": "1.5M views"
+           },
+           "viewCountText": {
+            "simpleText": "1,597,457 views"
+           },
+           "publishedTimeText": {
+            "simpleText": "6 days ago"
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "5 minutes, 56 seconds"
+             }
+            },
+            "simpleText": "5:56"
+           },
+           "navigationEndpoint": {
+            "watchEndpoint": {
+             "videoId": "zv6B6PQOuHE"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      {
+       "continuationItemRenderer": {}
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -61,6 +61,8 @@ struct ListTitleMenu: View {
         Menu {
             ForEach(SidebarViewItem.ordered.filter { !model.isSidebarViewHidden($0) }) { item in
                 switch item {
+                case .explore:
+                    Button("Explore") { model.openLocation() }
                 case .view(let view):
                     Toggle(view.title, isOn: Binding(get: { isActive(item) }, set: { _ in model.navigate(view: view) }))
                 case .highlights:
@@ -112,6 +114,8 @@ struct ListTitleMenu: View {
     /// Same test as the sidebar's rows.
     private func isActive(_ item: SidebarViewItem) -> Bool {
         switch item {
+        case .explore:
+            false
         case .view(let view):
             model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
                 && !model.showsHistory
