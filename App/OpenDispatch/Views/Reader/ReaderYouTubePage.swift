@@ -14,9 +14,14 @@ import Foundation
 ///
 /// Full screen is the element Fullscreen API where WebKit has it (Mac, iPad). On iPhone it doesn't, so
 /// the page asks the app instead (`nativeFullscreen`): the app pauses here and opens a full-screen
-/// cover running this page with `inCover`, whose button closes it again. `nativeFullscreen` is also what marks
-/// the iOS page: its bar gets bigger icons and 48px touch targets (the `touch` class), and a second row for the
-/// scrubber on a narrow screen.
+/// cover running this page with `inCover`, whose button closes it again.
+///
+/// `nativeFullscreen` also marks the iOS page (the `touch` class), which swaps the bar for a layer of big
+/// touch controls (`touchControls`): in the cover, iOS Safari's full-screen player, with round glass buttons
+/// (close top left, captions top right, speed above the bar, skip back 10 / play / skip forward 10 in the
+/// middle) and a glass bar of time, scrubber and time left; inline, YouTube's mobile player, with the same
+/// center trio, captions and speed top right, "position / length" and full screen bottom, and the scrubber
+/// as a thin line along the bottom edge. The skip buttons share the double-tap's 10 s and running total.
 ///
 /// Messages to the `openDispatchYouTube` handler: `{type: "playing"}` once playback first starts,
 /// `{type: "failed"}` when the API or the video fails (the layer and bar are removed, YouTube's own
@@ -47,9 +52,51 @@ enum ReaderYouTubePage {
     })();
     """#
 
+    /// The iOS page's controls (see the header): one layer, laid out by CSS as Safari's full-screen player
+    /// (`cover` on the stage) or as YouTube's mobile player. The skip icons are SF's gobackward.10 /
+    /// goforward.10 drawn by hand: an open circle with an arrowhead, the 10 inside (the forward one mirrored).
+    private static let touchControls = #"""
+    <div id="tui">
+      <button id="tclose" class="hit g" aria-label="Exit full screen"><svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button id="tcc" class="hit g" aria-label="Captions"><svg class="off-cc" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.8" y="5.3" width="18.4" height="13.4" rx="2.6"/>
+        <path d="M10.6 10.2a2.3 2.3 0 1 0 0 3.6M16.6 10.2a2.3 2.3 0 1 0 0 3.6"/></svg><svg class="on-cc" viewBox="0 0 24 24">
+        <rect x="2" y="4.5" width="20" height="15" rx="3" fill="currentColor"/><path d="M10.6 10.2a2.3 2.3 0 1 0 0 3.6M16.6
+        10.2a2.3 2.3 0 1 0 0 3.6" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <button id="tspeed" class="hit g" aria-label="Playback speed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round"><path d="M4.6 17.5a8.6 8.6 0 1 1 14.8 0"/><path d="M12 14.2l3.6-4.6"/></svg><span
+        id="trate">1×</span></button>
+      <div id="tmid">
+        <button id="tback" class="hit g" aria-label="Back 10 seconds"><svg viewBox="3 2 26 26" fill="none" stroke="currentColor"
+          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.93 9.93A10 10 0 1 0 16 7M18.5 3.8L14 7l4.5 3.2"/><text
+          x="16" y="20.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor" stroke="none"
+          font-family="-apple-system,Helvetica,sans-serif">10</text></svg></button>
+        <button id="tplay" class="hit g" aria-label="Play or pause"><svg class="off-play" viewBox="0 0 24 24"><path
+          d="M7.5 4.8v14.4L19.5 12z" fill="currentColor"/></svg><svg class="on-play" viewBox="0 0 24 24" fill="currentColor"><rect
+          x="6" y="4.8" width="4.2" height="14.4" rx="1"/><rect x="13.8" y="4.8" width="4.2" height="14.4" rx="1"/></svg></button>
+        <button id="tfwd" class="hit g" aria-label="Forward 10 seconds"><svg viewBox="3 2 26 26" fill="none" stroke="currentColor"
+          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path transform="translate(32 0) scale(-1 1)"
+          d="M8.93 9.93A10 10 0 1 0 16 7M18.5 3.8L14 7l4.5 3.2"/><text x="16" y="20.6" text-anchor="middle" font-size="9.5"
+          font-weight="700" fill="currentColor" stroke="none" font-family="-apple-system,Helvetica,sans-serif">10</text></svg></button>
+      </div>
+      <div id="tpill"><span id="tct">0:00 / 0:00</span></div>
+      <button id="tfs" class="hit g" aria-label="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5V4h5.5M20 9.5V4h-5.5M4 14.5V20h5.5M20
+        14.5V20h-5.5"/></svg></button>
+      <div id="tbar" class="g">
+        <span id="tcur" class="tt">0:00</span>
+        <div id="ttrack" class="hit" role="slider" aria-label="Position"><i id="trail"></i><i id="tbuf"></i><i id="tfill"></i><b
+          id="tknob"></b></div>
+        <span id="tleft" class="tt"></span>
+      </div>
+    </div>
+    """#
+
     /// `src`, `title` and `poster` must already be attribute-escaped.
     static func html(src: String, title: String, poster: String, nativeFullscreen: Bool, inCover: Bool) -> String {
         let chevrons = String(repeating: #"<svg viewBox="0 0 24 24" fill="white"><path d="M7 5.5v13L18 12z"/></svg>"#, count: 3)
+        let stageClass = nativeFullscreen ? (inCover ? "touch cover" : "touch") : ""
         return #"""
         <!doctype html>
         <html><head><meta charset="utf-8">
@@ -105,24 +152,62 @@ enum ReaderYouTubePage {
         /* Touch: 44pt tap areas around the icons, whatever their drawn size. */
         @media (hover:none){#mute{display:none}
           #bar button{padding:calc((44px - var(--i))/2);margin:calc((var(--i) - 44px)/2)}}
-        /* iOS: bigger glyphs, 48px targets with 48px between icon centers, a thick scrubber with its knob always
-           drawn, and the bar's own text a size up. Under 600px wide (iPhone upright) the scrubber takes its own
-           row above the buttons, and the remaining time becomes the total after the position. */
-        #tot{display:none}
-        #stage.touch{--i:28px;--k:22px;--tr:5px;font-size:15px}
-        #stage.touch #bar{gap:20px;padding:10px 20px 12px}
-        #stage.touch #bar button{padding:calc((48px - var(--i))/2);margin:calc((var(--i) - 48px)/2)}
-        #stage.touch #track{height:48px}
-        #stage.touch #knob{transform:scale(1)}
-        #stage.touch #speed{font-size:16px}
-        @media (max-width:600px){
-          #stage.touch{--i:26px}
-          #stage.touch #bar{flex-wrap:wrap;gap:12px 14px;padding:0 16px 10px}
-          #stage.touch #track{order:-1;flex:1 0 100%;min-width:0}
-          #stage.touch #left{display:none}
-          #stage.touch #tot{display:block;margin-left:-6px;opacity:.7}
-          #stage.touch #bar #cc{margin-left:auto}
-        }
+        /* iOS (the touch class) hides the bar and shows the touch layer instead, sized from --s (skip buttons),
+           --p (play), --cb (corner buttons) and --ph (the glass bar), smaller where the player is short (inline,
+           or the cover held upright). The layer fades with the controls, but only its buttons take touches, so
+           the double-tap still reaches the shield. */
+        #tui{display:none}
+        #stage.touch{--s:68px;--p:104px;--cb:52px;--ph:52px;--m:20px;--ts:15px;font-size:var(--ts)}
+        @media (max-height:300px){#stage.touch{--s:48px;--p:68px;--cb:38px;--ph:40px;--m:10px;--ts:13px}}
+        #stage.touch #bar,#stage.touch #big{display:none}
+        #stage.touch #scrim{inset:0;height:auto;max-height:none;background:rgba(0,0,0,.35);pointer-events:none!important}
+        #stage.touch #tui{display:block;position:absolute;inset:0;opacity:0;transition:opacity .2s ease;pointer-events:none}
+        #stage.touch.show #tui{opacity:1}
+        #tui .hit{pointer-events:none}
+        #stage.show #tui .hit{pointer-events:auto}
+        /* The glass: dark, blurred, with a faint light rim. */
+        #tui .g{background:rgba(40,40,40,.55);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+          backdrop-filter:blur(20px) saturate(1.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+        #tui button{padding:0;margin:0;border-radius:50%;display:grid;place-items:center;color:#fff}
+        #tui button svg{width:50%;height:50%}
+        #tmid{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;justify-content:center;
+          align-items:center;gap:calc(var(--s)*.45);pointer-events:none}
+        #tmid button{width:var(--s);height:var(--s)}
+        #tmid button svg{width:56%;height:56%}
+        #tmid #tplay{width:var(--p);height:var(--p)}
+        #tmid #tplay svg{width:42%;height:42%}
+        #tplay .off-play{margin-left:6%}
+        #tclose,#tcc,#tspeed,#tfs{position:absolute;width:var(--cb);height:var(--cb)}
+        #tclose{left:var(--m);top:var(--m)}
+        #tcc{right:var(--m);top:var(--m)}
+        #tspeed{right:var(--m);bottom:calc(var(--m) + var(--ph) + 12px);font-weight:650;font-size:calc(var(--ts) - 3px);
+          grid-auto-flow:row;align-content:center;gap:1px}
+        #tspeed svg{width:calc(var(--cb)*.42);height:calc(var(--cb)*.42);justify-self:center}
+        #tfs{right:var(--m);bottom:26px}
+        #stage:not(.cover) #tclose,#stage.cover #tfs{display:none}
+        #tpill{position:absolute;left:var(--m);bottom:26px;height:calc(var(--ph)*.72);padding:0 12px;border-radius:99px;
+          display:flex;align-items:center;font-weight:600;font-variant-numeric:tabular-nums}
+        #tpill{background:rgba(40,40,40,.55);-webkit-backdrop-filter:blur(20px) saturate(1.5);backdrop-filter:blur(20px) saturate(1.5)}
+        #stage.cover #tpill{display:none}
+        #tbar{display:flex;align-items:center;position:absolute;left:var(--m);right:var(--m);bottom:var(--m);height:var(--ph);
+          padding:0 22px;gap:14px;border-radius:99px;font-weight:600;font-variant-numeric:tabular-nums}
+        #ttrack{position:relative;flex:1;height:32px;touch-action:none}
+        #ttrack i{position:absolute;left:0;top:50%;height:8px;margin-top:-4px;border-radius:99px}
+        #trail{right:0;background:rgba(255,255,255,.3)}
+        #tbuf{background:rgba(255,255,255,.3);width:0}
+        #tfill{background:#fff;width:0}
+        #tknob{display:none;position:absolute;top:50%;left:0;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+          background:#fff;transition:transform .12s ease}
+        /* Inline the bar dissolves (display:contents) and the scrubber lines the bottom edge, its hit area 28px tall. */
+        #stage:not(.cover) #tbar{display:contents}
+        #stage:not(.cover) .tt{display:none}
+        #stage:not(.cover) #ttrack{position:absolute;left:0;right:0;bottom:0;height:28px}
+        #stage:not(.cover) #ttrack i{top:calc(100% - 9px);height:3px;margin-top:-1.5px}
+        #stage:not(.cover) #tknob{display:block;top:calc(100% - 9px)}
+        #ttrack.drag #tknob{transform:scale(1.4)}
+        #stage:not(.cover) #tspeed{top:var(--m);right:calc(var(--m)*2 + var(--cb));bottom:auto}
+        #stage:not(.cover) #tspeed svg{display:none}
+        #stage:not(.cover) #tspeed{font-size:var(--ts)}
         /* The double-tap skip: a half ellipse on the side tapped, three chevrons running outward over the total. */
         .skip{position:absolute;top:0;bottom:0;width:36%;display:flex;flex-direction:column;align-items:center;
           justify-content:center;gap:8px;background:rgba(255,255,255,.2);opacity:0;transition:opacity .25s ease;
@@ -138,9 +223,9 @@ enum ReaderYouTubePage {
         .chs svg:nth-child(3){animation-delay:.3s!important}
         @keyframes chev{0%,100%{opacity:.3}50%{opacity:1}}
         .skip b{font-weight:650;font-size:max(13px,calc(var(--i)*.6))}
-        @media (prefers-reduced-motion:reduce){.ctl,#knob,.skip{transition:none}.skip.go .chs svg{animation:none;opacity:1}}
+        @media (prefers-reduced-motion:reduce){.ctl,#knob,#tknob,#tui,.skip{transition:none}.skip.go .chs svg{animation:none;opacity:1}}
         </style></head>
-        <body><div id="stage"\#(nativeFullscreen ? " class=\"touch\"" : "")>
+        <body><div id="stage" class="\#(stageClass)">
           <iframe id="yt" src="\#(src)" title="\#(title)"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -159,7 +244,7 @@ enum ReaderYouTubePage {
             <button id="play" aria-label="Play or pause"><svg class="off-play" viewBox="0 0 24 24"><path d="M7.5 4.8v14.4L19.5 12z"
               fill="currentColor"/></svg><svg class="on-play" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.8"
               width="4.2" height="14.4" rx="1"/><rect x="13.8" y="4.8" width="4.2" height="14.4" rx="1"/></svg></button>
-            <span id="cur" class="t">0:00</span><span id="tot" class="t"></span>
+            <span id="cur" class="t">0:00</span>
             <div id="track" role="slider" aria-label="Position"><i id="rail"></i><i id="buf"></i><i id="fill"></i><b id="knob"></b></div>
             <span id="left" class="t"></span>
             <button id="mute" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M3.5 9.2h3.6L12 5v14l-4.9-4.2H3.5z"
@@ -178,10 +263,11 @@ enum ReaderYouTubePage {
               stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4v5.5H4M14.5 4v5.5H20M9.5 20v-5.5H4M14.5 20v-5.5H20"/>
               </svg></button>
           </div>
+          \#(nativeFullscreen ? touchControls : "")
         </div>
         <script>
         (function () {
-          var NATIVE_FS = \#(nativeFullscreen), IN_COVER = \#(inCover);
+          var NATIVE_FS = \#(nativeFullscreen), IN_COVER = \#(inCover), TOUCH = !!document.getElementById('tui');
           var RATES = [1, 1.25, 1.5, 2, 0.75];
           function $(id) { return document.getElementById(id); }
           var stage = $('stage'), iframe = $('yt'), track = $('track');
@@ -207,7 +293,14 @@ enum ReaderYouTubePage {
             var d = duration(), t = dragging ? dragT : now(), f = d ? Math.min(1, t / d) : 0;
             $('cur').textContent = fmt(t);
             $('left').textContent = d ? '−' + fmt(d - t) : '';
-            $('tot').textContent = d ? '/ ' + fmt(d) : '';
+            if (TOUCH) {
+              $('tcur').textContent = fmt(t);
+              $('tleft').textContent = d ? '−' + fmt(d - t) : '';
+              $('tct').textContent = fmt(t) + ' / ' + fmt(d);
+              $('tfill').style.width = $('tknob').style.left = f * 100 + '%';
+              $('tbuf').style.width = (ready ? player.getVideoLoadedFraction() || 0 : 0) * 100 + '%';
+              $('ttrack').setAttribute('aria-valuetext', fmt(t) + ' of ' + fmt(d));
+            }
             $('fill').style.width = $('knob').style.left = f * 100 + '%';
             $('buf').style.width = (ready ? player.getVideoLoadedFraction() || 0 : 0) * 100 + '%';
             track.setAttribute('aria-valuetext', fmt(t) + ' of ' + fmt(d));
@@ -229,7 +322,7 @@ enum ReaderYouTubePage {
           function poke() {
             active = true;
             clearTimeout(hideTimer);
-            hideTimer = setTimeout(function () { active = false; update(); }, 2000);
+            hideTimer = setTimeout(function () { active = false; update(); }, TOUCH ? 3000 : 2000);
             update();
           }
           function hide() { clearTimeout(hideTimer); active = false; update(); }
@@ -276,6 +369,7 @@ enum ReaderYouTubePage {
             rate = (rate + 1) % RATES.length;
             player.setPlaybackRate(RATES[rate]);
             $('speed').textContent = RATES[rate] + '×';
+            if (TOUCH) $('trate').textContent = RATES[rate] + '×';
           }
           function fullscreen() {
             if (IN_COVER) { post({ type: 'exitFullscreen', time: now() }); return; }
@@ -348,6 +442,7 @@ enum ReaderYouTubePage {
           var SKIP = 10, TAP_GAP = 260, STREAK = 700;
           var lastTap = null, tapTimer = 0, streak = null, skipTimer = 0;
           function skip(side) {
+            if (!ready) return;
             var total = streak && streak.side === side ? streak.total + SKIP : SKIP;
             streak = { side: side, total: total };
             seekBy(side * SKIP);
@@ -389,6 +484,7 @@ enum ReaderYouTubePage {
 
           function on(id, fn) {
             var el = $(id);
+            if (!el) return;
             // A mouse click shouldn't leave focus on the button (Space would then press it again).
             el.addEventListener('mousedown', function (e) { e.preventDefault(); });
             el.addEventListener('click', function (e) { e.stopPropagation(); fn(); poke(); });
@@ -400,33 +496,45 @@ enum ReaderYouTubePage {
           on('cc', toggleCaptions);
           on('speed', cycleSpeed);
           on('fs', fullscreen);
+          on('tplay', toggle);
+          on('tback', function () { skip(-1); });
+          on('tfwd', function () { skip(1); });
+          on('tcc', toggleCaptions);
+          on('tspeed', cycleSpeed);
+          on('tfs', fullscreen);
+          on('tclose', fullscreen);
+          if (TOUCH) $('tui').addEventListener('touchstart', function () { lastTouch = Date.now(); poke(); }, { passive: true });
 
-          function dragTo(e) {
-            var r = track.getBoundingClientRect();
-            dragT = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * duration();
-            if (Date.now() - lastSeek > 150) { lastSeek = Date.now(); player.seekTo(dragT, false); }
-            render();
+          function bindTrack(tr) {
+            function dragTo(e) {
+              var r = tr.getBoundingClientRect();
+              dragT = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * duration();
+              if (Date.now() - lastSeek > 150) { lastSeek = Date.now(); player.seekTo(dragT, false); }
+              render();
+            }
+            function endDrag() {
+              if (!dragging) return;
+              dragging = false;
+              tr.classList.remove('drag');
+              player.seekTo(dragT, true);
+              render();
+              poke();
+            }
+            tr.addEventListener('pointerdown', function (e) {
+              if (!ready) return;
+              e.preventDefault();
+              dragging = true;
+              tr.classList.add('drag');
+              tr.setPointerCapture(e.pointerId);
+              dragTo(e);
+              update();
+            });
+            tr.addEventListener('pointermove', function (e) { if (dragging) dragTo(e); });
+            tr.addEventListener('pointerup', endDrag);
+            tr.addEventListener('pointercancel', endDrag);
           }
-          track.addEventListener('pointerdown', function (e) {
-            if (!ready) return;
-            e.preventDefault();
-            dragging = true;
-            track.classList.add('drag');
-            track.setPointerCapture(e.pointerId);
-            dragTo(e);
-            update();
-          });
-          track.addEventListener('pointermove', function (e) { if (dragging) dragTo(e); });
-          function endDrag() {
-            if (!dragging) return;
-            dragging = false;
-            track.classList.remove('drag');
-            player.seekTo(dragT, true);
-            render();
-            poke();
-          }
-          track.addEventListener('pointerup', endDrag);
-          track.addEventListener('pointercancel', endDrag);
+          bindTrack(track);
+          if (TOUCH) bindTrack($('ttrack'));
 
           document.addEventListener('keydown', function (e) {
             if (e.metaKey || e.ctrlKey || e.altKey || failed) return;
