@@ -11,8 +11,8 @@ import UIKit
     var pageOffset: CGFloat = 0
     /// A view change is sliding out and in: swipes are ignored until it lands.
     var isPaging = false
-    /// The views on either side of the list, pinned when a swipe starts so the page sliding in beside the
-    /// list doesn't change under the finger when the view switches.
+    /// The views on either side of the list, kept while a view change slides so the page sliding in
+    /// beside the list doesn't change under the finger when the view switches.
     var previousPage: FeedView?
     var nextPage: FeedView?
     /// The first rows of the views beside the list, so the page sliding in shows them instead of an empty
@@ -155,6 +155,7 @@ struct PhoneRoot: View {
 
     /// Loads the first rows of the views on either side of the list (local queries).
     private func loadPeeks() async {
+        if !chrome.isPaging { syncNeighbors() }
         guard let index = model.phonePageIndex else { return }
         let pages = model.phonePages
         for neighbor in [index - 1, index + 1] where pages.indices.contains(neighbor) {
@@ -162,6 +163,18 @@ struct PhoneRoot: View {
             guard let page = try? await model.database.items(ItemQuery(view: view, limit: PhonePagePeek.rows)) else { continue }
             chrome.peekItems[view] = page.items
         }
+    }
+
+    /// Points the pages beside the list at the views on either side of it, or none off the content views.
+    private func syncNeighbors() {
+        let pages = model.phonePages
+        guard let index = model.phonePageIndex else {
+            chrome.previousPage = nil
+            chrome.nextPage = nil
+            return
+        }
+        chrome.previousPage = index > 0 ? pages[index - 1] : nil
+        chrome.nextPage = index < pages.count - 1 ? pages[index + 1] : nil
     }
 
     // MARK: Opening and closing
@@ -200,9 +213,7 @@ struct PhoneRoot: View {
         if startX < Self.edgeWidth, velocity > 0 { return .drawer }
         if let index = model.phonePageIndex, !model.isSearchOpen {
             if index == 0 && velocity > 0 { return .drawer }
-            let pages = model.phonePages
-            chrome.previousPage = index > 0 ? pages[index - 1] : nil
-            chrome.nextPage = index < pages.count - 1 ? pages[index + 1] : nil
+            syncNeighbors()
             return .pager
         }
         return velocity > 0 ? .drawer : nil
@@ -231,11 +242,11 @@ struct PhoneRoot: View {
             let projected = translation + velocity * 0.12
             if let index = model.phonePageIndex {
                 if projected < -Self.pageThreshold, index < pages.count - 1 {
-                    page(to: pages[index + 1], forward: true, pageWidth: pageWidth)
+                    page(to: pages[index + 1], forward: true, velocity: velocity, pageWidth: pageWidth)
                     return
                 }
                 if projected > Self.pageThreshold, index > 0 {
-                    page(to: pages[index - 1], forward: false, pageWidth: pageWidth)
+                    page(to: pages[index - 1], forward: false, velocity: velocity, pageWidth: pageWidth)
                     return
                 }
             }
@@ -243,24 +254,28 @@ struct PhoneRoot: View {
         }
     }
 
-    /// Slides the list out the way the finger went, bringing the next view's page (`PhonePagePeek`) in
-    /// beside it, then switches the list to that view and puts it back in place under the page.
-    private func page(to view: FeedView, forward: Bool, pageWidth: CGFloat) {
-        let direction: CGFloat = forward ? 1 : -1
+    /// Slides the list out the way the finger went, carrying on at the finger's speed, with the next view's
+    /// page (`PhonePagePeek`) coming in beside it. Once it lands the list switches to that view, starting
+    /// from the page's rows so it can take the page's place on the next frame, and moves back under it.
+    private func page(to view: FeedView, forward: Bool, velocity: CGFloat, pageWidth: CGFloat) {
+        let target = (forward ? -1 : 1) * pageWidth
+        let remaining = target - chrome.pageOffset
+        // The spring's initial velocity is in units of the distance left to travel per second.
+        let initial = remaining == 0 ? 0 : max(0, min(8, velocity / remaining))
         chrome.isPaging = true
-        withAnimation(.smooth(duration: 0.26)) { chrome.pageOffset = -direction * pageWidth }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(270))
-            model.navigate(view: view)
-            // Let the new view's first page land (it is a local query) and the list redraw at its top
-            // before it replaces the page that slid in, which shows the same rows.
-            await Task.yield()
-            for _ in 0..<15 where model.isLoading { try? await Task.sleep(for: .milliseconds(20)) }
-            try? await Task.sleep(for: .milliseconds(40))
-            var jump = Transaction()
-            jump.disablesAnimations = true
-            withTransaction(jump) { chrome.pageOffset = 0 }
-            chrome.isPaging = false
+        withAnimation(.interpolatingSpring(duration: 0.3, bounce: 0, initialVelocity: initial)) {
+            chrome.pageOffset = target
+        } completion: {
+            model.navigate(view: view, startingWith: chrome.peekItems[view] ?? [])
+            Task { @MainActor in
+                // A couple of frames for the list to redraw with the new rows at its top.
+                try? await Task.sleep(for: .milliseconds(34))
+                var jump = Transaction()
+                jump.disablesAnimations = true
+                withTransaction(jump) { chrome.pageOffset = 0 }
+                chrome.isPaging = false
+                syncNeighbors()
+            }
         }
     }
 }
@@ -284,13 +299,23 @@ struct PhonePageOffset: ViewModifier {
         content
             .offset(x: offset)
             .overlay {
-                if offset != 0, let chrome {
+                // Both pages stay built (and their images loaded) beside the list, hidden until it moves, so a
+                // swipe doesn't build a list as it starts.
+                if isHome, let chrome {
                     GeometryReader { geo in
-                        let view = offset < 0 ? chrome.nextPage : chrome.previousPage
-                        if let view {
-                            PhonePagePeek(title: view.title, items: chrome.peekItems[view] ?? [])
-                                .offset(x: offset + (offset < 0 ? geo.size.width : -geo.size.width))
+                        ZStack {
+                            if let view = chrome.previousPage {
+                                PhonePagePeek(title: view.title, items: chrome.peekItems[view] ?? [])
+                                    .equatable()
+                                    .offset(x: offset - geo.size.width)
+                            }
+                            if let view = chrome.nextPage {
+                                PhonePagePeek(title: view.title, items: chrome.peekItems[view] ?? [])
+                                    .equatable()
+                                    .offset(x: offset + geo.size.width)
+                            }
                         }
+                        .opacity(offset == 0 ? 0 : 1)
                     }
                 }
             }
@@ -299,7 +324,7 @@ struct PhonePageOffset: ViewModifier {
 
 /// The view beside the list while swiping between views: its title and first rows, laid out as the list
 /// lays them out so the list can take its place without a jump. Not interactive.
-struct PhonePagePeek: View {
+struct PhonePagePeek: View, Equatable {
     let title: String
     let items: [FeedItem]
 

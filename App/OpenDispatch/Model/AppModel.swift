@@ -408,6 +408,11 @@ final class AppModel {
         setNav(view: view, source: nil, folder: nil)
     }
 
+    /// Show a view, with `rows` (its first rows, already loaded) in the list until its first page loads.
+    func navigate(view: FeedView, startingWith rows: [FeedItem]) {
+        setNav(view: view, source: nil, folder: nil, startingWith: rows)
+    }
+
     /// Show one source's feed.
     func navigate(sourceID: Int64) {
         setNav(view: .all, source: sourceID, folder: nil)
@@ -427,7 +432,7 @@ final class AppModel {
         showsHighlights = true
     }
 
-    private func setNav(view: FeedView, source: Int64?, folder: Int64?) {
+    private func setNav(view: FeedView, source: Int64?, folder: Int64?, startingWith rows: [FeedItem] = []) {
         let changed = view != selectedView || source != selectedSourceID || folder != selectedFolderID || !searchQuery.isEmpty
         showsHighlights = false
         selectedView = view
@@ -435,7 +440,12 @@ final class AppModel {
         selectedFolderID = folder
         setActiveItem(nil)
         resetSearchState()
-        if changed { Task { await loadItems(reset: true) } }
+        guard changed else { return }
+        if !rows.isEmpty {
+            items = rows
+            nextCursor = nil
+        }
+        Task { await loadItems(reset: true) }
     }
 
     // MARK: Items
