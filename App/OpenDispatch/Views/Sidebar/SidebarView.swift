@@ -185,6 +185,11 @@ struct SidebarView: View {
                 model.showHighlights()
             }
             .contextMenu { hideButton(item) }
+        case .history:
+            SidebarHistoryRow(active: isActive(item)) {
+                model.showHistory()
+            }
+            .contextMenu { hideButton(item) }
         }
     }
 
@@ -199,8 +204,11 @@ struct SidebarView: View {
         switch item {
         case .view(let view):
             model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
+                && !model.showsHistory
         case .highlights:
             model.showsHighlights
+        case .history:
+            model.showsHistory
         }
     }
 

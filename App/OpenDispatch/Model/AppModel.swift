@@ -82,6 +82,8 @@ enum SourceAddState: Equatable {
 @Observable
 final class AppModel {
     let services: OpenDispatchServices
+    /// Read state and History.
+    let history: HistoryStore
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
@@ -98,6 +100,12 @@ final class AppModel {
     /// The Highlights view (sidebar, the iPhone drawer) is showing instead of an item list: the articles
     /// that have highlights, which HighlightStore lists. Any other navigation turns it off.
     private(set) var showsHighlights = false
+    /// The History view (sidebar, the iPhone drawer) is showing instead of an item list: what was opened,
+    /// newest first, which HistoryStore lists. Any other navigation turns it off.
+    private(set) var showsHistory = false
+    /// Hide Read Items: items read before this moment are left out of the list. Moved on when the list is
+    /// navigated or refreshed, so what you read while a list shows stays until then.
+    private var hideReadCutoff = Date()
 
     // MARK: Search (use-search.ts): the draft follows typing; it is committed after 250 ms.
 
@@ -132,7 +140,9 @@ final class AppModel {
     /// Full-screen reader (⇧⌘F): hides sidebar and list while an item is open. Session only.
     var focusMode = false
     /// Reader panes: one, or two in split view, each with its own tabs. Session only.
-    private(set) var panes: [ReaderPane] = [ReaderPane()]
+    private(set) var panes: [ReaderPane] = [ReaderPane()] {
+        didSet { recordShownItems() }
+    }
     /// The pane the list, j/k and the item shortcuts act on.
     private(set) var focusedPane = 0
     /// The left pane's share of the reader's width in split view.
@@ -190,6 +200,10 @@ final class AppModel {
             guard settings != oldValue else { return }
             settings.save()
             if !applyingSyncedSettings { mirrorSettingsForSync() }
+            if settings.hideReadItems != oldValue.hideReadItems {
+                hideReadCutoff = Date()
+                Task { await loadItems(reset: true) }
+            }
         }
     }
 
@@ -233,6 +247,8 @@ final class AppModel {
     @ObservationIgnored private var prefetcher: ArticlePrefetcher!
     /// The way j/k last moved through the list (1 down, -1 up); reading ahead follows it.
     @ObservationIgnored private var readingStep = 1
+    /// Items shown in a pane's active tab when the panes last changed, so only newly shown ones are recorded.
+    @ObservationIgnored private var shownItemIDs: Set<Int64> = []
 
     /// UserDefaults keys keep the app's original name so existing settings carry over.
     private enum Keys {
@@ -245,6 +261,7 @@ final class AppModel {
 
     init(services: OpenDispatchServices) {
         self.services = services
+        history = HistoryStore(database: services.database)
         let defaults = UserDefaults.standard
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
         collapsedFolders = Set(defaults.stringArray(forKey: Keys.collapsedFolders) ?? [])
@@ -298,7 +315,13 @@ final class AppModel {
 
     /// The ItemQuery for the current navigation and search.
     var currentQuery: ItemQuery {
-        ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery)
+        ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery,
+                  hideReadBefore: hidesReadItems ? hideReadCutoff : nil)
+    }
+
+    /// Hide Read Items applies here: it's on, and the list isn't Saved (kept on purpose) or a search.
+    var hidesReadItems: Bool {
+        settings.hideReadItems && !(selectedView == .saved && !isInSourceFeed) && searchQuery.isEmpty
     }
 
     var activeSource: Source? { selectedSourceID.flatMap { id in sources.first { $0.id == id } } }
@@ -307,7 +330,7 @@ final class AppModel {
     var isInSourceFeed: Bool { selectedSourceID != nil || selectedFolderID != nil }
 
     /// Header title: source title, folder title, or the view name.
-    var listTitle: String { showsHighlights ? "Highlights" : activeSource?.title ?? activeFolder?.title ?? selectedView.title }
+    var listTitle: String { showsHighlights ? "Highlights" : showsHistory ? "History" : activeSource?.title ?? activeFolder?.title ?? selectedView.title }
 
     /// Search field placeholder: "Search" in All, else "Search <title>".
     var searchPlaceholder: String { listTitle == "All" ? "Search" : "Search \(listTitle)" }
@@ -330,7 +353,7 @@ final class AppModel {
     /// isn't already a new tab.
     var hasReaderTabs: Bool { isSplit || panes[0].tabs.count > 1 || !panes[0].activeTab.isNew }
 
-    /// Items from closed tabs, most recent first (⇧⌘T, the new tab's Recently closed). Session only.
+    /// Items from closed tabs, most recent first (⇧⌘T). Session only.
     private(set) var closedItems: [FeedItem] = []
 
     /// What a tab shows: its item, or with none opened (tablet/desktop) the first in the list that
@@ -338,7 +361,7 @@ final class AppModel {
     func item(for tab: ReaderTab) -> FeedItem? {
         if tab.isNew { return nil }
         if let id = tab.itemID { return items.first { $0.id == id } ?? openItems[id] }
-        guard prefersDefaultSelection, !showsHighlights else { return nil }
+        guard prefersDefaultSelection, !showsHighlights, !showsHistory else { return nil }
         let pinned = Set(panes.flatMap { $0.tabs.filter(\.isPinned).compactMap(\.itemID) })
         return items.first { !pinned.contains($0.id) }
     }
@@ -432,9 +455,17 @@ final class AppModel {
         showsHighlights = true
     }
 
+    /// Show the History view: what was opened, newest first.
+    func showHistory() {
+        setNav(view: .all, source: nil, folder: nil)
+        showsHistory = true
+    }
+
     private func setNav(view: FeedView, source: Int64?, folder: Int64?, startingWith rows: [FeedItem] = []) {
         let changed = view != selectedView || source != selectedSourceID || folder != selectedFolderID || !searchQuery.isEmpty
         showsHighlights = false
+        showsHistory = false
+        if changed { hideReadCutoff = Date() }
         selectedView = view
         selectedSourceID = source
         selectedFolderID = folder
@@ -497,12 +528,15 @@ final class AppModel {
     func select(itemID: Int64) async {
         setActiveItem(itemID)
         if items.contains(where: { $0.id == itemID }) { return }
-        if let it = try? await database.feedItem(id: itemID), selectedItemID == itemID { openItems[itemID] = it }
+        if let it = try? await database.feedItem(id: itemID), selectedItemID == itemID {
+            openItems[itemID] = it
+            history.recordOpen(it)
+        }
     }
 
     /// j/k: select the next (1) or previous (-1) item; prefetches the next page near the end.
     func moveSelection(by step: Int) {
-        guard !items.isEmpty, !showsHighlights else { return }
+        guard !items.isEmpty, !showsHighlights, !showsHistory else { return }
         let from = selectedItem?.id
         let i = items.firstIndex { $0.id == from } ?? -1
         let target = i < 0 ? 0 : min(max(i + step, 0), items.count - 1)
@@ -523,6 +557,46 @@ final class AppModel {
             if saved { await prefetcher.queueSaved() }
         } catch {
             patchLocal(item.id) { $0.item.isSaved = !saved }
+        }
+    }
+
+    // MARK: Read state
+
+    /// Mark as Read / Unread (row menus, `m`).
+    func toggleRead(_ item: FeedItem) { history.toggleRead(item) }
+
+    /// Keyboard `m`: the selected item.
+    func toggleReadOnSelection() {
+        if let it = selectedItem { history.toggleRead(it) }
+    }
+
+    /// Mark All as Read: every item of the current list, all pages. With Hide Read Items on they stay
+    /// until the list is next refreshed.
+    func markAllRead() {
+        let query = currentQuery
+        Task { try? await database.markAllRead(query) }
+    }
+
+    func toggleHideReadItems() { settings.hideReadItems.toggle() }
+
+    /// Open a History entry; an article this device no longer has (or never had) is added back from the
+    /// entry, or opens in the browser when its source isn't here.
+    func open(_ entry: HistoryEntry, inNewTab: Bool = false) async {
+        guard let item = try? await database.itemForHistory(entry) else {
+            if let url = URL(string: entry.itemUrl) { ReaderWebSupport.openExternally(url) }
+            return
+        }
+        if inNewTab { openInNewTab(item) } else { open(item) }
+    }
+
+    /// Records the items a pane's active tab newly shows as opened. The list's first item shown by default
+    /// (no item picked) doesn't count.
+    private func recordShownItems() {
+        let shown = Set(panes.compactMap { $0.activeTab.isNew ? nil : $0.activeTab.itemID })
+        let added = shown.subtracting(shownItemIDs)
+        shownItemIDs = shown
+        for id in added {
+            if let item = openItems[id] ?? items.first(where: { $0.id == id }) { history.recordOpen(item) }
         }
     }
 
@@ -551,7 +625,7 @@ final class AppModel {
             result = try await services.content.content(forItem: item.id, refresh: refresh)
         }
         didFetchContent(item.id, result)
-        if item.id == selectedItemID, !showsHighlights { prefetcher.readAhead(from: item.id, in: items, step: readingStep) }
+        if item.id == selectedItemID, !showsHighlights, !showsHistory { prefetcher.readAhead(from: item.id, in: items, step: readingStep) }
         return result
     }
 
@@ -577,6 +651,7 @@ final class AppModel {
             lastRefreshResult = r
             if r.ran { await PostNotifications.deliver(database) }
             if force || r.ran {
+                hideReadCutoff = Date()
                 await reloadAll()
             } else {
                 await loadStats()
@@ -1445,7 +1520,7 @@ final class AppModel {
         pruneOpenItems()
     }
 
-    /// Keep a closing tab's item for ⇧⌘T and Recently closed (newest first, at most 20, no repeats).
+    /// Keep a closing tab's item for ⇧⌘T (newest first, at most 20, no repeats).
     private func rememberClosed(_ tab: ReaderTab) {
         guard let item = item(for: tab) else { return }
         closedItems.removeAll { $0.id == item.id }
@@ -1470,8 +1545,11 @@ final class AppModel {
             openItems[id] = item
             tabs.append(ReaderTab(itemID: id, isPinned: true))
         }
-        panes[0].tabs.insert(contentsOf: tabs, at: 0)
-        panes[0].active += tabs.count
+        // One change, so the restored pins aren't recorded as opened.
+        var pane = panes[0]
+        pane.tabs.insert(contentsOf: tabs, at: 0)
+        pane.active += tabs.count
+        panes[0] = pane
         if tabs.count != ids.count { savePinnedTabs() }
     }
 
@@ -1481,6 +1559,8 @@ final class AppModel {
         let p = focusedPane, t = panes[p].active
         guard panes[p].tabs[t].itemID == nil, let first = item(for: panes[p].tabs[t]) else { return }
         openItems[first.id] = first
+        // Shown by default, not picked: settling it isn't opening it (recordShownItems).
+        shownItemIDs.insert(first.id)
         panes[p].tabs[t].itemID = first.id
     }
 

@@ -196,6 +196,34 @@ public final class AppDatabase: Sendable {
         m.registerMigration("v6-source-notify") { db in
             try db.execute(sql: "ALTER TABLE sources ADD COLUMN notify_since DATETIME")
         }
+        // Read state and History. One row per article, keyed like highlights by (source feed URL, guid) and
+        // carrying enough of the article to list and reopen it after the item is pruned. opened_at is the
+        // last time it was opened (NULL: marked read without opening, which History doesn't list); read_at
+        // says it's read (a video or episode once played past 90%); position_sec / duration_sec are how far
+        // playback got.
+        m.registerMigration("v7-history") { db in
+            try db.execute(sql: """
+                CREATE TABLE history (
+                  source_feed_url TEXT NOT NULL,
+                  item_guid TEXT NOT NULL,
+                  item_url TEXT NOT NULL,
+                  item_title TEXT NOT NULL,
+                  source_title TEXT NOT NULL,
+                  source_kind TEXT NOT NULL DEFAULT 'rss',
+                  item_author TEXT,
+                  item_published_at DATETIME,
+                  thumbnail_url TEXT,
+                  video_id TEXT,
+                  audio_url TEXT,
+                  opened_at DATETIME,
+                  read_at DATETIME,
+                  position_sec REAL,
+                  duration_sec REAL,
+                  PRIMARY KEY (source_feed_url, item_guid)
+                );
+                CREATE INDEX history_opened_idx ON history(opened_at DESC);
+                """)
+        }
         return m
     }
 }

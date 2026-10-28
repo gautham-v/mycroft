@@ -65,6 +65,8 @@ struct ListTitleMenu: View {
                     Toggle(view.title, isOn: Binding(get: { isActive(item) }, set: { _ in model.navigate(view: view) }))
                 case .highlights:
                     Toggle("Highlights", isOn: Binding(get: { isActive(item) }, set: { _ in model.showHighlights() }))
+                case .history:
+                    Toggle("History", isOn: Binding(get: { isActive(item) }, set: { _ in model.showHistory() }))
                 }
             }
             if !model.orderedFolders.isEmpty {
@@ -74,6 +76,12 @@ struct ListTitleMenu: View {
                         get: { model.selectedFolderID == folder.id && model.selectedSourceID == nil },
                         set: { _ in model.navigate(folderID: folder.id) }))
                 }
+            }
+            if !model.showsHighlights && !model.showsHistory {
+                Divider()
+                Button("Mark All as Read") { model.markAllRead() }
+                    .disabled(model.items.isEmpty)
+                Toggle("Hide Read Items", isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() }))
             }
             Divider()
             Button(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") { model.toggleSidebar() }
@@ -106,8 +114,11 @@ struct ListTitleMenu: View {
         switch item {
         case .view(let view):
             model.selectedView == view && model.selectedSourceID == nil && model.selectedFolderID == nil && !model.showsHighlights
+                && !model.showsHistory
         case .highlights:
             model.showsHighlights
+        case .history:
+            model.showsHistory
         }
     }
 }

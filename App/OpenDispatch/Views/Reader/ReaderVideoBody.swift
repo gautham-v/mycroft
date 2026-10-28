@@ -31,6 +31,14 @@ struct ReaderVideoBody: View {
 
     private var band: Bool { theater && !vertical && item.item.videoId != nil }
 
+    /// Where a video watched partway starts again.
+    private var resumeAt: Double? { model.history.resumePosition(item) }
+
+    /// History: how far it got, every few seconds while playing and once more on leaving.
+    private func recordProgress(force: Bool = false) {
+        model.history.recordProgress(item, position: playback.time, duration: playback.duration, force: force)
+    }
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: band ? [.sectionHeaders] : []) {
             Section {
@@ -39,7 +47,7 @@ struct ReaderVideoBody: View {
                 if band, let videoID = item.item.videoId {
                     ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                         thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
-                                        controller: playback)
+                                        resumeAt: resumeAt, controller: playback)
                         .frame(maxWidth: Metrics.theaterMaxWidth)
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, wide ? 16 : 0)
@@ -47,7 +55,11 @@ struct ReaderVideoBody: View {
                 }
             }
         }
-        .onDisappear { playback.stop() }
+        .onChange(of: playback.time) { _, _ in recordProgress() }
+        .onDisappear {
+            recordProgress(force: true)
+            playback.stop()
+        }
     }
 
     private var column: some View {
@@ -104,7 +116,7 @@ struct ReaderVideoBody: View {
             } else if !theater, let videoID = item.item.videoId {
                 ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                     thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
-                                    controller: playback)
+                                    resumeAt: resumeAt, controller: playback)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .padding(.top, 20)
             }
@@ -141,7 +153,7 @@ struct ReaderVideoBody: View {
     private func portraitPlayer(_ videoID: String) -> some View {
         ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                             thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec, vertical: true,
-                            controller: playback)
+                            resumeAt: resumeAt, controller: playback)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .frame(maxWidth: portraitWidth)
             .frame(maxWidth: .infinity)

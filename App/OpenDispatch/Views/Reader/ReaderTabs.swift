@@ -35,8 +35,8 @@ struct ReaderPaneView: View {
     }
 }
 
-/// A new tab (+ or ⌘T): the bar, then an address field for any link (⌘L), recently closed tabs and
-/// the latest saved items. Opening anything, from here or the list, fills this tab.
+/// A new tab (+ or ⌘T): the bar, then an address field for any link (⌘L), what was read last (History)
+/// and the latest saved items. Opening anything, from here or the list, fills this tab.
 struct NewTabView: View {
     let pane: Int
     @Environment(AppModel.self) private var model
@@ -46,7 +46,7 @@ struct NewTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 NewTabAddressField(pane: pane)
-                section("Recently closed", Array(model.closedItems.prefix(5)))
+                recentlyRead
                 section("Saved", saved)
             }
             .frame(maxWidth: 440)
@@ -73,19 +73,39 @@ struct NewTabView: View {
     @ViewBuilder private func section(_ title: String, _ items: [FeedItem]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(OFFont.ui(13))
-                    .foregroundStyle(.ofMuted)
-                    .padding(.leading, 8)
-                    .padding(.bottom, 4)
+                sectionTitle(title)
                 ForEach(items, id: \.id) { item in
-                    NewTabRow(item: item) {
+                    NewTabRow(host: item.source.host, sourceTitle: item.source.title, title: item.item.title) {
                         model.focusPane(pane)
                         model.open(item)
                     }
                 }
             }
         }
+    }
+
+    /// The last five articles opened, from History, so it outlives the session.
+    @ViewBuilder private var recentlyRead: some View {
+        let entries = Array(model.history.opened.prefix(5))
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                sectionTitle("Recently read")
+                ForEach(entries) { entry in
+                    NewTabRow(host: URLHost.host(of: entry.itemUrl), sourceTitle: entry.sourceTitle, title: entry.itemTitle) {
+                        model.focusPane(pane)
+                        Task { await model.open(entry) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(OFFont.ui(13))
+            .foregroundStyle(.ofMuted)
+            .padding(.leading, 8)
+            .padding(.bottom, 4)
     }
 }
 
@@ -157,20 +177,22 @@ private struct NewTabAddressField: View {
 
 /// An item on the new tab: badge, title, source muted on the right; the hover grey under the pointer.
 private struct NewTabRow: View {
-    let item: FeedItem
+    let host: String
+    let sourceTitle: String
+    let title: String
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                SourceBadge(host: item.source.host, title: item.source.title, size: 16)
-                Text(item.item.title)
+                SourceBadge(host: host, title: sourceTitle, size: 16)
+                Text(title)
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(item.source.title)
+                Text(sourceTitle)
                     .foregroundStyle(.ofMuted)
                     .lineLimit(1)
                     .fixedSize()
@@ -186,7 +208,7 @@ private struct NewTabRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(item.item.title)
+        .help(title)
     }
 }
 

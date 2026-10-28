@@ -417,7 +417,7 @@ struct ReaderItemView: View {
             }
 
             if isPodcast {
-                ReaderPodcastPlayer(item: item, art: podcastArt, wide: wide)
+                ReaderPodcastPlayer(item: item, art: podcastArt, wide: wide, resumeAt: model.history.resumePosition(item))
                     .id(item.id)
                     .padding(.top, 24)
             }

@@ -363,6 +363,54 @@ struct SyncTests {
         #expect(server.records.values.filter { $0.type == .highlight }.count == 2)
     }
 
+    @Test func historySyncsReadStateAndRemovals() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let b = try Fixture.db()
+        try server.join(a)
+        try server.join(b)
+        let item = try #require(try await HistoryTests.feed(a, 1, kind: .youtube).first)
+        let name = SyncRecord.historyName(sourceFeedUrl: item.source.feedUrl, itemGuid: item.item.guid)
+        try server.push(a) // the source
+        try await a.recordOpen(HistoryEntry(item: item), isMedia: true)
+        #expect(try server.push(a).saves == [name])
+        // A few seconds more of playback is no upload; crossing a 5% step is.
+        try await a.recordProgress(HistoryEntry(item: item), position: 61, duration: 600)
+        try server.push(a)
+        try await a.recordProgress(HistoryEntry(item: item), position: 62, duration: 600)
+        #expect(try server.push(a).isEmpty)
+        try await a.recordProgress(HistoryEntry(item: item), position: 95, duration: 600)
+        #expect(try server.push(a).saves == [name])
+        // B has neither the item nor the source, and still gets the entry and how far it got.
+        #expect(try server.pull(b).historyChanged)
+        let onB = try #require(try await b.history().first)
+        #expect(onB.itemTitle == item.item.title)
+        #expect(onB.positionSec == 95)
+        #expect(onB.durationSec == 600)
+        #expect(!onB.isRead)
+        #expect(try diff(b).isEmpty)
+        // Removed on B: gone on A.
+        try await b.removeHistory(sourceFeedUrl: item.source.feedUrl, itemGuid: item.item.guid)
+        #expect(try server.push(b).deletes == [name])
+        try server.pull(a)
+        #expect(try await a.history().isEmpty)
+        #expect(try diff(a).isEmpty)
+    }
+
+    @Test func historyRecordRoundTripsThroughCloudKit() throws {
+        let e = HistoryEntry(
+            sourceFeedUrl: "https://f.example/feed", itemGuid: "g", itemUrl: "https://f.example/g", itemTitle: "T",
+            sourceTitle: "F", sourceKind: .podcast, itemAuthor: "A", itemPublishedAt: Fixture.base, thumbnailUrl: "https://t",
+            audioUrl: "https://a.mp3", openedAt: Fixture.base, positionSec: 120, durationSec: 3600)
+        let r = SyncStore.historyRecord(e)
+        #expect(r.type == .history)
+        #expect(r["progressPct"] == .int(0))
+        let ck = CloudSync.ckRecord(r, systemFields: nil)
+        #expect(ck.recordType == "History")
+        #expect(CloudSync.syncRecord(from: ck) == r)
+        #expect(SyncRecordType.lateType(ofName: r.name) == .history)
+    }
+
     @Test func highlightRecordRoundTripsThroughCloudKit() throws {
         var h = HighlightTests.highlight("https://b.example/feed", "g1", text: "quote", color: .underline)
         h.note = "n"

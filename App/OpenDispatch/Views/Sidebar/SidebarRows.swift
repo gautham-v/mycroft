@@ -39,21 +39,23 @@ struct SidebarDropIndicator: ViewModifier {
     }
 }
 
-/// A row in the sidebar's view list: one of the six views, or Highlights (under Saved). Every row but
-/// All can be hidden into the "More" row.
+/// A row in the sidebar's view list: one of the six views, Highlights (under Saved) or History. Every row
+/// but All can be hidden into the "More" row.
 enum SidebarViewItem: Hashable, Identifiable {
     case view(FeedView)
     case highlights
+    case history
 
-    /// Sidebar order: the content views (All, Articles, Posts, Video, Podcasts), then Saved and Highlights,
-    /// as in the iPhone drawer.
-    static let ordered: [SidebarViewItem] = FeedView.allCases.filter { $0 != .saved }.map { .view($0) } + [.view(.saved), .highlights]
+    /// Sidebar order: the content views (All, Articles, Posts, Video, Podcasts), then Saved, Highlights and
+    /// History, as in the iPhone drawer.
+    static let ordered: [SidebarViewItem] = FeedView.allCases.filter { $0 != .saved }.map { .view($0) } + [.view(.saved), .highlights, .history]
 
     /// Stored in `AppModel.hiddenSidebarViews`.
     var id: String {
         switch self {
         case .view(let view): view.rawValue
         case .highlights: "highlights"
+        case .history: "history"
         }
     }
 

@@ -33,6 +33,9 @@ public enum SyncStore {
         for h in try Highlight.fetchAll(db) {
             add(highlightRecord(h))
         }
+        for e in try HistoryEntry.fetchAll(db) {
+            add(historyRecord(e))
+        }
         if let json = try Queries.meta(db, MetaKey.syncedSettings) {
             add(SyncRecord(type: .settings, name: SyncRecord.settingsName, fields: ["json": .string(json)]))
         }
@@ -106,6 +109,28 @@ public enum SyncStore {
         if !h.note.isEmpty { fields["note"] = .string(h.note) }
         if let v = h.readwiseId { fields["readwiseId"] = .int(v) }
         return SyncRecord(type: .highlight, name: SyncRecord.highlightName(id: h.id), fields: fields)
+    }
+
+    static func historyRecord(_ e: HistoryEntry) -> SyncRecord {
+        var fields: [String: SyncField] = [
+            "sourceFeedUrl": .string(e.sourceFeedUrl),
+            "itemGuid": .string(e.itemGuid),
+            "itemUrl": .string(e.itemUrl),
+            "itemTitle": .string(e.itemTitle),
+            "sourceTitle": .string(e.sourceTitle),
+            "sourceKind": .string(e.sourceKind.rawValue),
+        ]
+        if let v = e.itemAuthor { fields["itemAuthor"] = .string(v) }
+        if let v = e.itemPublishedAt { fields["itemPublishedAt"] = .date(v) }
+        if let v = e.thumbnailUrl { fields["thumbnailUrl"] = .string(v) }
+        if let v = e.videoId { fields["videoId"] = .string(v) }
+        if let v = e.audioUrl { fields["audioUrl"] = .string(v) }
+        if let v = e.openedAt { fields["openedAt"] = .date(v) }
+        if let v = e.readAt { fields["readAt"] = .date(v) }
+        if let v = e.positionSec, v.isFinite, v > 0 { fields["positionSec"] = .int(Int64(v)) }
+        if let v = e.durationSec, v.isFinite, v > 0 { fields["durationSec"] = .int(Int64(v.rounded())) }
+        if let p = e.progress { fields["progressPct"] = .int(Int64(p * 20) * 5) }
+        return SyncRecord(type: .history, name: SyncRecord.historyName(sourceFeedUrl: e.sourceFeedUrl, itemGuid: e.itemGuid), fields: fields)
     }
 
     /// Saved items with their source's feed URL.
@@ -209,6 +234,8 @@ public enum SyncStore {
         public var addedSourceIDs: [Int64] = []
         /// Highlights were added, changed or removed (reload the reader's highlights and the Highlights view).
         public var highlightsChanged = false
+        /// Read state or History changed (HistoryStore observes the table, so this is informational).
+        public var historyChanged = false
         /// New settings JSON from iCloud.
         public var settingsJSON: String?
         /// Webhook URL or Readwise token changed.
@@ -369,6 +396,24 @@ public enum SyncStore {
             }
             return true
 
+        case .history:
+            guard let feedUrl = r["sourceFeedUrl"]?.stringValue, let guid = r["itemGuid"]?.stringValue,
+                  r.name == SyncRecord.historyName(sourceFeedUrl: feedUrl, itemGuid: guid) else { return false }
+            // The other device's copy as it is: the last change to an article's read state wins.
+            let incoming = HistoryEntry(
+                sourceFeedUrl: feedUrl, itemGuid: guid, itemUrl: r["itemUrl"]?.stringValue ?? "",
+                itemTitle: r["itemTitle"]?.stringValue ?? "", sourceTitle: r["sourceTitle"]?.stringValue ?? "",
+                sourceKind: r["sourceKind"]?.stringValue.flatMap(SourceKind.init(rawValue:)) ?? .rss,
+                itemAuthor: r["itemAuthor"]?.stringValue, itemPublishedAt: r["itemPublishedAt"]?.dateValue,
+                thumbnailUrl: r["thumbnailUrl"]?.stringValue, videoId: r["videoId"]?.stringValue,
+                audioUrl: r["audioUrl"]?.stringValue, openedAt: r["openedAt"]?.dateValue, readAt: r["readAt"]?.dateValue,
+                positionSec: r["positionSec"]?.intValue.map(Double.init), durationSec: r["durationSec"]?.intValue.map(Double.init))
+            if try Queries.historyEntry(db, sourceFeedUrl: feedUrl, itemGuid: guid) != incoming {
+                try incoming.save(db)
+                result.historyChanged = true
+            }
+            return true
+
         case .settings:
             guard let json = r["json"]?.stringValue else { return false }
             if try Queries.meta(db, MetaKey.syncedSettings) != json {
@@ -416,6 +461,14 @@ public enum SyncStore {
             if d.name.hasPrefix(SyncRecord.highlightPrefix),
                try Highlight.deleteOne(db, key: String(d.name.dropFirst(SyncRecord.highlightPrefix.count))) {
                 result.highlightsChanged = true
+            }
+        case .history:
+            // Removed from History (or marked unread) elsewhere.
+            if d.name.hasPrefix(SyncRecord.historyPrefix) {
+                for e in try HistoryEntry.fetchAll(db) where SyncRecord.historyName(sourceFeedUrl: e.sourceFeedUrl, itemGuid: e.itemGuid) == d.name {
+                    try e.delete(db)
+                    result.historyChanged = true
+                }
             }
         case .settings:
             // Keep this device's settings; the next diff uploads them again.

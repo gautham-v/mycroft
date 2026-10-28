@@ -4,15 +4,21 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The list column: the Highlights view when it is showing, else the item list. The Highlights view is
-/// a navigation state of AppModel (`showsHighlights`), so it needs no item query of its own.
+/// The list column: the Highlights or History view when one is showing, else the item list. Both are
+/// navigation states of AppModel (`showsHighlights`, `showsHistory`), so they need no item query of their own.
 /// `isPhoneHome` marks the iPhone stack's home list (PhoneRoot).
 struct FeedColumn: View {
     @Environment(AppModel.self) private var model
     var isPhoneHome = false
 
     var body: some View {
-        if model.showsHighlights { HighlightsListView() } else { ItemListView(isPhoneHome: isPhoneHome) }
+        if model.showsHighlights {
+            HighlightsListView()
+        } else if model.showsHistory {
+            HistoryListView()
+        } else {
+            ItemListView(isPhoneHome: isPhoneHome)
+        }
     }
 }
 

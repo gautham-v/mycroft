@@ -50,6 +50,10 @@ final class FeedKeyHandler {
                 model.navigate(view: view)
                 return true
             }
+            if key == .char("h") {
+                model.showHistory()
+                return true
+            }
             return false
         }
         gAt = nil
@@ -64,6 +68,8 @@ final class FeedKeyHandler {
             openURL(url)
         case .char("s"):
             Task { await model.toggleSavedOnSelection() }
+        case .char("m"):
+            model.toggleReadOnSelection()
         case .char("r"):
             if !model.isRefreshing { Task { await model.refresh(force: true) } }
         case .char("/"):
@@ -136,7 +142,7 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
     }
 
     #if os(iOS)
-    private static let characterKeys: [Character] = ["j", "k", "o", "s", "r", "/", "?", "g", "a", "v", "p"]
+    private static let characterKeys: [Character] = ["j", "k", "o", "s", "m", "r", "/", "?", "g", "a", "v", "p", "h"]
 
     /// Invisible buttons that register UIKeyCommands; text fields keep priority for plain keys.
     private var iPadShortcutButtons: some View {

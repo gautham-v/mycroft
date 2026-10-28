@@ -18,13 +18,15 @@ struct ReaderPodcastPlayer: View {
 
     @State private var player: ReaderPodcastPlayback
     @Environment(\.displayScale) private var displayScale
+    @Environment(AppModel.self) private var model
 
-    init(item: FeedItem, art: String?, wide: Bool) {
+    /// `resumeAt`: where History says playback got to, for an episode this device never played.
+    init(item: FeedItem, art: String?, wide: Bool, resumeAt: Double? = nil) {
         self.item = item
         self.art = art
         self.wide = wide
         _player = State(initialValue: ReaderPodcastPlayback(itemID: item.id, audioURL: item.item.audioUrl,
-                                                            knownDuration: item.item.durationSec))
+                                                            knownDuration: item.item.durationSec, resumeAt: resumeAt))
     }
 
     var body: some View {
@@ -44,7 +46,12 @@ struct ReaderPodcastPlayer: View {
         .padding(12)
         .background(Color.ofGround, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.ofHairline))
-        .onAppear { player.setNowPlayingInfo(title: item.item.title, show: item.source.title, art: art) }
+        .onAppear {
+            player.setNowPlayingInfo(title: item.item.title, show: item.source.title, art: art)
+            player.onProgress = { [history = model.history, item] position, duration, force in
+                history.recordProgress(item, position: position, duration: duration, force: force)
+            }
+        }
         .onChange(of: art) { _, art in player.setNowPlayingInfo(title: item.item.title, show: item.source.title, art: art) }
         .onDisappear { player.teardown() }
     }
@@ -183,12 +190,16 @@ final class ReaderPodcastPlayback {
     @ObservationIgnored private var lastSave = Date.distantPast
     @ObservationIgnored private var resumeAfterInterruption = false
     @ObservationIgnored private var nowPlaying = NowPlayingMeta()
+    /// History: (position, length, write now) whenever the position is saved, and at the end.
+    @ObservationIgnored var onProgress: ((Double, Double, Bool) -> Void)?
 
-    init(itemID: Int64, audioURL: String?, knownDuration: Int?) {
+    /// `resumeAt`: History's position (another device's, say) when this device saved none.
+    init(itemID: Int64, audioURL: String?, knownDuration: Int?, resumeAt: Double? = nil) {
         self.itemID = itemID
         self.audioURL = audioURL.flatMap { URL(string: $0) }
         duration = Double(knownDuration ?? 0)
-        let saved = Self.savedPosition(itemID)
+        let local = Self.savedPosition(itemID)
+        let saved = local > 0 ? local : resumeAt ?? 0
         if saved > 0 && (duration <= 0 || saved < duration - 5) { currentTime = saved }
     }
 
@@ -471,7 +482,7 @@ final class ReaderPodcastPlayback {
             duration = d
             updateNowPlaying()
         }
-        if Date().timeIntervalSince(lastSave) >= Self.saveEvery { savePosition() }
+        if Date().timeIntervalSince(lastSave) >= Self.saveEvery { savePosition(periodic: true) }
     }
 
     private func didEnd() {
@@ -480,15 +491,18 @@ final class ReaderPodcastPlayback {
         currentTime = 0
         player?.pause()
         player?.seek(to: .zero)
+        onProgress?(duration, duration, true)
         UserDefaults.standard.removeObject(forKey: Self.positionKey(itemID))
         lastSave = Date()
         Self.log.notice("ended item=\(self.itemID)")
         updateNowPlaying()
     }
 
-    private func savePosition() {
+    /// `periodic`: the save every few seconds while playing, rather than a pause, seek or leaving.
+    private func savePosition(periodic: Bool = false) {
         lastSave = Date()
         guard currentTime > 0 else { return }
+        onProgress?(currentTime, duration, !periodic)
         if duration > 0 && currentTime >= duration - 1 { return }
         UserDefaults.standard.set(floor(currentTime), forKey: Self.positionKey(itemID))
     }

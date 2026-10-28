@@ -14,6 +14,27 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
     /// A highlight with its note and enough about the article to show it without the item. Named by the
     /// highlight's id; sent only when CloudKit's Production schema has the type (see CloudSync).
     case highlight = "Highlight"
+    /// An article's read state and History entry, with enough about it to list and reopen it. Named by the
+    /// article; like Highlight, sent only when the Production schema has the type.
+    case history = "History"
+
+    /// Types added after the first release, which CloudKit's Production schema may not have yet: each is
+    /// sent in batches of its own and held back while CloudKit refuses it (see CloudSync).
+    static let late: [SyncRecordType] = [.highlight, .history]
+
+    /// Record name prefix of a late type, so a pending change can be told apart by its name.
+    var namePrefix: String? {
+        switch self {
+        case .highlight: SyncRecord.highlightPrefix
+        case .history: SyncRecord.historyPrefix
+        default: nil
+        }
+    }
+
+    /// The late type a record name belongs to, if any.
+    static func lateType(ofName name: String) -> SyncRecordType? {
+        late.first { $0.namePrefix.map(name.hasPrefix) == true }
+    }
 
     /// Order incoming records are applied in: folders before the sources filed in them, sources
     /// before the saved items that belong to them.
@@ -25,6 +46,7 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         case .source: 3
         case .savedItem: 4
         case .highlight: 5
+        case .history: 6
         }
     }
 
@@ -48,6 +70,12 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
             "prefix": .string, "suffix": .string, "note": .string, "color": .string, "createdAt": .date,
             "updatedAt": .date, "readwiseId": .int,
         ]
+        case .history: [
+            "sourceFeedUrl": .string, "itemGuid": .string, "itemUrl": .string, "itemTitle": .string,
+            "sourceTitle": .string, "sourceKind": .string, "itemAuthor": .string, "itemPublishedAt": .date,
+            "thumbnailUrl": .string, "videoId": .string, "audioUrl": .string, "openedAt": .date, "readAt": .date,
+            "positionSec": .int, "durationSec": .int, "progressPct": .int,
+        ]
         case .settings: ["json": .string]
         // hasReadwiseToken tells a cleared token apart from one that didn't decrypt.
         case .integrations: ["webhookURL": .string, "readwiseToken": .secret, "hasReadwiseToken": .bool]
@@ -66,6 +94,9 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         // What the user edits, plus readwiseId so every device knows which Readwise highlight this is.
         // The article snapshot (title, source, URL) is fixed when the highlight is made.
         case .highlight: ["text", "prefix", "suffix", "note", "color", "updatedAt", "readwiseId"]
+        // Opening, reading and playback in 5% steps; the position itself rides along with them, so playing a
+        // video isn't an upload every few seconds.
+        case .history: ["openedAt", "readAt", "progressPct"]
         case .settings: ["json"]
         case .integrations: ["webhookURL", "readwiseToken"]
         }
@@ -163,6 +194,12 @@ public struct SyncRecord: Sendable, Hashable {
 
     public static func highlightName(id: String) -> String {
         highlightPrefix + id
+    }
+
+    static let historyPrefix = "history-"
+
+    public static func historyName(sourceFeedUrl: String, itemGuid: String) -> String {
+        historyPrefix + hex(sourceFeedUrl + "\n" + itemGuid)
     }
 
     public static let settingsName = "settings"

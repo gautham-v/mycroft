@@ -126,3 +126,31 @@ DEFINE SCHEMA
         GRANT CREATE TO "_icloud",
         GRANT READ TO "_world"
     );
+
+    RECORD TYPE History (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        "sourceFeedUrl"   STRING,
+        "itemGuid"        STRING,
+        "itemUrl"         STRING,
+        "itemTitle"       STRING,
+        "sourceTitle"     STRING,
+        "sourceKind"      STRING,
+        "itemAuthor"      STRING,
+        "itemPublishedAt" TIMESTAMP,
+        "thumbnailUrl"    STRING,
+        "videoId"         STRING,
+        "audioUrl"        STRING,
+        "openedAt"        TIMESTAMP,
+        "readAt"          TIMESTAMP,
+        "positionSec"     INT64,
+        "durationSec"     INT64,
+        "progressPct"     INT64,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );

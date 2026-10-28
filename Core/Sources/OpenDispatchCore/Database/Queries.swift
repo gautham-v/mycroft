@@ -59,6 +59,13 @@ public enum Queries {
             c.append(cols.map { SQL("\($0) LIKE \(pat) ESCAPE '\\'").sqlExpression }.joined(operator: .or))
         }
         if let since = q.since { c.append(Item.Columns.publishedAt >= since) }
+        // Hide Read Items: what was read before the list loaded; what's read while it shows stays until the next load.
+        if let before = q.hideReadBefore {
+            c.append(SQL("""
+                NOT EXISTS (SELECT 1 FROM history h WHERE h.source_feed_url = \(src[Source.Columns.feedUrl])
+                  AND h.item_guid = \(Item.Columns.guid) AND h.read_at IS NOT NULL AND h.read_at < \(before))
+                """).sqlExpression)
+        }
         if let cur = q.cursor {
             c.append(Item.Columns.publishedAt < cur.publishedAt
                 || (Item.Columns.publishedAt == cur.publishedAt && Item.Columns.id < cur.id))
@@ -233,7 +240,9 @@ public enum Queries {
                 SELECT 1 FROM highlights h JOIN sources s ON s.feed_url = h.source_feed_url
                 WHERE s.id = items.source_id AND h.item_guid = items.guid)
             """, arguments: StatementArguments(OpenedLinks.feedURLs) + [cutoff])
-        return db.changesCount
+        let removed = db.changesCount
+        try pruneReadMarks(db)
+        return removed
     }
 
     // MARK: Sources

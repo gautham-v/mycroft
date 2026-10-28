@@ -26,6 +26,7 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["k", "↑"], label: "Previous item", separator: "or"),
             ShortcutEntry(keys: ["o", "Enter"], label: "Open original in the browser", separator: "or"),
             ShortcutEntry(keys: ["s"], label: "Save or unsave"),
+            ShortcutEntry(keys: ["m"], label: "Mark as read or unread"),
             ShortcutEntry(keys: ["⇧", "⌘", "R"], label: "Reload the article"),
             ShortcutEntry(keys: ["⇧", "⌘", "C"], label: "Copy the article as Markdown"),
             ShortcutEntry(keys: ["⇧", "⌘", "L"], label: "Listen to the article, pause or resume"),
@@ -37,6 +38,7 @@ struct ShortcutsView: View {
             ShortcutEntry(keys: ["g", "s"], label: "Saved", separator: "then"),
             ShortcutEntry(keys: ["g", "v"], label: "Video", separator: "then"),
             ShortcutEntry(keys: ["g", "p"], label: "Podcasts", separator: "then"),
+            ShortcutEntry(keys: ["g", "h"], label: "History", separator: "then"),
         ]),
         ShortcutGroup(title: "Tabs and split view", items: [
             ShortcutEntry(keys: ["⌘", "click"], label: "Open in a new tab"),

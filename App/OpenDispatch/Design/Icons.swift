@@ -68,6 +68,8 @@ enum OFIcon: String, CaseIterable {
     case quoted = "arrow.turn.down.right"
     /// Highlights & Notes (reader bar, sidebar row)
     case highlighter = "highlighter"
+    /// History
+    case history = "clock"
     /// A highlight's note (its popover)
     case note = "note.text"
     /// Remove a highlight (its popover)

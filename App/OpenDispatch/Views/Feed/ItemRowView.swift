@@ -25,6 +25,14 @@ struct ItemRowView: View, Equatable {
     var isHovered = false
     /// iPhone: the roomier headline-first layout (`phoneRow`).
     var isPhone = false
+    /// Read (HistoryStore): the title goes grey (and on iPhone loses its weight), the art and badge fade.
+    var isRead = false
+    /// A video or episode in progress: how far, drawn as a line along the bottom of the thumbnail.
+    var progress: Double?
+    /// Replaces the relative publish time in the meta line (History shows when it was opened).
+    var timeText: String?
+
+    private var titleColor: Color { isRead ? .ofRead : .ofInk }
 
     var body: some View {
         Group {
@@ -65,10 +73,10 @@ struct ItemRowView: View, Equatable {
                     .font(OFFont.itemTitle)
                     .tracking(-0.07)
                     .lineSpacing(2)
-                    .foregroundStyle(.ofInk)
+                    .foregroundStyle(titleColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                ItemThumbnail(item: item)
+                thumbnail(.compact)
             }
         }
     }
@@ -82,7 +90,7 @@ struct ItemRowView: View, Equatable {
                     Text(item.item.title)
                         .font(OFFont.ui(14.5))
                         .lineSpacing(2.5)
-                        .foregroundStyle(.ofInk)
+                        .foregroundStyle(titleColor)
                         .lineLimit(2)
                     if !isPhone, let snippet {
                         if let quote = QuoteLine.parse(snippet, avatar: item.item.quoteAvatarUrl) {
@@ -96,7 +104,7 @@ struct ItemRowView: View, Equatable {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                ItemThumbnail(item: item)
+                thumbnail(.compact)
             }
         }
     }
@@ -107,10 +115,10 @@ struct ItemRowView: View, Equatable {
         let (name, handle) = isPost ? TextFormat.splitHandle(item.item.author) : ("", nil)
         let text = VStack(alignment: .leading, spacing: 8) {
             Text(item.item.title)
-                .font(isPost ? OFFont.phonePostText : OFFont.phoneItemTitle)
+                .font(isPost || isRead ? OFFont.phonePostText : OFFont.phoneItemTitle)
                 .tracking(isPost ? -0.2 : -0.3)
                 .lineSpacing(2)
-                .foregroundStyle(.ofInk)
+                .foregroundStyle(titleColor)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
@@ -118,21 +126,27 @@ struct ItemRowView: View, Equatable {
         .frame(maxWidth: .infinity, alignment: .leading)
         if !isPost && item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false {
             VStack(alignment: .leading, spacing: 12) {
-                ItemThumbnail(item: item, style: .wide)
+                thumbnail(.wide)
                 text
             }
         } else {
             HStack(alignment: .top, spacing: 14) {
                 text
-                ItemThumbnail(item: item, style: .square)
+                thumbnail(.square)
             }
         }
+    }
+
+    private func thumbnail(_ style: ItemThumbnail.Style) -> some View {
+        ItemThumbnail(item: item, style: style, progress: progress)
+            .opacity(isRead ? 0.55 : 1)
     }
 
     /// Badge, then the source (or author) and the rest, all muted, truncated on one line.
     private func metaLine(name: String, handle: String?) -> some View {
         HStack(spacing: 6) {
             SourceBadge(host: item.source.host, title: item.source.title, size: Metrics.rowBadge)
+                .opacity(isRead ? 0.6 : 1)
             metaText(name: name, handle: handle)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -147,7 +161,7 @@ struct ItemRowView: View, Equatable {
     }
 
     private func metaText(name: String, handle: String?) -> Text {
-        let line = name + (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt)
+        let line = name + (handle.map { " @\($0)" } ?? "") + " · " + (timeText ?? RelativeTime.format(item.item.publishedAt))
         return Text(verbatim: line).font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
     }
 
@@ -162,6 +176,8 @@ struct ItemRowView: View, Equatable {
         if item.source.kind == .podcast { parts.append("Podcast episode") }
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
         if item.isSaved { parts.append("Saved") }
+        if isRead { parts.append(item.source.kind == .youtube ? "Watched" : "Read") }
+        if let progress { parts.append("\(Int(progress * 100))% played") }
         if isOpenInTab { parts.append("Open in a tab") }
         return parts.joined(separator: ", ")
     }
@@ -228,7 +244,11 @@ struct ItemThumbnail: View {
 
     let item: FeedItem
     var style: Style = .compact
+    /// A video or episode in progress (0...1): a line along the bottom edge.
+    var progress: Double?
     @Environment(\.displayScale) private var displayScale
+
+    private var progressHeight: CGFloat { isWide ? 4 : 3 }
 
     private var isPodcast: Bool { item.source.kind == .podcast }
     private var isVideo: Bool { item.source.kind == .youtube }
@@ -302,6 +322,18 @@ struct ItemThumbnail: View {
                     .accessibilityLabel("Podcast episode")
             }
         }
+        .overlay(alignment: .bottom) {
+            if let progress {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(Color.black.opacity(0.4))
+                        Rectangle().fill(Color.white).frame(width: geo.size.width * min(max(progress, 0), 1))
+                    }
+                }
+                .frame(height: progressHeight)
+                .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if (isVideo || isPodcast), let dur = TextFormat.duration(item.item.durationSec) {
                 Text(dur)
@@ -311,6 +343,7 @@ struct ItemThumbnail: View {
                     .frame(height: isWide ? 20 : 14)
                     .background(Color.black.opacity(0.75), in: RoundedRectangle(cornerRadius: isWide ? 6 : 4, style: .continuous))
                     .padding(isWide ? 8 : 2)
+                    .padding(.bottom, progress != nil ? progressHeight : 0)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))

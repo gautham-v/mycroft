@@ -31,14 +31,14 @@ public enum CloudSyncEvent: Sendable {
 ///     let sync = CloudSync(database: db) { event in await model.handle(event) }
 ///     await sync.setEnabled(true)
 ///
-/// Local writes are noticed by watching the synced tables (sources, folders, items, meta, highlights) and
+/// Local writes are noticed by watching the synced tables (sources, folders, items, meta, highlights, history) and
 /// diffing a moment later, so nothing else in the app has to call into sync.
 ///
-/// Highlights are a record type added after the first release, and CloudKit's Production schema only has
-/// the types that were deployed to it. Until Highlight is deployed, saving one fails; that must not hold
-/// up the other types, so Highlight records are sent in batches of their own and, when one is rejected,
-/// the whole type is held back for a while (`typeHold`). They stay in the local database, are never
-/// shadowed, and go up on the first send after the schema is deployed.
+/// Highlight and History are record types added after the first release (`SyncRecordType.late`), and
+/// CloudKit's Production schema only has the types that were deployed to it. Until one is deployed, saving
+/// it fails; that must not hold up the other types, so each late type is sent in batches of its own and,
+/// when one is rejected, the whole type is held back for a while (`typeHold`). Its records stay in the
+/// local database, are never shadowed, and go up on the first send after the schema is deployed.
 public actor CloudSync: CKSyncEngineDelegate {
     public static let containerIdentifier = "iCloud.com.gauthamv.openfeed"
     static let zoneID = CKRecordZone.ID(zoneName: "OpenDispatch", ownerName: CKCurrentUserDefaultName)
@@ -164,7 +164,7 @@ public actor CloudSync: CKSyncEngineDelegate {
 
     /// Diff a moment after any write to a synced table; a refresh's burst of item writes collapses into one.
     private func observeLocalChanges() {
-        let observation = DatabaseRegionObservation(tracking: Table("sources"), Table("folders"), Table("items"), Table("meta"), Table("highlights"))
+        let observation = DatabaseRegionObservation(tracking: Table("sources"), Table("folders"), Table("items"), Table("meta"), Table("highlights"), Table("history"))
         observer = observation.start(in: database.writer, onError: { _ in }, onChange: { [weak self] _ in
             Task { await self?.scheduleDiff() }
         })
@@ -227,10 +227,9 @@ public actor CloudSync: CKSyncEngineDelegate {
         let now = Date()
         backoff = backoff.filter { $0.value > now }
         typeHold = typeHold.filter { $0.value > now }
-        let heldHighlights = typeHold[.highlight] != nil
-        if heldHighlights {
-            changes.saves.removeAll { $0.hasPrefix(SyncRecord.highlightPrefix) }
-            changes.deletes.removeAll { $0.hasPrefix(SyncRecord.highlightPrefix) }
+        for (type, _) in typeHold {
+            changes.saves.removeAll { SyncRecordType.lateType(ofName: $0) == type }
+            changes.deletes.removeAll { SyncRecordType.lateType(ofName: $0) == type }
         }
         // An unreadable Keychain (locked during a background wake) is not a removed token.
         let skip = tokenReadable ? Set(backoff.keys) : Set(backoff.keys).union([SyncRecord.integrationsName])
@@ -312,17 +311,21 @@ public actor CloudSync: CKSyncEngineDelegate {
         let (token, tokenReadable) = readToken()
         let integrations = Self.recordID(SyncRecord.integrationsName)
         let now = Date()
-        let highlightsHeld = (typeHold[.highlight] ?? .distantPast) > now
+        let held = Set(typeHold.filter { $0.value > now }.keys)
         var changes = syncEngine.state.pendingRecordZoneChanges.filter {
             context.options.scope.contains($0)
                 && (tokenReadable || ($0 != .saveRecord(integrations) && $0 != .deleteRecord(integrations)))
-                && !(Self.isHighlight($0) && highlightsHeld)
+                && !(Self.lateType($0).map(held.contains) ?? false)
                 && (backoff[Self.recordName($0)] ?? .distantPast) <= now
         }
-        // Highlights go in a batch of their own, after everything else: one CloudKit rejects (type not
+        // Each late type goes in a batch of its own, after everything else: one CloudKit rejects (type not
         // deployed) can't take the other records of its batch down with it.
-        let others = changes.filter { !Self.isHighlight($0) }
-        if !others.isEmpty { changes = others }
+        let others = changes.filter { Self.lateType($0) == nil }
+        if !others.isEmpty {
+            changes = others
+        } else if let first = changes.first.flatMap(Self.lateType) {
+            changes = changes.filter { Self.lateType($0) == first }
+        }
         guard !changes.isEmpty else { return nil }
         guard let (local, shadows) = try? await database.reader.read({ db in
             (try SyncStore.localRecords(db, readwiseToken: token), try SyncStore.shadows(db))
@@ -430,9 +433,9 @@ public actor CloudSync: CKSyncEngineDelegate {
             default:
                 // Retrying as is won't help; the diff after each send would otherwise queue it again at once.
                 backoff[id.recordName] = holdUntil
-                if failure.record.recordType == SyncRecordType.highlight.rawValue {
-                    // Most likely the Highlight type isn't in the Production schema yet: hold all of them.
-                    typeHold[.highlight] = Date().addingTimeInterval(30 * 60)
+                if let type = SyncRecordType(rawValue: failure.record.recordType), SyncRecordType.late.contains(type) {
+                    // Most likely the type isn't in the Production schema yet: hold all of them.
+                    typeHold[type] = Date().addingTimeInterval(30 * 60)
                 }
                 log.error("save \(id.recordName) failed: \(failure.error.localizedDescription)")
             }
@@ -453,8 +456,8 @@ public actor CloudSync: CKSyncEngineDelegate {
         scheduleDiff()
     }
 
-    private static func isHighlight(_ change: CKSyncEngine.PendingRecordZoneChange) -> Bool {
-        recordName(change).hasPrefix(SyncRecord.highlightPrefix)
+    private static func lateType(_ change: CKSyncEngine.PendingRecordZoneChange) -> SyncRecordType? {
+        SyncRecordType.lateType(ofName: recordName(change))
     }
 
     private static func recordName(_ change: CKSyncEngine.PendingRecordZoneChange) -> String {

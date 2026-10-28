@@ -101,8 +101,17 @@ struct OpenDispatchCommands: Commands {
                 switch item {
                 case .view(let view): Button(view.title) { model.navigate(view: view) }
                 case .highlights: Button("Highlights") { model.showHighlights() }
+                case .history: Button("History") { model.showHistory() }
                 }
             }
+            Divider()
+            Button(model.selectedItem.map { HistoryStore.markLabel(kind: $0.source.kind, isRead: model.history.isRead($0)) } ?? "Mark as Read") {
+                model.toggleReadOnSelection()
+            }
+            .disabled(model.selectedItem == nil)
+            Button("Mark All as Read") { model.markAllRead() }
+                .disabled(model.showsHighlights || model.showsHistory || model.items.isEmpty)
+            Toggle("Hide Read Items", isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() }))
         }
         CommandGroup(replacing: .saveItem) {
             Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { closeTabOrWindow() }

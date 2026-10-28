@@ -98,9 +98,9 @@ extension AppModel {
         }
     }
 
-    /// Where the list sits among `phonePages`; nil when it shows a folder, a source, Saved or Highlights.
+    /// Where the list sits among `phonePages`; nil when it shows a folder, a source, Saved, Highlights or History.
     var phonePageIndex: Int? {
-        guard !isInSourceFeed, !showsHighlights else { return nil }
+        guard !isInSourceFeed, !showsHighlights, !showsHistory else { return nil }
         return phonePages.firstIndex(of: selectedView)
     }
 }
@@ -787,12 +787,12 @@ private struct PhoneDrawer: View {
     /// Room under the last row for the bubble and pill floating at the bottom.
     private static let listBottomInset: CGFloat = 130
 
-    /// The sidebar's rows in its order (`SidebarViewItem.ordered`), less the ones hidden in Settings. Saved and
-    /// Highlights stay: the drawer is the only way to them on iPhone.
+    /// The sidebar's rows in its order (`SidebarViewItem.ordered`), less the ones hidden in Settings. Saved,
+    /// Highlights and History stay: the drawer is the only way to them on iPhone.
     @ViewBuilder private var viewRows: some View {
         ForEach(SidebarViewItem.ordered.filter { item in
             switch item {
-            case .view(.saved), .highlights: true
+            case .view(.saved), .highlights, .history: true
             default: !model.isSidebarViewHidden(item)
             }
         }) { item in
@@ -802,11 +802,15 @@ private struct PhoneDrawer: View {
                     icon: Self.icon(view),
                     title: view.title,
                     subtitle: view == .all ? "Everything from your \(sourceCount) \(sourceCount == 1 ? "source" : "sources")" : nil,
-                    isCurrent: model.selectedView == view && !model.isInSourceFeed && !model.showsHighlights
+                    isCurrent: model.selectedView == view && !model.isInSourceFeed && !model.showsHighlights && !model.showsHistory
                 ) { pick { model.navigate(view: view) } }
             case .highlights:
                 DrawerRow(icon: "ph.highlights", title: "Highlights", isCurrent: model.showsHighlights) {
                     pick { model.showHighlights() }
+                }
+            case .history:
+                DrawerRow(icon: "ph.history", title: "History", isCurrent: model.showsHistory) {
+                    pick { model.showHistory() }
                 }
             }
         }

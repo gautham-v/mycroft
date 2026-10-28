@@ -127,6 +127,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var speechRate: Float = 1
     /// Send highlights and notes made on this device to Readwise (when a token is set).
     var sendHighlightsToReadwise: Bool = true
+    /// Leave read items out of the lists (not Saved or searches); they stay in History.
+    var hideReadItems: Bool = false
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -160,6 +162,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1
         speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
         sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
+        hideReadItems = (try? c.decode(Bool.self, forKey: .hideReadItems)) ?? false
     }
 
     init() {}

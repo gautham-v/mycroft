@@ -156,7 +156,18 @@ struct ItemListView: View {
         return ScrollViewReader { proxy in
             List {
                 #if os(iOS)
-                if isPhone { PhoneTitleRow() }
+                if isPhone {
+                    // Press and hold the title for the list's read actions (the Mac has them in the title menu).
+                    PhoneTitleRow()
+                        .contextMenu {
+                            Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
+                                .disabled(items.isEmpty)
+                            Toggle(isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() })) {
+                                Label("Hide Read Items", systemImage: "eye.slash")
+                            }
+                        }
+                        .tint(Color.ofInk)
+                }
                 #endif
                 if items.isEmpty { ListStateRows() }
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -207,11 +218,12 @@ struct ItemListView: View {
     }
 
     private func row(_ item: FeedItem, previousID: Int64?) -> some View {
-        RowMarks(id: item.id, previousID: previousID) { marks in
+        RowMarks(item: item, previousID: previousID) { marks in
             HoverTracking(hover: hover, id: item.id, previousID: previousID) { hovered, previousHovered in
                 Button(action: { open(item) }) {
                     ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
-                                isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone)
+                                isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
+                                isRead: marks.read, progress: marks.progress)
                         .equatable()
                 }
                 .buttonStyle(.plain)
@@ -384,13 +396,17 @@ private struct RowMarkState {
     var openInTab: Bool
     /// The hairline above the row (hidden around the selected and secondary rows).
     var divider: Bool
+    /// Read (History), and a video or episode's progress.
+    var read: Bool
+    var progress: Double?
 }
 
 /// A row's selection-dependent part, read per row so moving the selection re-evaluates the rows on
 /// screen instead of the whole list (like `HoverTracking` for hover).
 private struct RowMarks<Content: View>: View {
-    let id: Int64
+    let item: FeedItem
     let previousID: Int64?
+    private var id: Int64 { item.id }
     @ViewBuilder let content: (RowMarkState) -> Content
     @Environment(AppModel.self) private var model
 
@@ -399,11 +415,14 @@ private struct RowMarks<Content: View>: View {
         let secondaryID = model.secondaryHighlightedItemID
         let selected = id == highlighted
         let secondary = id == secondaryID
+        let entry = model.history.entry(for: item)
         content(RowMarkState(
             selected: selected,
             secondary: secondary,
             openInTab: !selected && !secondary && model.openItemIDs.contains(id),
-            divider: previousID != nil && !selected && !secondary && previousID != highlighted && previousID != secondaryID))
+            divider: previousID != nil && !selected && !secondary && previousID != highlighted && previousID != secondaryID,
+            read: entry?.isRead ?? false,
+            progress: entry?.progress))
     }
 }
 
@@ -456,6 +475,10 @@ private struct RowMenu: View {
         Button(item.isSaved ? "Remove from Saved" : "Save", systemImage: item.isSaved ? "bookmark.slash" : "bookmark") {
             Task { await model.toggleSaved(item) }
         }
+        let read = model.history.isRead(item)
+        Button(HistoryStore.markLabel(kind: item.source.kind, isRead: read), systemImage: read ? "circle" : "checkmark.circle") {
+            model.toggleRead(item)
+        }
         if let url {
             ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {
                 Label("Share…", systemImage: "square.and.arrow.up")
@@ -495,6 +518,7 @@ private struct RowMenu: View {
         }
         Divider()
         Button(item.isSaved ? "Remove from Saved" : "Save") { Task { await model.toggleSaved(item) } }
+        Button(HistoryStore.markLabel(kind: item.source.kind, isRead: model.history.isRead(item))) { model.toggleRead(item) }
         if let url {
             Menu("Share") {
                 ShareLink(item: url, subject: Text(item.item.title), message: Text(item.item.title)) {

@@ -64,6 +64,8 @@ extension Color {
     static let ofMuted = Color(light: 0x5E5E63, dark: 0xB4B4B4)
     /// Tertiary text, placeholder icons.
     static let ofFaint = Color(light: 0xAEAEB2, dark: 0x636366)
+    /// Titles of items already read: quieter than ink, still readable.
+    static let ofRead = Color(light: 0x8E8E93, dark: 0x8A8A8E)
     /// Control borders.
     static let ofBorder = Color(light: 0xD2D2D7, dark: 0x454545)
     /// Dividers between rows and sections (warmer on iOS, to match its ground).
@@ -109,6 +111,7 @@ extension ShapeStyle where Self == Color {
     static var ofBody: Color { Color.ofBody }
     static var ofMuted: Color { Color.ofMuted }
     static var ofFaint: Color { Color.ofFaint }
+    static var ofRead: Color { Color.ofRead }
     static var ofBorder: Color { Color.ofBorder }
     static var ofHairline: Color { Color.ofHairline }
     static var ofScroller: Color { Color.ofScroller }
