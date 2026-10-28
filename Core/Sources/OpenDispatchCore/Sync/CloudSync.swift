@@ -155,7 +155,7 @@ public actor CloudSync: CKSyncEngineDelegate {
     }
 
     private func makeEngine(container: CKContainer) {
-        let saved = try? database.writer.read { db in try SyncStore.syncMeta(db, SyncStore.Key.engineState) }
+        let saved = try? database.writer.write { db in try SyncStore.engineStateToRestore(db) }
         let state = saved.flatMap { try? JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: Data($0.utf8)) }
         engine = CKSyncEngine(CKSyncEngine.Configuration(database: container.privateCloudDatabase, stateSerialization: state, delegate: self))
         generation += 1

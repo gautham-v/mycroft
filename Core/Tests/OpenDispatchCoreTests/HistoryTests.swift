@@ -126,3 +126,17 @@ struct HistoryTests {
         #expect(back.source.feedUrl == item.source.feedUrl)
     }
 }
+
+@Suite("Sync engine state")
+struct SyncEngineStateTests {
+    @Test func newRecordTypesRefetchTheZone() async throws {
+        let db = try Fixture.db()
+        // State saved by a build that didn't record its types (or knew fewer): fetch everything again.
+        try await db.writer.write { d in try SyncStore.setSyncMeta(d, SyncStore.Key.engineState, "{}") }
+        #expect(try await db.writer.write { d in try SyncStore.engineStateToRestore(d) } == nil)
+        // From then on the saved state is kept.
+        #expect(try await db.writer.write { d in try SyncStore.engineStateToRestore(d) } == "{}")
+        try await db.writer.write { d in try SyncStore.setSyncMeta(d, SyncStore.Key.knownTypes, "Folder,Source") }
+        #expect(try await db.writer.write { d in try SyncStore.engineStateToRestore(d) } == nil)
+    }
+}

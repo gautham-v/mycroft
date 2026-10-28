@@ -31,6 +31,9 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         }
     }
 
+    /// Every type this build syncs, as stored with the engine state (SyncStore.engineStateToRestore).
+    static let signature = allCases.map(\.rawValue).sorted().joined(separator: ",")
+
     /// The late type a record name belongs to, if any.
     static func lateType(ofName name: String) -> SyncRecordType? {
         late.first { $0.namePrefix.map(name.hasPrefix) == true }

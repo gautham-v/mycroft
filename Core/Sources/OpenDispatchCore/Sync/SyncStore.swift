@@ -551,5 +551,19 @@ public enum SyncStore {
         public static let engineState = "engine_state"
         /// Set once this device has done its first fetch and merge; until then nothing is uploaded.
         public static let joined = "joined"
+        /// The record types this build understood when it saved `engineState` (`SyncRecordType.signature`).
+        public static let knownTypes = "known_types"
+    }
+
+    /// The saved CKSyncEngine state to start from, or nil to fetch the whole zone again. A build that didn't
+    /// know a record type skipped it while still moving its change token past it (an iPhone on an older
+    /// build fetching the History records a newer Mac sent), so when this build knows types the state was
+    /// saved without, the state is dropped and everything is fetched again; applying what's already here
+    /// changes nothing, and pending uploads come back from the next diff. Records the types it now knows.
+    public static func engineStateToRestore(_ db: Database) throws -> String? {
+        let saved = try syncMeta(db, Key.engineState)
+        let known = try syncMeta(db, Key.knownTypes)
+        try setSyncMeta(db, Key.knownTypes, SyncRecordType.signature)
+        return known == SyncRecordType.signature ? saved : nil
     }
 }
