@@ -51,12 +51,12 @@ enum PostNotifications {
     }
 }
 
-/// Shows banners while the app is open too, and opens the tapped post in the reader.
+/// No banner while the app is in front (the list already shows the post); opens a tapped post in the reader.
 final class PostNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     @MainActor weak var model: AppModel?
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        []
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
