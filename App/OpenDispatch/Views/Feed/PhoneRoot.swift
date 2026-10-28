@@ -1414,12 +1414,6 @@ private struct DrawerSourceRow: View {
                     .font(OFFont.ui(15.5))
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
-                if source.notifies {
-                    OFIcon.bell.image
-                        .font(.system(size: 11))
-                        .foregroundStyle(.ofMuted)
-                        .accessibilityLabel("Notifies on new posts")
-                }
                 Spacer(minLength: 8)
                 if let detail {
                     Text(detail)

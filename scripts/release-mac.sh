@@ -77,8 +77,15 @@ retry xcrun stapler staple $APP
 
 echo "== Building the DMG"
 DMG=$OUT/updates/OpenDispatch-$VERSION.dmg
-mkdir -p $OUT/dmg && ditto $APP $OUT/dmg/OpenDispatch.app && ln -s /Applications $OUT/dmg/Applications
-retry hdiutil create -volname OpenDispatch -srcfolder $OUT/dmg -ov -format UDZO $DMG -quiet
+# A writable image mounted at a folder of our own, not under /Volumes: some terminals may not write to
+# removable volumes (privacy settings), which fails `hdiutil create -srcfolder` with "Operation not permitted".
+RW=$OUT/dmg-rw.dmg MNT=$OUT/dmg-mount
+retry hdiutil create -size 200m -fs HFS+ -volname OpenDispatch -ov $RW -quiet
+mkdir -p $MNT && hdiutil attach -nobrowse -noautoopen -mountpoint $MNT $RW -quiet
+ditto $APP $MNT/OpenDispatch.app && ln -s /Applications $MNT/Applications
+retry hdiutil detach $MNT -quiet
+retry hdiutil convert $RW -format UDZO -ov -o $DMG -quiet
+rm -f $RW
 codesign --sign "$IDENTITY" --timestamp $DMG
 xcrun notarytool submit $DMG $NOTARY --wait
 retry xcrun stapler staple $DMG

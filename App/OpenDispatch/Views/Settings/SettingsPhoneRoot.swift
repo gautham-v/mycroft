@@ -47,6 +47,7 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
                 GroupedCard {
                     paneRow(.appearance, detail: model.settings.theme.label)
                     paneRow(.playback)
+                    paneRow(.notifications, detail: notificationsDetail)
                 }
                 GroupedCard {
                     paneRow(.integrations, detail: integrationsDetail)
@@ -118,6 +119,12 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+    }
+
+    /// How many sources notify on new posts, when any do.
+    private var notificationsDetail: String? {
+        let n = model.sources.filter(\.notifies).count
+        return n == 0 ? nil : "\(n)"
     }
 
     /// "Readwise" (or "Webhook") once a send target is set up.

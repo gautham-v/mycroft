@@ -10,6 +10,7 @@ extension SettingsTab {
         case .sources: OFIcon.folder.rawValue
         case .appearance: "textformat.size"
         case .playback: OFIcon.video.rawValue
+        case .notifications: OFIcon.bell.rawValue
         case .integrations: OFIcon.send.rawValue
         case .data: "internaldrive"
         case .about: "info.circle"
@@ -167,6 +168,8 @@ struct SettingsView: View {
             SettingsAppearancePane(onShowShortcuts: { isShortcutsShown = true })
         case .playback:
             SettingsPlaybackPane()
+        case .notifications:
+            SettingsNotificationsPane()
         case .integrations:
             SettingsIntegrationsPane()
         case .data:

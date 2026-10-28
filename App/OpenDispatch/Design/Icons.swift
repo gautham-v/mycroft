@@ -74,7 +74,7 @@ enum OFIcon: String, CaseIterable {
     case trash = "trash"
     /// The New Tab page's address field
     case globe = "globe"
-    /// A source that notifies on new posts (sidebar and drawer rows, its menu item)
+    /// Notify on New Posts (a source's menu, the Notifications settings pane)
     case bell = "bell"
     case bellOff = "bell.slash"
 

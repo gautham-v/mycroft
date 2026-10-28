@@ -1517,13 +1517,14 @@ final class AppModel {
 
 /// Settings panes: the web's four (settings-dialog.tsx) plus the native Data and About panes.
 enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case sources, appearance, playback, integrations, data, about
+    case sources, appearance, playback, notifications, integrations, data, about
     var id: String { rawValue }
     var label: String {
         switch self {
         case .sources: "Sources"
         case .appearance: "Appearance"
         case .playback: "Playback"
+        case .notifications: "Notifications"
         case .integrations: "Integrations"
         case .data: "Data"
         case .about: "About"

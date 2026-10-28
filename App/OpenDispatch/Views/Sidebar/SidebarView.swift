@@ -571,16 +571,6 @@ private struct SidebarSourceRow<MenuContent: View>: View {
                 .fixedSize()
                 .opacity(hovered ? 1 : 0)
                 .accessibilityLabel("Options for \(source.title)")
-                // Where "..." shows on hover.
-                .overlay {
-                    if source.notifies && !hovered {
-                        OFIcon.bell.image
-                            .font(.system(size: 10))
-                            .foregroundStyle(.ofMuted)
-                            .help("Notifies on new posts")
-                            .accessibilityLabel("Notifies on new posts")
-                    }
-                }
             }
         }
         .padding(.horizontal, SidebarStyle.rowPadding)
