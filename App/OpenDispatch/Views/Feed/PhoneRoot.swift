@@ -11,6 +11,13 @@ import UIKit
     var pageOffset: CGFloat = 0
     /// A view change is sliding out and in: swipes are ignored until it lands.
     var isPaging = false
+    /// The views on either side of the list, pinned when a swipe starts so the page sliding in beside the
+    /// list doesn't change under the finger when the view switches.
+    var previousPage: FeedView?
+    var nextPage: FeedView?
+    /// The first rows of the views beside the list, so the page sliding in shows them instead of an empty
+    /// screen.
+    var peekItems: [FeedView: [FeedItem]] = [:]
 }
 
 extension AppModel {
@@ -133,6 +140,28 @@ struct PhoneRoot: View {
         }
         .environment(\.phoneDrawer, PhoneDrawerControl(open: { open() }))
         .environment(chrome)
+        .task(id: PeekKey(index: model.phonePageIndex, pages: model.phonePages, firstID: model.items.first?.id)) {
+            await loadPeeks()
+        }
+    }
+
+    /// What the rows beside the list are loaded for: they reload on a view change and after a refresh
+    /// (which brings new rows to the top of the list too).
+    private struct PeekKey: Equatable {
+        let index: Int?
+        let pages: [FeedView]
+        let firstID: Int64?
+    }
+
+    /// Loads the first rows of the views on either side of the list (local queries).
+    private func loadPeeks() async {
+        guard let index = model.phonePageIndex else { return }
+        let pages = model.phonePages
+        for neighbor in [index - 1, index + 1] where pages.indices.contains(neighbor) {
+            let view = pages[neighbor]
+            guard let page = try? await model.database.items(ItemQuery(view: view, limit: PhonePagePeek.rows)) else { continue }
+            chrome.peekItems[view] = page.items
+        }
     }
 
     // MARK: Opening and closing
@@ -170,7 +199,11 @@ struct PhoneRoot: View {
         if isOpen { return velocity < 0 ? .drawer : nil }
         if startX < Self.edgeWidth, velocity > 0 { return .drawer }
         if let index = model.phonePageIndex, !model.isSearchOpen {
-            return index == 0 && velocity > 0 ? .drawer : .pager
+            if index == 0 && velocity > 0 { return .drawer }
+            let pages = model.phonePages
+            chrome.previousPage = index > 0 ? pages[index - 1] : nil
+            chrome.nextPage = index < pages.count - 1 ? pages[index + 1] : nil
+            return .pager
         }
         return velocity > 0 ? .drawer : nil
     }
@@ -210,23 +243,23 @@ struct PhoneRoot: View {
         }
     }
 
-    /// Slides the list out the way the finger went, switches view, and slides the new one in from the other
-    /// side.
+    /// Slides the list out the way the finger went, bringing the next view's page (`PhonePagePeek`) in
+    /// beside it, then switches the list to that view and puts it back in place under the page.
     private func page(to view: FeedView, forward: Bool, pageWidth: CGFloat) {
         let direction: CGFloat = forward ? 1 : -1
         chrome.isPaging = true
-        withAnimation(.easeIn(duration: 0.16)) { chrome.pageOffset = -direction * pageWidth }
+        withAnimation(.smooth(duration: 0.26)) { chrome.pageOffset = -direction * pageWidth }
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(170))
+            try? await Task.sleep(for: .milliseconds(270))
             model.navigate(view: view)
-            // Let the new view's first page land (it is a local query) so the rows slide in, not the old ones.
+            // Let the new view's first page land (it is a local query) and the list redraw at its top
+            // before it replaces the page that slid in, which shows the same rows.
             await Task.yield()
             for _ in 0..<15 where model.isLoading { try? await Task.sleep(for: .milliseconds(20)) }
+            try? await Task.sleep(for: .milliseconds(40))
             var jump = Transaction()
             jump.disablesAnimations = true
-            withTransaction(jump) { chrome.pageOffset = direction * pageWidth }
-            withAnimation(.smooth(duration: 0.3)) { chrome.pageOffset = 0 }
-            try? await Task.sleep(for: .milliseconds(300))
+            withTransaction(jump) { chrome.pageOffset = 0 }
             chrome.isPaging = false
         }
     }
@@ -247,7 +280,59 @@ struct PhonePageOffset: ViewModifier {
     @Environment(PhoneChrome.self) private var chrome: PhoneChrome?
 
     func body(content: Content) -> some View {
-        content.offset(x: isHome ? chrome?.pageOffset ?? 0 : 0)
+        let offset = isHome ? chrome?.pageOffset ?? 0 : 0
+        content
+            .offset(x: offset)
+            .overlay {
+                if offset != 0, let chrome {
+                    GeometryReader { geo in
+                        let view = offset < 0 ? chrome.nextPage : chrome.previousPage
+                        if let view {
+                            PhonePagePeek(title: view.title, items: chrome.peekItems[view] ?? [])
+                                .offset(x: offset + (offset < 0 ? geo.size.width : -geo.size.width))
+                        }
+                    }
+                }
+            }
+    }
+}
+
+/// The view beside the list while swiping between views: its title and first rows, laid out as the list
+/// lays them out so the list can take its place without a jump. Not interactive.
+struct PhonePagePeek: View {
+    let title: String
+    let items: [FeedItem]
+
+    /// More rows than fit on the screen.
+    static let rows = 12
+
+    var body: some View {
+        List {
+            PhoneTitleRow(title: title)
+            ForEach(Array(items.prefix(Self.rows).enumerated()), id: \.element.id) { index, item in
+                ItemRowView(item: item, isPhone: true)
+                    .overlay(alignment: .top) {
+                        if index > 0 {
+                            Rectangle()
+                                .fill(Color.ofHairline)
+                                .frame(height: 1)
+                                .padding(.horizontal, Metrics.phoneRowPaddingH)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollIndicators(.hidden)
+        .scrollDisabled(true)
+        .environment(\.defaultMinListRowHeight, 1)
+        .background(Color.ofSurface)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

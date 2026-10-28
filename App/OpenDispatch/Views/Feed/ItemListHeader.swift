@@ -160,13 +160,15 @@ struct FeedSearchButton: View {
 /// The list's title as its first row on the iPhone (All, Articles, a folder, Saved, Highlights, a
 /// source): 32pt semibold, so it scrolls away with the rows.
 struct PhoneTitleRow: View {
+    /// The list's title by default; the view beside it while swiping (`PhonePagePeek`).
+    var title: String?
     @Environment(AppModel.self) private var model
 
     /// The row's id, to scroll the list back to the very top.
     static let id = "phone-title"
 
     var body: some View {
-        Text(model.listTitle)
+        Text(title ?? model.listTitle)
             .font(OFFont.ui(32, .semibold))
             .tracking(-0.7)
             .foregroundStyle(.ofInk)
