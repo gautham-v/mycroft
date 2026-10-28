@@ -1,5 +1,6 @@
 import OpenDispatchCore
 import SwiftUI
+import UserNotifications
 #if os(macOS)
 import Sparkle
 #endif
@@ -20,6 +21,8 @@ struct OpenDispatchApp: App {
     init() {
         let model = AppModel.live()
         _model = State(initialValue: model)
+        PostNotifications.delegate.model = model
+        UNUserNotificationCenter.current().delegate = PostNotifications.delegate
         _highlights = State(initialValue: HighlightStore(model: model))
         #if os(macOS)
         // Overlay scrollers for this app even with a mouse attached (System Settings' "Automatically"

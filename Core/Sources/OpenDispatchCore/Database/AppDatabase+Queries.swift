@@ -91,6 +91,15 @@ extension AppDatabase {
     }
 
     @discardableResult
+    public func setSourceNotify(id: Int64, on: Bool) async throws -> Source {
+        try await writer.write { db in try Queries.setSourceNotify(db, id: id, on: on) }
+    }
+
+    public func takeNewPostAlerts() async throws -> [NewPostAlert] {
+        try await writer.write { db in try Queries.takeNewPostAlerts(db) }
+    }
+
+    @discardableResult
     public func deleteSource(id: Int64) async throws -> Bool {
         try await writer.write { db in try Queries.deleteSource(db, id: id) }
     }

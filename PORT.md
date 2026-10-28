@@ -658,6 +658,7 @@ Design (App/OpenDispatch/Design):
 | Article extraction: Readability, cleanup, sanitize, X posts, charts, Jina fallback, 403 retry (lib/extract.ts, charts.ts) | Core/Extraction/DefaultContentExtractor.swift (+ helpers in Extraction/) |
 | Send to Readwise / webhook, test buttons, token hint (lib/integrations.ts, api/integrations, use-integrations.ts) | Core/Integrations/DefaultIntegrationService.swift |
 | Refresh on open/foreground, 15-min stale rule, cron | RootView scenePhase + AppModel.refresh (done); iOS BGAppRefreshTask via BackgroundRefresh (done) |
+| Notify on new posts per source (app only, not in the web app) | `sources.notify_since`, Queries.setSourceNotify / takeNewPostAlerts, Model/PostNotifications.swift (done) |
 | Three-pane desktop layout, collapsible sidebar (⌘\), full-screen reader (⇧⌘F) | RootView (done) + Sidebar/Feed/Reader views |
 | macOS menus: Add Source ⌘N, Refresh ⌘R, Search ⌘F, Sidebar ⌘\, Full-screen ⇧⌘F, Shortcuts ⌘/ | OpenDispatchApp.swift OpenDispatchCommands (done) |
 | Sidebar: logo + "OpenDispatch", hide-sidebar button, views All/Saved/Articles/Posts/Video/Podcasts, folders with disclosure (collapsed state persisted), Unfiled, source rows (badge, title, error state), context menus (Rename, New folder, Delete folder (keep sources); Move to folder ✓, Unfiled, New folder with this), inline rename / new folder field, drag-and-drop of sources between folders and folder reordering, footer "Add source" + Settings (sidebar.tsx, source-tree.ts) | Views/Sidebar/SidebarView.swift (+ files in Views/Sidebar/) |

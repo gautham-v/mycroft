@@ -427,6 +427,7 @@ struct SidebarView: View {
         if let feed = URL(string: source.feedUrl) {
             Button("Copy Feed URL") { ReaderPasteboard.copy(feed) }
         }
+        Toggle("Notify on New Posts", isOn: Binding(get: { source.notifies }, set: { setNotify(source, $0) }))
         Divider()
         Button(source.isPinned ? "Unpin" : "Pin to Sidebar") { setPinned(source, !source.isPinned) }
         Button(source.isHidden ? "Unhide" : "Hide from Sidebar") { setHidden(source, !source.isHidden) }
@@ -508,6 +509,10 @@ struct SidebarView: View {
         perform { try await model.setSourceHidden(id: source.id, hidden: hidden) }
     }
 
+    private func setNotify(_ source: Source, _ on: Bool) {
+        perform { try await model.setSourceNotify(id: source.id, on: on) }
+    }
+
     private func deleteSource(_ source: Source) {
         perform { try await model.deleteSource(id: source.id) }
     }
@@ -566,6 +571,16 @@ private struct SidebarSourceRow<MenuContent: View>: View {
                 .fixedSize()
                 .opacity(hovered ? 1 : 0)
                 .accessibilityLabel("Options for \(source.title)")
+                // Where "..." shows on hover.
+                .overlay {
+                    if source.notifies && !hovered {
+                        OFIcon.bell.image
+                            .font(.system(size: 10))
+                            .foregroundStyle(.ofMuted)
+                            .help("Notifies on new posts")
+                            .accessibilityLabel("Notifies on new posts")
+                    }
+                }
             }
         }
         .padding(.horizontal, SidebarStyle.rowPadding)

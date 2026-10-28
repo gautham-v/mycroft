@@ -575,6 +575,7 @@ final class AppModel {
                 Task { @MainActor in self?.handleRefreshProgress(event) }
             }
             lastRefreshResult = r
+            if r.ran { await PostNotifications.deliver(database) }
             if force || r.ran {
                 await reloadAll()
             } else {
@@ -591,6 +592,7 @@ final class AppModel {
         isRefreshing = true
         defer { isRefreshing = false }
         _ = try? await services.refresh.refreshSource(id: id)
+        await PostNotifications.deliver(database)
         await reloadAll()
     }
 
@@ -841,6 +843,19 @@ final class AppModel {
     /// Pin to (or unpin from) the sidebar's Pinned group. The source keeps its folder.
     func setSourcePinned(id: Int64, pinned: Bool) async throws {
         try await database.setSourcePinned(id: id, pinned: pinned)
+        await loadSources()
+    }
+
+    /// Notify on new posts from this source (on this device). Turning it on asks for permission first.
+    func setSourceNotify(id: Int64, on: Bool) async throws {
+        if on, !(await PostNotifications.requestAuthorization()) {
+            #if os(macOS)
+            throw QueryError.invalid("Notifications are off for OpenDispatch. Turn them on in System Settings › Notifications.")
+            #else
+            throw QueryError.invalid("Notifications are off for OpenDispatch. Turn them on in Settings › Notifications.")
+            #endif
+        }
+        try await database.setSourceNotify(id: id, on: on)
         await loadSources()
     }
 

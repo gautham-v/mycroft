@@ -330,6 +330,12 @@ struct SourcesView: View {
                 Label("Open site", systemImage: OFIcon.external.rawValue)
             }
         }
+        Button {
+            setNotify(source, !source.notifies)
+        } label: {
+            Label(source.notifies ? "Stop notifications" : "Notify on new posts",
+                  systemImage: (source.notifies ? OFIcon.bellOff : OFIcon.bell).rawValue)
+        }
         Divider()
         CopyDigestButtons(scope: .source(source), icons: true)
         Divider()
@@ -390,6 +396,10 @@ struct SourcesView: View {
         case .renameSource(let source):
             perform { try await model.renameSource(id: source.id, title: title) }
         }
+    }
+
+    private func setNotify(_ source: Source, _ on: Bool) {
+        perform { try await model.setSourceNotify(id: source.id, on: on) }
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {

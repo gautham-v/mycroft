@@ -28,12 +28,15 @@ public struct Source: Sendable, Hashable, Identifiable {
     public var pinnedAt: Date?
     /// Left out of the sidebar tree (still subscribed; its items still show in All and the other views).
     public var isHidden: Bool
+    /// When notifications for new posts were turned on; nil = off. Only items stored after this notify.
+    /// Per device: not synced.
+    public var notifySince: Date?
 
     public init(
         id: Int64 = 0, title: String, url: String, feedUrl: String, kind: SourceKind, group: String,
         iconUrl: String? = nil, lastFetchedAt: Date? = nil, lastError: String? = nil, seenUrls: [String]? = nil,
         folderId: Int64? = nil, position: Int = 0, createdAt: Date = Date(),
-        pinnedAt: Date? = nil, isHidden: Bool = false
+        pinnedAt: Date? = nil, isHidden: Bool = false, notifySince: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -50,9 +53,11 @@ public struct Source: Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.pinnedAt = pinnedAt
         self.isHidden = isHidden
+        self.notifySince = notifySince
     }
 
     public var isPinned: Bool { pinnedAt != nil }
+    public var notifies: Bool { notifySince != nil }
 
     /// article / post / video / podcast.
     public var type: SourceType { SourceType(kind: kind, url: url) }
@@ -79,6 +84,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         public static let createdAt = Column("created_at")
         public static let pinnedAt = Column("pinned_at")
         public static let isHidden = Column("is_hidden")
+        public static let notifySince = Column("notify_since")
     }
 
     public init(row: Row) throws {
@@ -100,6 +106,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         createdAt = row["created_at"]
         pinnedAt = row["pinned_at"]
         isHidden = row["is_hidden"]
+        notifySince = row["notify_since"]
     }
 
     public func encode(to container: inout PersistenceContainer) throws {
@@ -118,6 +125,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         container["created_at"] = createdAt
         container["pinned_at"] = pinnedAt
         container["is_hidden"] = isHidden
+        container["notify_since"] = notifySince
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {

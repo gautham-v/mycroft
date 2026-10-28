@@ -323,6 +323,39 @@ public enum Queries {
         return s
     }
 
+    /// Turn notifications for a source's new posts on (from `now`) or off. Turning them on again restarts
+    /// the clock, so posts stored while they were off never notify.
+    @discardableResult
+    public static func setSourceNotify(_ db: Database, id: Int64, on: Bool, now: Date = Date()) throws -> Source {
+        guard var s = try Source.fetchOne(db, key: id) else { throw QueryError.notFound("Source") }
+        if on == s.notifies { return s }
+        s.notifySince = on ? now : nil
+        try s.update(db)
+        return s
+    }
+
+    /// New posts to notify about, oldest first: items stored since the last call from sources with
+    /// notifications on, stored after they were turned on and published within `NewPostAlert.maxAge`.
+    /// Saved items are skipped: those arrive from iCloud, already seen on another device.
+    /// Advances the watermark past every item stored so far, so each item is handed out once, even when
+    /// a background and a foreground refresh both ask.
+    public static func takeNewPostAlerts(_ db: Database, now: Date = Date()) throws -> [NewPostAlert] {
+        let through = try meta(db, MetaKey.notifiedThrough).flatMap(Int64.init) ?? 0
+        guard let maxID = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM items"), maxID > through else { return [] }
+        let alerts = try Row.fetchAll(db, sql: """
+            SELECT i.id, i.title, i.published_at, s.id AS source_id, s.title AS source_title
+            FROM items i JOIN sources s ON s.id = i.source_id
+            WHERE i.id > ? AND i.id <= ? AND s.notify_since IS NOT NULL
+              AND i.created_at >= s.notify_since AND i.published_at >= ? AND i.is_saved = 0
+            ORDER BY i.published_at, i.id
+            """, arguments: [through, maxID, now.addingTimeInterval(-NewPostAlert.maxAge)]).map {
+            NewPostAlert(itemId: $0["id"], title: $0["title"], publishedAt: $0["published_at"],
+                         sourceId: $0["source_id"], sourceTitle: $0["source_title"])
+        }
+        try setMeta(db, MetaKey.notifiedThrough, String(maxID))
+        return alerts
+    }
+
     /// DELETE /api/sources/:id (items cascade). Returns false when not found.
     @discardableResult
     public static func deleteSource(_ db: Database, id: Int64) throws -> Bool {

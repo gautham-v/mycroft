@@ -13,6 +13,8 @@ public enum MetaKey {
     public static let webhookURL = "integration.webhook_url"
     /// The app's settings as JSON, mirrored here by the app so iCloud sync can carry them.
     public static let syncedSettings = "sync.settings"
+    /// Highest item id already checked for new-post notifications (Queries.takeNewPostAlerts).
+    public static let notifiedThrough = "notify.through_item_id"
 }
 
 /// Item retention (fetcher.ts): unsaved items older than this are pruned after each refresh,

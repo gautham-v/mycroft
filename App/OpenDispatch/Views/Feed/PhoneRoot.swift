@@ -990,6 +990,12 @@ private struct PhoneDrawer: View {
         } label: {
             Label("Rename", systemImage: "pencil")
         }
+        Button {
+            run { try await model.setSourceNotify(id: source.id, on: !source.notifies) }
+        } label: {
+            Label(source.notifies ? "Stop Notifications" : "Notify on New Posts",
+                  systemImage: (source.notifies ? OFIcon.bellOff : OFIcon.bell).rawValue)
+        }
         Divider()
         Button(role: .destructive) {
             pendingSourceDelete = source
@@ -1408,6 +1414,12 @@ private struct DrawerSourceRow: View {
                     .font(OFFont.ui(15.5))
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
+                if source.notifies {
+                    OFIcon.bell.image
+                        .font(.system(size: 11))
+                        .foregroundStyle(.ofMuted)
+                        .accessibilityLabel("Notifies on new posts")
+                }
                 Spacer(minLength: 8)
                 if let detail {
                     Text(detail)

@@ -74,6 +74,9 @@ enum OFIcon: String, CaseIterable {
     case trash = "trash"
     /// The New Tab page's address field
     case globe = "globe"
+    /// A source that notifies on new posts (sidebar and drawer rows, its menu item)
+    case bell = "bell"
+    case bellOff = "bell.slash"
 
     /// macOS draws its toolbar and sidebar icons from our own symbols (Resources/Assets.xcassets/Icons):
     /// thin, rounded 24-unit strokes like the Claude desktop app's, where SF Symbols read heavier. The

@@ -21,9 +21,11 @@ enum BackgroundRefresh {
         #endif
     }
 
-    /// Body of the background task: a non-forced refresh, then schedule the next one.
+    /// Body of the background task: schedule the next one, then a non-forced refresh and its notifications.
     static func run(_ services: OpenDispatchServices) async {
         schedule()
-        _ = try? await services.refresh.refreshAll(force: false)
+        if let r = try? await services.refresh.refreshAll(force: false), r.ran {
+            await PostNotifications.deliver(services.database)
+        }
     }
 }

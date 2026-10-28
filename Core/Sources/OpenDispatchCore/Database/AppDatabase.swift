@@ -192,6 +192,10 @@ public final class AppDatabase: Sendable {
                 );
                 """)
         }
+        // Notify on new posts, per source and per device (not synced): when it was turned on, nil = off.
+        m.registerMigration("v6-source-notify") { db in
+            try db.execute(sql: "ALTER TABLE sources ADD COLUMN notify_since DATETIME")
+        }
         return m
     }
 }
