@@ -163,6 +163,8 @@ struct SettingsRow<Control: View>: View {
     let label: String
     var hint: String?
     var stacked = false
+    /// A color chip before the label (SponsorBlock's category colors).
+    var swatch: Color?
     @ViewBuilder var control: () -> Control
     @Environment(\.settingsCompact) private var compact
 
@@ -170,15 +172,25 @@ struct SettingsRow<Control: View>: View {
         let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
                              : AnyLayout(HStackLayout(spacing: 12))
         layout {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .font(OFFont.ui(compact ? 17 : 14))
-                    .foregroundStyle(.ofInk)
-                if let hint {
-                    Text(hint)
-                        .font(OFFont.ui(compact ? 13.5 : 12))
-                        .foregroundStyle(.ofMuted)
-                        .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if let swatch {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(swatch)
+                        .frame(width: 12, height: 12)
+                        .overlay { RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Color.primary.opacity(0.18)) }
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label)
+                        .font(OFFont.ui(compact ? 17 : 14))
+                        .foregroundStyle(.ofInk)
+                    if let hint {
+                        Text(hint)
+                            .font(OFFont.ui(compact ? 13.5 : 12))
+                            .foregroundStyle(.ofMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

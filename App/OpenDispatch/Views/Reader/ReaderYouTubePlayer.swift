@@ -41,6 +41,10 @@ private struct ReaderYouTubeStage: View {
     @State private var startTime: Double = 0
     /// The poster is gone: playback started, or the player failed or took too long and is shown as is.
     @State private var revealed = false
+    /// The video's SponsorBlock segments in every category, fetched once the player is created; what the page
+    /// gets is these under the settings (`segmentsJSON`).
+    @State private var segments: [SponsorBlockSegment] = []
+    @Environment(AppModel.self) private var model
     #if os(iOS)
     @State private var fullscreen: ReaderYouTubeFullscreenStart?
     #endif
@@ -56,11 +60,17 @@ private struct ReaderYouTubeStage: View {
         _started = State(initialValue: autoplay)
     }
 
+    /// The player page's segment list (`window.odPlayer.setSegments`): empty with SponsorBlock off.
+    private var segmentsJSON: String {
+        guard model.settings.sponsorBlock else { return "[]" }
+        return SponsorBlock.playerJSON(SponsorBlock.playerSegments(segments, mode: model.settings.sponsorBlockMode))
+    }
+
     var body: some View {
         ZStack {
             if started {
                 ReaderYouTubeRepresentable(videoID: videoID, title: title, start: Int(startTime), inCover: false,
-                                           controller: controller, onEvent: handle)
+                                           segmentsJSON: segmentsJSON, controller: controller, onEvent: handle)
             }
             if !revealed {
                 ReaderYouTubePoster(videoID: videoID, title: title, thumbnail: thumbnail, durationSec: durationSec,
@@ -79,6 +89,10 @@ private struct ReaderYouTubeStage: View {
         .onDisappear {
             if ReaderYouTubeController.current === controller { ReaderYouTubeController.current = nil }
         }
+        .task(id: started && model.settings.sponsorBlock) {
+            guard started, model.settings.sponsorBlock else { return }
+            segments = await model.services.sponsorBlock.segments(forVideoID: videoID)
+        }
         .task(id: started) {
             // Autoplay refused or a slow network: hand over to the player (and its play button) after a while.
             guard started, !revealed, (try? await Task.sleep(for: .seconds(8))) != nil else { return }
@@ -86,7 +100,8 @@ private struct ReaderYouTubeStage: View {
         }
         #if os(iOS)
         .fullScreenCover(item: $fullscreen) { start in
-            ReaderYouTubeFullscreen(videoID: videoID, title: title, start: start.time, vertical: vertical) { time in
+            ReaderYouTubeFullscreen(videoID: videoID, title: title, start: start.time, vertical: vertical,
+                                    segmentsJSON: segmentsJSON) { time in
                 fullscreen = nil
                 controller.inFullscreen = false
                 controller.resume(at: time)
@@ -209,12 +224,15 @@ private struct ReaderYouTubeFullscreen: View {
     let title: String
     let start: Double
     let vertical: Bool
+    /// The reader's segment list, so the cover's player skips like the one under it.
+    let segmentsJSON: String
     let onExit: (Double) -> Void
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            ReaderYouTubeRepresentable(videoID: videoID, title: title, start: Int(start), inCover: true, controller: nil) { event in
+            ReaderYouTubeRepresentable(videoID: videoID, title: title, start: Int(start), inCover: true, segmentsJSON: segmentsJSON,
+                                       controller: nil) { event in
                 switch event {
                 case .exitFullscreen(let time): onExit(time)
                 case .failed: onExit(start)
@@ -313,11 +331,30 @@ enum ReaderYouTube {
 @MainActor
 final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var loadedKey: String?
+    /// The segment list last handed to the page, replayed when a load finishes: the first push can reach the
+    /// page before it exists, and a reload starts with none.
+    private var segmentsJSON: String?
     var onEvent: (ReaderYouTubeEvent) -> Void = { _ in }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         decisionHandler(ReaderWebSupport.policy(for: navigationAction, documentURL: ReaderYouTube.pageOrigin))
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        pushSegments(to: webView)
+    }
+
+    func setSegments(_ json: String, on webView: WKWebView) {
+        guard json != segmentsJSON else { return }
+        segmentsJSON = json
+        pushSegments(to: webView)
+    }
+
+    /// The page may not have defined `odPlayer` yet; it picks `odPendingSegments` up when it starts.
+    private func pushSegments(to webView: WKWebView) {
+        guard let json = segmentsJSON else { return }
+        webView.evaluateJavaScript("window.odPlayer ? window.odPlayer.setSegments(\(json)) : (window.odPendingSegments = \(json))")
     }
 
     /// Links inside the player (YouTube's error page) open in the browser.
@@ -382,6 +419,7 @@ private struct ReaderYouTubeRepresentable: NSViewRepresentable {
     let title: String
     let start: Int
     let inCover: Bool
+    let segmentsJSON: String
     let controller: ReaderYouTubeController?
     let onEvent: (ReaderYouTubeEvent) -> Void
 
@@ -394,6 +432,7 @@ private struct ReaderYouTubeRepresentable: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onEvent = onEvent
         context.coordinator.update(view, videoID: videoID, title: title, start: start, inCover: inCover)
+        context.coordinator.setSegments(segmentsJSON, on: view)
     }
     static func dismantleNSView(_ view: WKWebView, coordinator: ReaderYouTubeCoordinator) {
         coordinator.dismantle(view)
@@ -405,6 +444,7 @@ private struct ReaderYouTubeRepresentable: UIViewRepresentable {
     let title: String
     let start: Int
     let inCover: Bool
+    let segmentsJSON: String
     let controller: ReaderYouTubeController?
     let onEvent: (ReaderYouTubeEvent) -> Void
 
@@ -417,6 +457,7 @@ private struct ReaderYouTubeRepresentable: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onEvent = onEvent
         context.coordinator.update(view, videoID: videoID, title: title, start: start, inCover: inCover)
+        context.coordinator.setSegments(segmentsJSON, on: view)
     }
     static func dismantleUIView(_ view: WKWebView, coordinator: ReaderYouTubeCoordinator) {
         coordinator.dismantle(view)

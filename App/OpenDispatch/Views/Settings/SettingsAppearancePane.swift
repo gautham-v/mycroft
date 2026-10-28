@@ -142,7 +142,7 @@ private struct SettingsTextSizePreview: View {
     }
 }
 
-/// Playback pane (PlaybackPane): autoplay, theater layout and transcripts for YouTube sources, then Read aloud.
+/// Playback pane (PlaybackPane): autoplay, theater layout and transcripts for YouTube sources, then SponsorBlock and Read aloud.
 struct SettingsPlaybackPane: View {
     @Environment(AppModel.self) private var model
 
@@ -161,6 +161,7 @@ struct SettingsPlaybackPane: View {
                     toggle("Transcripts", isOn: $model.settings.videoTranscript)
                 }
             }
+            SettingsSponsorBlockSection()
             SettingsReadAloudSection()
         }
     }

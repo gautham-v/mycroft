@@ -28,6 +28,20 @@ import Foundation
 /// player or error shows), `{type: "fullscreen" | "exitFullscreen", time}`, and `{type: "time", time}`
 /// whenever the position crosses a second (the transcript follows it). `window.odPlayer.resume(t)`
 /// seeks and plays (once the player is ready, if it isn't yet), `window.odPlayer.toggle()` plays or pauses and `seekBy(s)` skips (Space and ←/→ in the app's window).
+///
+/// SponsorBlock: `window.odPlayer.setSegments(list)` (or `window.odPendingSegments = list` before the page is up,
+/// read at start) takes `{start, end, category, action: skip | mute | show | full | poi, label, color,
+/// videoDuration}` and replaces the list each time, keeping which skips were undone (by start, end and category).
+/// Once the length is known, segments whose `videoDuration` is more than 2 s off it are dropped. `skip`, `mute`
+/// and `show` are coloured spans under the progress fill on every scrubber, `poi` a tick above it and `full` a
+/// pill top left while the controls show (above the bar's left end in the iPhone cover, clear of the toast). While playing, `tick()`
+/// seeks out of a `skip` segment (past any that follow it; to the very end if it runs to the end of the video)
+/// and toasts "Skipped <label>" with Undo, which goes back to its start and leaves that segment alone from then
+/// on. A seek the viewer makes into one (scrubber, ←/→, skip buttons, double-tap, resume) is never skipped:
+/// the toast offers "<Label>" with Skip instead, until playback leaves the segment. In a `mute` segment the
+/// player is muted (unless the viewer already had it muted) and a "Muted · <label>" pill shows; the viewer's own
+/// mute toggle wins until the segment ends. The toast is top centre, above the shield so its button takes taps
+/// (Enter presses it on the Mac), and hides after 4 s.
 enum ReaderYouTubePage {
     static let handlerName = "openDispatchYouTube"
 
@@ -223,7 +237,49 @@ enum ReaderYouTubePage {
         .chs svg:nth-child(3){animation-delay:.3s!important}
         @keyframes chev{0%,100%{opacity:.3}50%{opacity:1}}
         .skip b{font-weight:650;font-size:max(13px,calc(var(--i)*.6))}
-        @media (prefers-reduced-motion:reduce){.ctl,#knob,#tknob,#tui,.skip{transition:none}.skip.go .chs svg{animation:none;opacity:1}}
+        /* SponsorBlock. Spans sit under the fill (so progress stays white across them) and over the rail and
+           buffer; points sit over the fill. The toast and the muted pill stack top centre; the toast alone takes
+           touches (above the shield), and the pill for a whole-video label sits top left with the controls (bottom
+           left in the cover, where the top row is the close button, the toast and captions). */
+        .sb{opacity:.9;min-width:3px}
+        #track i.poi{width:4px;margin-left:-2px;height:calc(var(--tr)*2.6);margin-top:calc(var(--tr)*-1.3);border-radius:2px}
+        #ttrack i.poi{width:4px;margin-left:-2px;height:14px;margin-top:-7px;border-radius:2px}
+        #stage:not(.cover) #ttrack i.poi{height:9px;margin-top:-4.5px}
+        #sbfull,#sbmute,#sbtoast{background:rgba(28,28,28,.72);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+          backdrop-filter:blur(20px) saturate(1.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);color:#fff;
+          font-size:max(12px,calc(var(--i)*.64));font-weight:600;white-space:nowrap}
+        #sbfull{position:absolute;left:max(16px,var(--i));top:max(12px,calc(var(--i)*.7));display:flex;align-items:center;
+          gap:.55em;height:calc(var(--i)*1.6);max-width:40%;padding:0 .95em 0 .8em;border-radius:99px;pointer-events:none!important}
+        #sbfull i{width:.65em;height:.65em;border-radius:50%;flex:none}
+        #sbfull span{overflow:hidden;text-overflow:ellipsis}
+        #sbtop{position:absolute;left:50%;top:max(12px,calc(var(--i)*.7));transform:translateX(-50%);display:flex;
+          flex-direction:column;align-items:center;gap:6px;max-width:calc(100% - 32px);pointer-events:none}
+        #sbtoast{display:flex;align-items:center;gap:.7em;max-width:100%;height:calc(var(--i)*1.95);padding:0 .3em 0 1.05em;
+          border-radius:99px;font-size:max(13px,calc(var(--i)*.72));pointer-events:auto;touch-action:manipulation;
+          opacity:0;visibility:hidden;transform:translateY(-6px);
+          transition:opacity .2s ease,transform .2s ease,visibility 0s .2s}
+        #sbtoast.on{opacity:1;visibility:visible;transform:none;transition-delay:0s}
+        #sbmsg{overflow:hidden;text-overflow:ellipsis;min-width:0}
+        #sbtoast button{position:relative;align-self:stretch;margin:.3em 0;padding:0 .9em;border-radius:99px;
+          background:rgba(255,255,255,.2);font-weight:650}
+        #sbtoast button:hover{background:rgba(255,255,255,.3)}
+        #sbmute{display:flex;align-items:center;gap:.5em;height:calc(var(--i)*1.5);padding:0 .9em 0 .7em;border-radius:99px;
+          pointer-events:none}
+        #sbmute svg{width:1.3em;height:1.3em;flex:none}
+        /* Touch: the toast lines up with the corner buttons and stays clear of them (captions, speed inline; close,
+           captions in the cover), with a taller button whose hit area reaches past the pill. */
+        #stage.touch #sbfull{left:var(--m);top:calc(var(--m) + var(--cb)*.14);height:calc(var(--cb)*.72);font-size:calc(var(--ts) - 1px)}
+        #stage.touch.cover #sbfull{top:auto;bottom:calc(var(--m) + var(--ph) + 12px)}
+        #stage.touch #sbtop{top:calc(var(--m) + var(--cb)*.06);max-width:calc(100% - 2*(var(--m)*2 + var(--cb)*2 + 9px))}
+        #stage.touch.cover #sbtop{max-width:calc(100% - 2*(var(--m)*1.5 + var(--cb)))}
+        #stage.touch #sbtoast{height:calc(var(--cb)*.88);font-size:var(--ts)}
+        #stage.touch:not(.cover) #sbfull{padding:0 .8em 0 .65em;font-size:calc(var(--ts) - 2px)}
+        #stage.touch:not(.cover) #sbtoast{font-size:calc(var(--ts) - 1px)}
+        #stage.touch #sbtoast button{margin:2px 0}
+        #stage.touch #sbtoast button::after{content:"";position:absolute;inset:-8px -6px}
+        #stage.touch #sbmute{height:calc(var(--cb)*.66);font-size:calc(var(--ts) - 1px)}
+        @media (prefers-reduced-motion:reduce){.ctl,#knob,#tknob,#tui,.skip{transition:none}.skip.go .chs svg{animation:none;opacity:1}
+          #sbtoast{transition:none;transform:none}}
         </style></head>
         <body><div id="stage" class="\#(stageClass)">
           <iframe id="yt" src="\#(src)" title="\#(title)"
@@ -263,7 +319,14 @@ enum ReaderYouTubePage {
               stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4v5.5H4M14.5 4v5.5H20M9.5 20v-5.5H4M14.5 20v-5.5H20"/>
               </svg></button>
           </div>
+          <div id="sbfull" class="ctl" hidden><i></i><span></span></div>
           \#(nativeFullscreen ? touchControls : "")
+          <div id="sbtop">
+            <div id="sbtoast" role="status"><span id="sbmsg"></span><button id="sbbtn"></button></div>
+            <div id="sbmute" hidden><svg viewBox="0 0 24 24"><path d="M3.5 9.2h3.6L12 5v14l-4.9-4.2H3.5z" fill="currentColor"/><path
+              d="M15.5 9.5l5 5M20.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><span
+              id="sbmutetext"></span></div>
+          </div>
         </div>
         <script>
         (function () {
@@ -334,11 +397,14 @@ enum ReaderYouTubePage {
           }
           function seekBy(d) {
             if (!ready) return;
-            player.seekTo(Math.max(0, Math.min(duration(), now() + d)), true);
+            var t = Math.max(0, Math.min(duration(), now() + d));
+            player.seekTo(t, true);
+            seeked(t);
             render();
           }
           function toggleMute() {
             if (!ready) return;
+            if (muteSeg) muteOverride = true;
             muted = !muted;
             if (muted) player.mute(); else player.unMute();
             update();
@@ -394,6 +460,8 @@ enum ReaderYouTubePage {
             $('shield').remove();
             $('bar').remove();
             $('big').remove();
+            $('sbtop').remove();
+            $('sbfull').remove();
             iframe.src = iframe.src.replace('controls=0', 'controls=1');
             update();
             post({ type: 'failed' });
@@ -418,6 +486,140 @@ enum ReaderYouTubePage {
             if (typeof s === 'number' && s !== state) setState(s); else render();
             var second = Math.floor(now());
             if (second !== lastSecond) { lastSecond = second; post({ type: 'time', time: now() }); }
+            segmentTick();
+          }
+
+          // SponsorBlock segments (see the header). `segs` is what Swift sent, `live` the part of it that fits this
+          // video, `undone` the skips the viewer reversed (keyed by start, end and category, so it survives a
+          // new list), `landedKey` the skip segment the viewer seeked into, `lastManual` when they last seeked.
+          var segs = [], live = [], undone = {}, segDur = 0, landedKey = null, lastManual = 0, justSkipped = null;
+          var muteSeg = null, muteOverride = false, toastFn = null, toastKind = '', toastTimer = 0;
+          var segTracks = [{ tr: track, fill: $('fill'), knob: $('knob') }];
+          if (TOUCH) segTracks.push({ tr: $('ttrack'), fill: $('tfill'), knob: $('tknob') });
+          function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+          function inSeg(g, t, tail) { return t >= g.s && t < g.e - tail; }
+          // A skip segment holding t, undone or not.
+          function skipAt(t) {
+            for (var i = 0; i < live.length; i++) if (live[i].action === 'skip' && inSeg(live[i], t, 0.25)) return live[i];
+            return null;
+          }
+          function setSegments(list) {
+            if (failed) return;
+            segs = [];
+            (Array.isArray(list) ? list : []).forEach(function (x) {
+              if (!x) return;
+              var a = x.action, s = +x.start, e = a === 'poi' ? s : +x.end;
+              if (['skip', 'mute', 'show', 'full', 'poi'].indexOf(a) < 0 || !(s >= 0)) return;
+              if (a !== 'full' && !(a === 'poi' || e > s)) return;
+              segs.push({ s: s, e: isFinite(e) ? e : 0, action: a, label: String(x.label || x.category || ''),
+                color: /^#[0-9a-f]{3,8}$/i.test(x.color) ? x.color : '#00d400', vd: +x.videoDuration || 0,
+                key: x.start + '|' + x.end + '|' + x.category });
+            });
+            drawSegments();
+          }
+          // Drop segments cut for another version of the video, then redraw the markers and the whole-video pill.
+          function drawSegments() {
+            if (failed) return;
+            var d = segDur = duration(), full = null;
+            live = segs.filter(function (g) { return !(d && g.vd > 0 && Math.abs(g.vd - d) > 2); });
+            segTracks.forEach(function (x) {
+              [].slice.call(x.tr.querySelectorAll('.sb')).forEach(function (el) { el.remove(); });
+            });
+            live.forEach(function (g) {
+              if (g.action === 'full') { full = full || g; return; }
+              if (!d || g.s >= d) return;
+              segTracks.forEach(function (x) {
+                var el = document.createElement('i'), poi = g.action === 'poi';
+                el.className = poi ? 'sb poi' : 'sb';
+                el.style.background = g.color;
+                el.style.left = g.s / d * 100 + '%';
+                if (!poi) el.style.width = (Math.min(g.e, d) - g.s) / d * 100 + '%';
+                x.tr.insertBefore(el, poi ? x.knob : x.fill);
+              });
+            });
+            $('sbfull').hidden = !full;
+            if (full) {
+              $('sbfull').lastChild.textContent = cap(full.label);
+              $('sbfull').firstChild.style.background = full.color;
+            }
+          }
+          function toast(msg, btn, fn, ms, kind) {
+            if (failed) return;
+            $('sbmsg').textContent = msg;
+            $('sbbtn').textContent = btn;
+            toastFn = fn;
+            toastKind = kind;
+            $('sbtoast').classList.add('on');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(hideToast, ms);
+          }
+          function hideToast() {
+            if (failed) return;
+            clearTimeout(toastTimer);
+            toastFn = null;
+            toastKind = '';
+            $('sbtoast').classList.remove('on');
+          }
+          function toastAct() { var f = toastFn; hideToast(); if (f) f(); }
+          // The viewer seeked to t: no skipping out of whatever they landed in, but offer it.
+          function seeked(t) {
+            lastManual = Date.now();
+            landedKey = null;
+            justSkipped = null;
+            hideToast();
+            var g = skipAt(t);
+            if (!g) return;
+            landedKey = g.key;
+            if (!undone[g.key]) toast(cap(g.label), 'Skip', function () {
+              var d = duration();
+              player.seekTo(g.e >= d - 1 ? d : g.e, true);
+            }, 4000, 'landed');
+          }
+          // Leave the skip segment at t (and any that run on from it) and say so.
+          function autoSkip(g, d) {
+            var hit = [g], e = g.e, more = true;
+            while (more && hit.length < 12) {
+              more = false;
+              live.forEach(function (h) {
+                if (h.action === 'skip' && hit.indexOf(h) < 0 && !undone[h.key] && h.s <= e + 0.25 && h.e > e) {
+                  hit.push(h); e = h.e; more = true;
+                }
+              });
+            }
+            justSkipped = { key: g.key, at: Date.now() };
+            landedKey = null;
+            player.seekTo(e >= d - 1 ? d : e, true);
+            toast('Skipped ' + g.label, 'Undo', function () {
+              hit.forEach(function (h) { undone[h.key] = true; });
+              lastManual = Date.now();
+              justSkipped = null;
+              player.seekTo(g.s, true);
+              if (state === 0) player.playVideo();
+            }, 4000, 'skipped');
+          }
+          function segmentTick() {
+            if (failed) return;
+            var d = duration(), t = now(), i, g = null;
+            if (d !== segDur) drawSegments();
+            for (i = 0; i < live.length; i++) if (live[i].action === 'mute' && inSeg(live[i], t, 0)) { g = live[i]; break; }
+            // Mute for the length of the segment unless the viewer has it muted; their own toggle wins until it ends.
+            if (g && !muteSeg) { muteOverride = false; if (!muted) player.mute(); }
+            else if (!g && muteSeg && !muteOverride && !muted) player.unMute();
+            if (!g) muteOverride = false;
+            muteSeg = g;
+            $('sbmute').hidden = !g || muteOverride || muted;
+            if (g) $('sbmutetext').textContent = 'Muted · ' + g.label;
+            var settled = Date.now() - lastManual > 800;
+            var here = skipAt(t);
+            if (landedKey && settled && !(here && here.key === landedKey)) {
+              landedKey = null;
+              if (toastKind === 'landed') hideToast();
+            }
+            if (!isPlaying() || dragging || !settled || !d) return;
+            g = skipAt(t);
+            if (!g || undone[g.key] || g.key === landedKey) return;
+            if (justSkipped && justSkipped.key === g.key && Date.now() - justSkipped.at < 1500) return;
+            autoSkip(g, d);
           }
 
           window.onYouTubeIframeAPIReady = function () {
@@ -427,7 +629,7 @@ enum ReaderYouTubePage {
                 clearTimeout(failTimer);
                 muted = player.isMuted();
                 captionsOff();
-                if (pendingSeek !== null) { player.seekTo(pendingSeek, true); player.playVideo(); pendingSeek = null; }
+                if (pendingSeek !== null) { player.seekTo(pendingSeek, true); seeked(pendingSeek); player.playVideo(); pendingSeek = null; }
                 setInterval(tick, 250);
                 tick();
                 update();
@@ -517,6 +719,7 @@ enum ReaderYouTubePage {
               dragging = false;
               tr.classList.remove('drag');
               player.seekTo(dragT, true);
+              seeked(dragT);
               render();
               poke();
             }
@@ -547,6 +750,7 @@ enum ReaderYouTubePage {
               case 'f': case 'F': fullscreen(); break;
               case 'm': case 'M': toggleMute(); break;
               case 'c': case 'C': toggleCaptions(); break;
+              case 'Enter': if (!toastFn) return; toastAct(); break;
               case 'Escape': if (IN_COVER) fullscreen(); else return; break;
               default: return;
             }
@@ -554,16 +758,23 @@ enum ReaderYouTubePage {
             poke();
           });
 
+          // The toast sits above the shield, so its button takes the taps itself; no focus on a mouse press.
+          $('sbbtn').addEventListener('mousedown', function (e) { e.preventDefault(); });
+          $('sbbtn').addEventListener('click', function (e) { e.stopPropagation(); toastAct(); });
+          $('sbtop').addEventListener('touchstart', function () { lastTouch = Date.now(); }, { passive: true });
+
           window.odPlayer = {
             resume: function (t) {
               if (failed) return;
               if (!ready) { pendingSeek = t; return; }
-              player.seekTo(t, true); player.playVideo();
+              player.seekTo(t, true); seeked(t); player.playVideo();
             },
             toggle: function () { if (failed) return; toggle(); poke(); },
             seekBy: function (d) { if (failed) return; seekBy(d); poke(); },
+            setSegments: setSegments,
             fail: fail
           };
+          if (window.odPendingSegments) { setSegments(window.odPendingSegments); window.odPendingSegments = null; }
           render();
           update();
         })();

@@ -666,6 +666,7 @@ Design (App/OpenDispatch/Design):
 | Keyboard: j/k/↓/↑ move, o/Enter open original, s save, r refresh, / search, ? help, g a/s/v/p views (1 s chord), Esc; arrows scroll the reader after clicking it; single keys off while typing or on iPhone (use-keyboard.ts) | Views/Feed/KeyboardShortcuts.swift (Feed UI agent), attached in ItemListView or RootView via a modifier it defines |
 | Reader: sticky toolbar (back on phone, host · date · read time, Save, Open original, Share/copy link, Send to menu, full screen), 32+ headline per text size (serif/sans), byline (source, author, duration, HN points/comments link), "Rendered copy" note, hero image unless the content starts with it, article HTML in WKWebView with reader.css (links open externally, height-fitted), loading skeleton, failure state with Open original button, X posts without headline (reader.tsx) | Views/Reader/ |
 | YouTube: youtube-nocookie embed 16:9 (autoplay setting), theater layout (full width ≤ 960, black band) vs inline, expandable 3-line description | Views/Reader/ |
+| SponsorBlock: segment client with 24 h cache, category modes → player segments, Settings → Playback section | Core/SponsorBlock/ (`SponsorBlockCategory`, `SponsorBlockMode`, `SponsorBlock.playerSegments`, `DefaultSponsorBlock`), Views/Settings/SettingsSponsorBlockSection.swift |
 | Podcasts: audio player with art (AVPlayer), never autoplays, resume position per item (UserDefaults "openfeed:podcast-pos:<id>"), show notes below with duplicate art stripped | Views/Reader/ |
 | Send to: one target sends directly, two show a menu, none opens Settings → Integrations (send-to.tsx) | Views/Reader/ (uses AppModel.integrations/send/showSettings) |
 | Phone Sources tab: folders (count) and sources list, open folder/source feed with back to Sources, Add source (sources-page.tsx) | Views/Sources/SourcesView.swift |
@@ -1016,6 +1017,8 @@ struct ReaderArticleWebView: View            // height-fitted WKWebView (html, h
 enum ReaderHTML { struct Appearance(font,size,theme,wide); static func document(...); stylesheet (reader.css) }
 struct ReaderYouTubePlayer: View             // 16:9 youtube-nocookie embed (videoID, title, autoplay)
 struct ReaderVideoBody: View                 // theater / inline video layout, Linkified 3-line description
+                                             // ReaderYouTubePlayer fetches SponsorBlock segments (services.sponsorBlock) and pushes them to the page
+                                             // via window.odPlayer.setSegments; the coordinator replays them on didFinish
 struct ReaderPodcastPlayer: View; final class ReaderPodcastPlayback   // AVPlayer: play/pause, ±15/30 s, scrubber, speed 0.8–2x,
                                              // resume pos UserDefaults "openfeed:podcast-pos:<id>"
 struct ReaderIconButtonStyle: ButtonStyle    // 30 desktop / 44 phone icon buttons with hover

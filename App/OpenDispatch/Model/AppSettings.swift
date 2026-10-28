@@ -1,4 +1,5 @@
 import Foundation
+import OpenDispatchCore
 import SwiftUI
 
 /// Port of src/hooks/use-settings.ts. Persisted as JSON in UserDefaults under `openfeed.settings`.
@@ -113,6 +114,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     var videoTranscript: Bool = true
     /// The transcript under a video is folded to its heading.
     var videoTranscriptCollapsed: Bool = false
+    /// Act on SponsorBlock segments in YouTube videos (Settings → Playback → SponsorBlock).
+    var sponsorBlock: Bool = true
+    /// What the player does per category, by SponsorBlock id, for the ones changed from their default.
+    var sponsorBlockModes: [String: SponsorBlockMode] = [:]
     /// Copy as Markdown: a line put above the copied text (Settings → Integrations). Empty = none.
     var copyPrompt: String = ""
     /// Read aloud voice (AVSpeechSynthesisVoice identifier); nil is the best voice installed. Another
@@ -142,6 +147,14 @@ struct AppSettings: Codable, Equatable, Sendable {
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
         videoTranscript = (try? c.decode(Bool.self, forKey: .videoTranscript)) ?? true
         videoTranscriptCollapsed = (try? c.decode(Bool.self, forKey: .videoTranscriptCollapsed)) ?? false
+        sponsorBlock = (try? c.decode(Bool.self, forKey: .sponsorBlock)) ?? true
+        // Values this build doesn't know (or a category's disallowed mode) are dropped, so the default applies.
+        let modes = (try? c.decode([String: String].self, forKey: .sponsorBlockModes)) ?? [:]
+        for category in SponsorBlockCategory.allCases {
+            if let mode = modes[category.rawValue].flatMap(SponsorBlockMode.init(rawValue:)), category.allowedModes.contains(mode) {
+                sponsorBlockModes[category.rawValue] = mode
+            }
+        }
         copyPrompt = (try? c.decode(String.self, forKey: .copyPrompt)) ?? ""
         speechVoice = (try? c.decodeIfPresent(String.self, forKey: .speechVoice)) ?? nil
         let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1
@@ -150,6 +163,15 @@ struct AppSettings: Codable, Equatable, Sendable {
     }
 
     init() {}
+
+    func sponsorBlockMode(_ category: SponsorBlockCategory) -> SponsorBlockMode {
+        category.resolved(sponsorBlockModes[category.rawValue])
+    }
+
+    /// Stores a mode; the category's default is not kept, so a future change to a default reaches everyone who never touched it.
+    mutating func setSponsorBlockMode(_ mode: SponsorBlockMode, for category: SponsorBlockCategory) {
+        sponsorBlockModes[category.rawValue] = mode == category.defaultMode ? nil : mode
+    }
 
     /// The reader's text column cap; nil with Fill window (the pane's width minus its side padding).
     var readerColumnWidth: CGFloat? { fillWindow ? nil : readerWidth.points }

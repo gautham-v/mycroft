@@ -20,11 +20,12 @@ public struct OpenDispatchServices: Sendable {
     public let search: any SourceSearching
     public let content: ContentService
     public let copy: CopyService
+    public let sponsorBlock: any SponsorBlockFetching
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
         extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService,
-        search: any SourceSearching = DefaultSourceSearch()
+        search: any SourceSearching = DefaultSourceSearch(), sponsorBlock: any SponsorBlockFetching = DefaultSponsorBlock()
     ) {
         self.database = database
         self.feedParser = feedParser
@@ -35,6 +36,7 @@ public struct OpenDispatchServices: Sendable {
         self.integrations = integrations
         self.refresh = refresh
         self.search = search
+        self.sponsorBlock = sponsorBlock
         self.content = ContentService(database: database, extractor: extractor)
         self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }
