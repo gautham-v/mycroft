@@ -211,11 +211,27 @@ struct TopicProviderTests {
         _ = await net.search().search(
             TopicOptions(keyword: "iPhone Duo", places: TopicPlaces(news: true, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: false)),
             subscriptions: .empty, now: now)
-        let url = try #require(net.requests(containing: "bing.com").first?.url)
-        #expect(url == "https://www.bing.com/news/search?q=%22iPhone%20Duo%22&format=rss&qft=sortbydate%3d%221%22&mkt=en-US&setlang=en-US")
+        let urls = net.requests(containing: "bing.com").map(\.url)
+        #expect(urls.contains("https://www.bing.com/news/search?q=%22iPhone%20Duo%22&format=rss&qft=sortbydate%3d%221%22&mkt=en-US&setlang=en-US"))
         // One word is sent as it is, and with no market Bing chooses.
         #expect(DefaultTopicSearch.newsURL("rust").contains("q=rust&"))
         #expect(!DefaultTopicSearch.newsURL("rust").contains("mkt="))
+    }
+
+    @Test func newsIsAlsoSearchedOnSubscriptionSites() async throws {
+        let net = TopicFixtures.Network()
+        let found = await net.search().search(
+            TopicOptions(keyword: "iPhone Duo", places: TopicPlaces(news: true, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: false)),
+            subscriptions: .empty, now: now)
+        let groups = DefaultTopicSearch.subscriberSites(signedIn: [])
+        let limited = net.requests(containing: "bing.com").map(\.url).filter { $0.contains("site%3A") }
+        #expect(limited.count == DefaultTopicSearch.subscriberSites().count)
+        #expect(groups.allSatisfy { $0.count <= DefaultTopicSearch.sitesPerSearch } && groups.flatMap { $0 }.count == TopicPaywalls.domains.count)
+        #expect(DefaultTopicSearch.newsURL("rust", sites: ["ft.com", "wsj.com"]).contains("q=rust%20%28site%3Aft.com%20OR%20site%3Awsj.com%29&"))
+        // The same article from both searches is kept once.
+        #expect(Set(found.items.map(\.guid)).count == found.items.count)
+        // Sites signed in to come first.
+        #expect(DefaultTopicSearch.subscriberSites(signedIn: ["example.substack.com"]).first?.first == "example.substack.com")
     }
 
     @Test func newsKeepsOnTopicArticlesFromPaywalledSitesToo() async throws {

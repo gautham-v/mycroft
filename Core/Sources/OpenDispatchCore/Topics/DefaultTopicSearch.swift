@@ -3,7 +3,9 @@ import Foundation
 /// A topic's searches, with no key anywhere:
 ///
 /// - news: Bing News' RSS (`/news/search?format=rss`), newest first. Its links go through an `apiclick` redirect that names the
-///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`.
+///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`. Bing answers about ten articles
+///   and seldom from subscription outlets, so the same search is also run limited to the paywalled sites and the sites the app
+///   is signed in to (`subscriberNews`), whose articles the lists then show, mark or hide.
 /// - Hacker News through Algolia's API.
 /// - Reddit's search page through the hidden web view (`DiscussionWeb`), newest first, with scores; when the web view can't
 ///   (the app is in the background) its JSON, falling back to its RSS when the JSON is refused, which it often is outside a
@@ -111,7 +113,7 @@ public struct DefaultTopicSearch: TopicSearching {
         typealias Provider = @Sendable () async throws -> [Candidate]
         let providers: [Provider]
         switch place {
-        case .news: providers = [{ try await self.news(o, now) }]
+        case .news: providers = [{ try await self.news(o, now) }, { try await self.subscriberNews(o, now) }]
         case .hackerNews: providers = [{ try await self.hackerNews(o, now) }]
         case .reddit: providers = [{ try await self.reddit(o, now) }]
         case .x: providers = [{ try await self.x(o, now) }]
@@ -119,6 +121,8 @@ public struct DefaultTopicSearch: TopicSearching {
         case .media: providers = [{ try await self.videos(o, now) }, { try await self.episodes(o, now) }]
         }
         var found: [ParsedItem] = []
+        // Two providers of a place can find the same article (Bing's general and subscriber searches).
+        var seen = Set<String>()
         var errors: [any Error] = []
         var succeeded = 0
         await withTaskGroup(of: Result<[Candidate], any Error>.self) { group in
@@ -131,8 +135,8 @@ public struct DefaultTopicSearch: TopicSearching {
                 switch result {
                 case .success(let candidates):
                     succeeded += 1
-                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now,
-                                                         inText: place.matchesText, languages: languages))
+                    let kept = Self.finish(candidates, o, matcher, subs, now, inText: place.matchesText, languages: languages)
+                    found.append(contentsOf: kept.filter { seen.insert($0.guid).inserted })
                 case .failure(let error):
                     errors.append(error)
                 }
@@ -211,11 +215,51 @@ public struct DefaultTopicSearch: TopicSearching {
 
     // MARK: News
 
-    /// `market` ("en-US") asks Bing for the user's language and region; without one Bing picks from the address.
-    static func newsURL(_ keyword: String, market: String? = nil) -> String {
-        var url = "https://www.bing.com/news/search?q=\(encode(phrase(keyword)))&format=rss&qft=sortbydate%3d%221%22"
+    /// `market` ("en-US") asks Bing for the user's language and region; without one Bing picks from the address. `sites` limits
+    /// the search to those sites.
+    static func newsURL(_ keyword: String, market: String? = nil, sites: [String] = []) -> String {
+        var query = phrase(keyword)
+        if !sites.isEmpty { query += " (" + sites.map { "site:\($0)" }.joined(separator: " OR ") + ")" }
+        var url = "https://www.bing.com/news/search?q=\(encode(query))&format=rss&qft=sortbydate%3d%221%22"
         if let market { url += "&mkt=\(encode(market))&setlang=\(encode(market))" }
         return url
+    }
+
+    /// Sites per subscriber search: Bing drops `site:` terms past a query of about this many.
+    static let sitesPerSearch = 8
+
+    /// The sites the subscriber searches cover: the ones the app is signed in to, then the known paywalled sites.
+    static func subscriberSites(signedIn: Set<String> = SiteSignIns.sites) -> [[String]] {
+        var sites = signedIn.sorted()
+        for domain in TopicPaywalls.domains where !sites.contains(domain) { sites.append(domain) }
+        return stride(from: 0, to: sites.count, by: sitesPerSearch).map { Array(sites[$0..<min($0 + sitesPerSearch, sites.count)]) }
+    }
+
+    /// The news search limited to subscription sites, a few sites per request; fails only when every request did.
+    func subscriberNews(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
+        var candidates: [Candidate] = []
+        var errors: [any Error] = []
+        let groups = Self.subscriberSites()
+        await withTaskGroup(of: Result<[Candidate], any Error>.self) { group in
+            for sites in groups {
+                group.addTask {
+                    do {
+                        let data = try await self.get(Self.newsURL(o.keyword, market: self.languages.market, sites: sites), headers: ["Accept": HTTP.feedAccept])
+                        return .success(try Self.parseNews(data))
+                    } catch {
+                        return .failure(error)
+                    }
+                }
+            }
+            for await result in group {
+                switch result {
+                case .success(let found): candidates.append(contentsOf: found)
+                case .failure(let error): errors.append(error)
+                }
+            }
+        }
+        if errors.count == groups.count, let first = errors.first { throw first }
+        return candidates
     }
 
     func news(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
