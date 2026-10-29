@@ -26,6 +26,15 @@ struct ReaderPane: Equatable, Sendable {
     var activeTab: ReaderTab { tabs[active] }
     /// Pinned tabs come first, so this is also the index of the first unpinned one.
     var pinnedCount: Int { tabs.prefix { $0.isPinned }.count }
+
+    /// Removes a tab and moves `active` in the same step: the tab after it takes its place, or the one
+    /// before if it was last, and a tab before the active one shifts it down. `AppModel.panes` observes
+    /// every write, so a pane must never be written with `active` past its tabs (change a copy, then
+    /// assign it once).
+    mutating func removeTab(at index: Int) {
+        tabs.remove(at: index)
+        if index < active || active >= tabs.count { active = max(active - 1, 0) }
+    }
 }
 
 /// A reader tab being dragged: where it was picked up, so the other pane (or the right half of a
@@ -1389,10 +1398,12 @@ final class AppModel {
             tab.itemID = item.id
         }
         tab.isPinned.toggle()
-        let activeID = panes[pane].activeTab.id
-        panes[pane].tabs.remove(at: index)
-        panes[pane].tabs.insert(tab, at: panes[pane].pinnedCount)
-        panes[pane].active = panes[pane].tabs.firstIndex { $0.id == activeID } ?? 0
+        var moved = panes[pane]
+        let activeID = moved.activeTab.id
+        moved.tabs.remove(at: index)
+        moved.tabs.insert(tab, at: moved.pinnedCount)
+        moved.active = moved.tabs.firstIndex { $0.id == activeID } ?? 0
+        panes[pane] = moved
         savePinnedTabs()
     }
 
@@ -1413,9 +1424,9 @@ final class AppModel {
             pruneOpenItems()
             return
         }
-        panes[pane].tabs.remove(at: index)
-        let active = panes[pane].active
-        if index < active || active >= panes[pane].tabs.count { panes[pane].active = active - 1 }
+        var closed = panes[pane]
+        closed.removeTab(at: index)
+        panes[pane] = closed
         pruneOpenItems()
     }
 
@@ -1423,8 +1434,10 @@ final class AppModel {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
         let keep = panes[pane].tabs[index]
         for (t, tab) in panes[pane].tabs.enumerated().reversed() where t != index && !tab.isPinned { rememberClosed(tab) }
-        panes[pane].tabs.removeAll { !$0.isPinned && $0.id != keep.id }
-        panes[pane].active = panes[pane].tabs.firstIndex { $0.id == keep.id } ?? 0
+        var rest = panes[pane]
+        rest.tabs.removeAll { !$0.isPinned && $0.id != keep.id }
+        rest.active = rest.tabs.firstIndex { $0.id == keep.id } ?? 0
+        panes[pane] = rest
         pruneOpenItems()
     }
 
@@ -1434,10 +1447,10 @@ final class AppModel {
         let keep = panes[pane].tabs[index].id
         let activeID = panes[pane].activeTab.id
         for tab in panes[pane].tabs[(index + 1)...].reversed() where !tab.isPinned { rememberClosed(tab) }
-        let tabs = panes[pane].tabs
-        panes[pane].tabs = tabs.enumerated().filter { $0.offset <= index || $0.element.isPinned }.map(\.element)
-        panes[pane].active = panes[pane].tabs.firstIndex { $0.id == activeID }
-            ?? panes[pane].tabs.firstIndex { $0.id == keep } ?? 0
+        var rest = panes[pane]
+        rest.tabs = rest.tabs.enumerated().filter { $0.offset <= index || $0.element.isPinned }.map(\.element)
+        rest.active = rest.tabs.firstIndex { $0.id == activeID } ?? rest.tabs.firstIndex { $0.id == keep } ?? 0
+        panes[pane] = rest
         pruneOpenItems()
     }
 
@@ -1490,9 +1503,9 @@ final class AppModel {
             if orNew { panes[pane].tabs[0] = ReaderTab(isNew: true) }
             return
         }
-        panes[pane].tabs.remove(at: index)
-        let active = panes[pane].active
-        if index < active || active >= panes[pane].tabs.count { panes[pane].active = active - 1 }
+        var taken = panes[pane]
+        taken.removeTab(at: index)
+        panes[pane] = taken
     }
 
     /// Left and right trade places; the focus stays on the same content.
