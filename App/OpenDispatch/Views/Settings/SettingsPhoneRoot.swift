@@ -103,11 +103,12 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
 
     private var hero: some View {
         VStack(spacing: 10) {
-            Image("AppLogo")
+            model.appIcon.choice.image
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 14.3, style: .continuous))
                 .frame(width: 104, height: 104)
                 .glassEffect(.regular, in: Circle())
                 .accessibilityHidden(true)

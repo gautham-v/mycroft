@@ -110,6 +110,8 @@ final class AppModel {
     let topicStore: TopicStore
     /// The sites signed in to in the app (X, Reddit), for Explore's posts and the reader's replies.
     let accounts: WebAccountStore
+    /// The app icon chosen in Settings → Appearance.
+    let appIcon = AppIconStore()
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
@@ -222,6 +224,9 @@ final class AppModel {
     /// How many of the loaded items the list leaves out for their paywall, for the list's footer.
     private(set) var hiddenPaywalledCount = 0
     private(set) var nextCursor: ItemCursor?
+    /// Rows the last reload of the same list added (a refresh), for the list's new-items pill. Empty after a load
+    /// of another list, or the first load of one.
+    private(set) var arrivedItemIDs: Set<Int64> = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     /// Set when the list failed to load ("Could not load items. Retry").
@@ -364,6 +369,7 @@ final class AppModel {
     func start() async {
         guard !started else { return }
         started = true
+        appIcon.showInDock()
         // Read first and alongside the rest: a restored X post waits on it for its replies.
         let signIns = Task { await accounts.refresh() }
         // Topics stored by an older build, or before their rules last changed, match today's rules before anything lists them.
@@ -596,16 +602,23 @@ final class AppModel {
 
     // MARK: Items
 
-    /// Reload the first page for the current query (reset) or load the next page.
-    func loadItems(reset: Bool = true) async {
+    /// Reload the first page for the current query (reset) or load the next page. `keepingDepth` (a refresh) reloads
+    /// as many rows as were paged in, up to 200, so the list doesn't shrink under someone reading further down.
+    func loadItems(reset: Bool = true, keepingDepth: Bool = false) async {
         guard reset else { return await loadMore() }
         loadGeneration += 1
         let gen = loadGeneration
         let query = currentQuery
+        var request = query
+        if keepingDepth { request.limit = min(max(ItemQuery.defaultLimit, loadedItems.count + ItemQuery.defaultLimit), 200) }
         isLoading = true
         do {
-            let page = try await database.items(query)
+            let page = try await database.items(request)
             guard gen == loadGeneration else { return }
+            let before = Set(loadedItems.map(\.id))
+            let arrived = cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
+                ? Set(page.items.map(\.id)).subtracting(before) : []
+            if arrived != arrivedItemIDs { arrivedItemIDs = arrived }
             loadedItems = page.items
             applyPaywallFilter()
             nextCursor = page.nextCursor
@@ -978,7 +991,7 @@ final class AppModel {
     /// Sources, items, counts and stats.
     func reloadAll() async {
         await loadSources()
-        await loadItems(reset: true)
+        await loadItems(reset: true, keepingDepth: true)
         await loadStats()
     }
 
@@ -2060,5 +2073,15 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .data: "Data"
         case .about: "About"
         }
+    }
+}
+
+extension ItemQuery {
+    /// The list this query shows: the query apart from Hide Read Items' cutoff, which a refresh moves without
+    /// changing lists.
+    var listIdentity: ItemQuery {
+        var q = self
+        if q.hideReadBefore != nil { q.hideReadBefore = .distantPast }
+        return q
     }
 }

@@ -5,6 +5,7 @@ import SwiftUI
 /// are the Settings screen's header, so the pane starts at the description, and the text and credits
 /// sit in cards. Figtree is credited on iOS only, the one platform that sets its UI in it.
 struct SettingsAboutPane: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
 
     private var version: String {
@@ -34,7 +35,7 @@ struct SettingsAboutPane: View {
                 }
             } else {
                 HStack(spacing: 14) {
-                    Image("AppLogo")
+                    model.appIcon.choice.image
                         .resizable()
                         .interpolation(.high)
                         .frame(width: 52, height: 52)

@@ -1,13 +1,13 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Integrations pane (IntegrationsPane): Readwise Reader token and webhook URL, saved together with
-/// Save; each configured target has a test button and Remove. The token never comes back from the
-/// Keychain: the field starts empty and the status shows its hint ("Token …abcd"). Below them, the
-/// Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field. Last, the sites
-/// the app is signed in to (X for Explore's posts and their replies, Reddit optionally), each with Sign In… or Sign Out. After
-/// them, paywalled articles: what the lists do with sites you aren't signed in to (Show, Mark, Hide), the sites the app knows
-/// have a paywall (and any it is signed in to) with Sign In… or Sign Out, and a field to sign in to a site by its domain.
+/// Integrations pane (IntegrationsPane): first the sites the app is signed in to (X for Explore's posts and their
+/// replies, Reddit optionally), each with Sign In… or Sign Out. After them, paywalled articles: what the lists do with
+/// sites you aren't signed in to (Show, Mark, Hide), the sites the app knows have a paywall (and any it is signed in to)
+/// with Sign In… or Sign Out, and a field to sign in to a site by its domain. Last, the send targets: Readwise Reader
+/// token and webhook URL, saved together with Save; each configured target has a test button and Remove. The token
+/// never comes back from the Keychain: the field starts empty and the status shows its hint ("Token …abcd"). Below
+/// them, the Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field.
 struct SettingsIntegrationsPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
@@ -47,14 +47,14 @@ struct SettingsIntegrationsPane: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(
                 title: "Integrations",
-                hint: "Send an item from the reader to Readwise Reader or your own webhook, and your highlights to Readwise. Stored on this device; the token is kept in the Keychain."
+                hint: "The sites the app is signed in to, and where the reader sends items: Readwise Reader, your own webhook, or the clipboard. Stored on this device; the Readwise token is kept in the Keychain."
             )
+            accountsSection
+            paywallSection
             readwiseSection
             webhookSection
             footer
             copySection
-            accountsSection
-            paywallSection
         }
         .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
             WebSignInView(target: target, onDone: { if case .site(let site, _) = target { model.accounts.signIn(site: site) } })

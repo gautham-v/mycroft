@@ -89,21 +89,87 @@ struct ReaderFlowLayout: Layout {
 }
 
 /// The reading column (Settings → Appearance → Reader width, 640pt by default, or the whole pane with
-/// Fill window) with 20pt (phone) / 32pt (wider) side padding outside it.
+/// Fill window) with 20pt (phone) / 32pt (wider) side padding outside it, or `padding` when given.
 struct ReaderColumn: ViewModifier {
     var wide: Bool
+    var padding: CGFloat?
     @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: model.settings.readerColumnWidth ?? .infinity, alignment: .leading)
-            .padding(.horizontal, wide ? Metrics.readerPaddingWide : Metrics.readerPaddingPhone)
+            .padding(.horizontal, padding ?? (wide ? Metrics.readerPaddingWide : Metrics.readerPaddingPhone))
             .frame(maxWidth: .infinity)
     }
 }
 
 extension View {
-    func readerColumn(wide: Bool) -> some View { modifier(ReaderColumn(wide: wide)) }
+    func readerColumn(wide: Bool, padding: CGFloat? = nil) -> some View { modifier(ReaderColumn(wide: wide, padding: padding)) }
+
+    /// Cuts text to `limit` lines (nil: all of it) and tells `truncated` whether that left any out.
+    func readerClamped(_ limit: Int?, truncated: Binding<Bool>) -> some View {
+        modifier(ReaderClamp(limit: limit, truncated: truncated))
+    }
+}
+
+/// `readerClamped`: the text cut to its lines over a hidden copy at full length; the two heights differ when it was cut.
+private struct ReaderClamp: ViewModifier {
+    let limit: Int?
+    @Binding var truncated: Bool
+    @State private var full: CGFloat = 0
+    @State private var shown: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .lineLimit(limit)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(alignment: .topLeading) {
+                content
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { full = $0; update() }
+                    .accessibilityHidden(true)
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { shown = $0; update() }
+    }
+
+    private func update() {
+        let cut = limit != nil && full > shown + 1
+        if cut != truncated { truncated = cut }
+    }
+}
+
+/// "Show more", "Read more", "2 more replies": in the muted meta color with a chevron that turns up once open, in ink
+/// under the pointer, so opening something in place doesn't look like a link out.
+struct ReaderDisclosureButton: View {
+    let title: String
+    var open = false
+    var size: CGFloat = 13.5
+    /// Drawn in place of the muted color (a row that failed to load), without the chevron.
+    var tint: Color?
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                if tint == nil {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: size * 0.62, weight: .semibold))
+                        .rotationEffect(.degrees(open ? 180 : 0))
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(OFFont.ui(size, .medium))
+            .foregroundStyle(tint ?? (hovering ? Color.ofInk : Color.ofMuted))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
 }
 
 /// Pure helpers ported from reader.tsx.

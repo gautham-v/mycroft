@@ -6,8 +6,9 @@ import SwiftUI
 /// opens, through `AppModel.comments(for:)`.
 ///
 /// Comments come flattened with their depth; a rail per level shows the nesting, and clicking a comment's author line folds
-/// it with its replies. "N more replies" and "More comments" rows load the rest in place. X's replies need the app signed in
-/// to X, so a signed-out reader shows the sign-in note instead and loads once signed in.
+/// it with its replies. "N more replies" and "More comments" rows load the rest in place. A YouTube comment longer than
+/// four lines is cut there with "Read more" under it. X's replies need the app signed in to X, so a signed-out reader shows
+/// the sign-in note instead and loads once signed in.
 struct ReaderComments: View {
     let url: String
     let place: DiscussionPlace
@@ -25,6 +26,8 @@ struct ReaderComments: View {
     @State private var entries: [DiscussionEntry] = []
     @State private var total: Int?
     @State private var folded: Set<String> = []
+    /// Long comments opened with "Read more".
+    @State private var opened: Set<String> = []
     @State private var loadingMore: Set<String> = []
     @State private var failedMore: Set<String> = []
 
@@ -127,8 +130,11 @@ struct ReaderComments: View {
                     ForEach(visible) { entry in
                         switch entry {
                         case .comment(let comment):
-                            ReaderCommentRow(comment: comment, place: place, folded: folded.contains(comment.id), replies: replyCount(comment)) {
+                            ReaderCommentRow(comment: comment, place: place, folded: folded.contains(comment.id), replies: replyCount(comment),
+                                             opened: opened.contains(comment.id)) {
                                 if folded.contains(comment.id) { folded.remove(comment.id) } else { folded.insert(comment.id) }
+                            } open: {
+                                if opened.contains(comment.id) { opened.remove(comment.id) } else { opened.insert(comment.id) }
                             }
                         case .more(let more):
                             ReaderMoreCommentsRow(more: more, loading: loadingMore.contains(more.id), failed: failedMore.contains(more.id)) {
@@ -178,6 +184,7 @@ struct ReaderComments: View {
             total = thread.total
             onTotal(thread.total)
             folded = []
+            opened = []
             phase = .loaded
         } catch DiscussionError.signInRequired {
             phase = .signIn
@@ -205,14 +212,24 @@ struct ReaderComments: View {
 }
 
 /// One comment: its author line (avatar, name, age, score) over its text, indented by a rail per level. Clicking the
-/// author line folds it and its replies.
+/// author line folds it and its replies. A YouTube comment is cut to four lines with "Read more" under it; YouTube's
+/// comments are plain text, so the cut version is one Text with the paragraphs a blank line apart. In a narrow reader the
+/// type is smaller and the author line wraps.
 private struct ReaderCommentRow: View {
     let comment: DiscussionComment
     let place: DiscussionPlace
     let folded: Bool
     /// Replies hidden while folded.
     let replies: Int
+    /// Opened with "Read more".
+    let opened: Bool
     let toggle: () -> Void
+    let open: () -> Void
+
+    @Environment(\.readerNarrow) private var narrow
+    @State private var cut = false
+
+    private var size: CGFloat { narrow ? 13.5 : 15 }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -223,12 +240,36 @@ private struct ReaderCommentRow: View {
                     .accessibilityLabel("\(comment.author), \(folded ? "folded" : "")")
                     .accessibilityHint(folded ? "Shows the comment" : "Folds the comment and its replies")
                 if !folded {
-                    ReaderRichText(text: comment.body, size: 15)
+                    if place == .youtube, !opened {
+                        Text(clampedBody)
+                            .font(OFFont.ui(size))
+                            .lineSpacing(size * 0.3)
+                            .foregroundStyle(.ofInk)
+                            .tint(.ofAccent)
+                            .textSelection(.enabled)
+                            .readerClamped(4, truncated: $cut)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ReaderRichText(text: comment.body, size: size)
+                    }
+                    if place == .youtube, cut || opened {
+                        ReaderDisclosureButton(title: opened ? "Show less" : "Read more", open: opened, size: 13, action: open)
+                            .padding(.top, 1)
+                    }
                 }
             }
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var clampedBody: AttributedString {
+        var out = AttributedString()
+        for (i, paragraph) in comment.body.paragraphs.enumerated() {
+            if i > 0 { out += AttributedString("\n\n") }
+            out += ReaderRichText.attributed(paragraph)
+        }
+        return out
     }
 
     private var header: some View {
@@ -239,7 +280,7 @@ private struct ReaderCommentRow: View {
                 } placeholder: { _ in
                     Color.ofCode
                 }
-                .frame(width: 18, height: 18)
+                .frame(width: narrow ? 15 : 18, height: narrow ? 15 : 18)
                 .clipShape(Circle())
                 .accessibilityHidden(true)
             }
@@ -254,8 +295,9 @@ private struct ReaderCommentRow: View {
                 }
                 if folded { tail += replies > 0 ? " \u{00B7} \(replies) more" : " \u{00B7} folded" }
                 return Text("\(name)\(Text(verbatim: tail).foregroundStyle(Color.ofMuted))")
-                    .font(OFFont.ui(13))
-                    .lineLimit(1)
+                    .font(OFFont.ui(narrow ? 12 : 13))
+                    .lineLimit(narrow ? 3 : 1)
+                    .fixedSize(horizontal: false, vertical: narrow)
             }
             Spacer(minLength: 0)
         }
@@ -263,7 +305,7 @@ private struct ReaderCommentRow: View {
     }
 }
 
-/// "27 more replies" / "More comments", indented like the comments it stands for.
+/// "27 more replies" / "More comments", indented like the comments it stands for, muted with a chevron.
 private struct ReaderMoreCommentsRow: View {
     let more: DiscussionMore
     let loading: Bool
@@ -273,18 +315,10 @@ private struct ReaderMoreCommentsRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             ReaderCommentRails(depth: more.depth)
-            Button(action: action) {
-                HStack(spacing: 6) {
-                    if loading { ProgressView().controlSize(.small) }
-                    Text(label)
-                        .font(OFFont.ui(13.5, .medium))
-                        .foregroundStyle(failed ? Color.ofDanger : Color.ofAccent)
-                }
+            if loading { ProgressView().controlSize(.small).padding(.trailing, 6) }
+            ReaderDisclosureButton(title: label, size: 13.5, tint: failed ? .ofDanger : nil, action: action)
                 .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(loading)
+                .disabled(loading)
             Spacer(minLength: 0)
         }
     }

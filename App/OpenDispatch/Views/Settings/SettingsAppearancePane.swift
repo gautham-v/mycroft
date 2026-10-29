@@ -1,7 +1,7 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Appearance pane: the color scheme as pictures, the accent color, and how lists look (density, thumbnails,
+/// Appearance pane: the color scheme as pictures, the accent color, the app icon, and how lists look (density, thumbnails,
 /// the unread marker, source icons, feed order, hiding read items), then keyboard shortcuts. Values live in `model.settings`
 /// (AppSettings, JSON in UserDefaults "openfeed.settings"); RootView applies the scheme, ThemeRuntime the accent,
 /// and list rows read the rest through `\.listLayout`.
@@ -33,6 +33,7 @@ struct SettingsAppearancePane: View {
                     AccentPicker(selection: $model.settings.accent)
                 }
             }
+            SettingsAppIconSection()
             SettingsSection(title: "Lists") {
                 SettingsRow(label: "Density") {
                     SettingsSegmented(label: "Density", selection: $model.settings.listDensity,

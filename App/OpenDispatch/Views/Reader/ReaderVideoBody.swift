@@ -1,12 +1,17 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title,
-/// player up to 960pt. Otherwise the player sits in the text column under the title and meta row.
+/// YouTube item layout (VideoBody in reader.tsx). Theater: a band above the title with the player as tall as
+/// the reader less room for the title row (at least 960pt wide, if the reader is that wide), edge to edge when
+/// it fills the reader's width and otherwise on the page with rounded corners, no black beside it;
+/// scrolling down snaps the pinned band to under half the reader so the description and comments have room,
+/// and scrolling back to the top grows it again. Otherwise the player sits in the text column under the title and meta row.
 /// A Short skips the band: a 9:16 player centered in the column, above the title in theater, as tall
 /// as the reader less room for the title to show under it. Under the description, Comments and Transcript
 /// (if the video has captions) are tabs, Comments first; the theater band stays pinned at the top while it
 /// scrolls, and once the tab bar scrolls up to it (or to the top of the reader) a copy of the bar pins there too.
+/// A reader narrower than `Metrics.narrowVideoReader` tightens it all: smaller title, description and tabs, no date,
+/// Watch on YouTube as its icon, and comments in smaller type whose author lines wrap instead of cutting off.
 struct ReaderVideoBody: View {
     let item: FeedItem
     let autoplay: Bool
@@ -16,6 +21,9 @@ struct ReaderVideoBody: View {
     let viewportHeight: CGFloat
 
     @State private var expanded = false
+    /// The description is cut to its first lines.
+    @State private var summaryCut = false
+    @State private var width: CGFloat = 0
     @State private var playback = ReaderYouTubeController()
     @State private var tab: ReaderVideoTab = .comments
     @State private var transcript: Transcript?
@@ -27,6 +35,9 @@ struct ReaderVideoBody: View {
     @State private var headerHeight: CGFloat = 0
     /// The tab bar has scrolled up past `pinLine`, so its pinned copy shows.
     @State private var tabsPinned = false
+    /// Where the header sits on screen at its pinned place, and whether the band has snapped to its pinned height.
+    @State private var headerTop: CGFloat = 0
+    @State private var bandSmall = false
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @Environment(\.readerScroll) private var scroll
@@ -37,11 +48,25 @@ struct ReaderVideoBody: View {
         max(Metrics.verticalVideoMinWidth, (viewportHeight - Metrics.verticalVideoTitleRoom) * 9 / 16)
     }
     private var summaryText: String { TextFormat.stripHTML(item.item.summary) }
-    private var isLong: Bool {
-        summaryText.count > 280 || summaryText.split(separator: "\n", omittingEmptySubsequences: false).count > 3
-    }
+    /// 0 until measured, which counts as wide.
+    private var narrow: Bool { width > 0 && width < Metrics.narrowVideoReader }
 
     private var band: Bool { theater && !vertical && item.item.videoId != nil }
+
+    /// The band player's full and pinned heights; nil until the reader is measured.
+    private var bandHeights: (full: CGFloat, pinned: CGFloat)? {
+        guard band, width > 0 else { return nil }
+        let edgeToEdge = width * 9 / 16
+        let capped = min(width, Metrics.theaterMaxWidth) * 9 / 16
+        // A player narrower than the reader has `theaterInset` above and below it, inside the band.
+        let fit = viewportHeight - Metrics.theaterTitleRoom
+        let full = edgeToEdge <= fit ? edgeToEdge : max(capped, fit - 2 * Metrics.theaterInset)
+        let pinned = viewportHeight * Metrics.theaterPinnedShare - 2 * Metrics.theaterInset
+        return (full, min(full, max(Metrics.theaterPinnedMin, pinned)))
+    }
+    private var bandPlayerHeight: CGFloat? { bandHeights.map { bandSmall ? $0.pinned : $0.full } }
+    /// How much taller the band was before its last snap (negative when it grew).
+    private var bandSnap: CGFloat { bandHeights.map { bandSmall ? $0.full - $0.pinned : $0.pinned - $0.full } ?? 0 }
 
     private var showsComments: Bool { model.settings.showComments && item.item.videoId != nil }
     private var showsTranscript: Bool {
@@ -73,6 +98,15 @@ struct ReaderVideoBody: View {
                 pinnedHeader
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        // Scrolling down snaps the band to its pinned height, and the page moves up under it; at the top it grows back.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
+            guard bandHeights != nil else { return }
+            let scrolled = headerTop - top
+            let small = bandSmall ? scrolled >= 1 : scrolled > Metrics.theaterSnapScroll
+            if small != bandSmall { bandSmall = small }
+        }
+        .environment(\.readerNarrow, narrow)
         .task(id: model.settings.videoTranscript) {
             guard model.settings.videoTranscript, item.item.videoId != nil else {
                 transcriptLoading = false
@@ -103,8 +137,8 @@ struct ReaderVideoBody: View {
             }
 
             Text(item.item.title)
-                .font(wide ? OFFont.videoTitleWide : OFFont.videoTitle)
-                .tracking(-0.01 * (wide ? 22 : 20))
+                .font(narrow ? OFFont.videoTitleNarrow : wide ? OFFont.videoTitleWide : OFFont.videoTitle)
+                .tracking(-0.01 * (narrow ? 15 : wide ? 22 : 20))
                 .lineSpacing(2)
                 .foregroundStyle(.ofInk)
                 .textSelection(.enabled)
@@ -115,14 +149,28 @@ struct ReaderVideoBody: View {
                     HStack(spacing: 8) {
                         SourceBadge(host: item.source.host, title: item.originName, size: 22)
                         Text(item.originName).fontWeight(.medium).foregroundStyle(.ofInk)
+                            .lineLimit(narrow ? 1 : nil)
                     }
-                    if let dur = TextFormat.duration(item.item.durationSec) {
-                        Text(dur).monospacedDigit()
+                    if !narrow {
+                        if let dur = TextFormat.duration(item.item.durationSec) {
+                            Text(dur).monospacedDigit()
+                        }
+                        Text(TextFormat.date(item.item.publishedAt))
                     }
-                    Text(TextFormat.date(item.item.publishedAt))
                 }
                 Spacer(minLength: 8)
-                if let url = URL(string: item.item.url) {
+                if let url = URL(string: item.item.url), narrow {
+                    Button { openURL(url) } label: {
+                        OFIcon.external.image
+                            .font(.system(size: 13))
+                            .foregroundStyle(.ofMuted)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Watch on YouTube")
+                    .accessibilityLabel("Watch on YouTube")
+                } else if let url = URL(string: item.item.url) {
                     Button { openURL(url) } label: {
                         HStack(spacing: 6) {
                             Text("Watch on YouTube")
@@ -141,7 +189,7 @@ struct ReaderVideoBody: View {
             }
             .font(OFFont.ui(13))
             .foregroundStyle(.ofMuted)
-            .padding(.top, 12)
+            .padding(.top, narrow ? 8 : 12)
 
             if !theater, vertical, let videoID = item.item.videoId {
                 portraitPlayer(videoID)
@@ -155,22 +203,21 @@ struct ReaderVideoBody: View {
             }
 
             if !summaryText.isEmpty {
+                let size: CGFloat = narrow ? 13.5 : 14.5
                 VStack(alignment: .leading, spacing: 6) {
                     Text(ReaderText.linkified(item.item.summary ?? ""))
-                        .font(OFFont.ui(14.5))
-                        .lineSpacing(14.5 * 0.4)
+                        .font(OFFont.ui(size))
+                        .lineSpacing(size * 0.4)
                         .foregroundStyle(.ofInk)
-                        .lineLimit(expanded ? nil : 3)
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if isLong {
-                        Button(expanded ? "Show less" : "Show more") { expanded.toggle() }
-                            .buttonStyle(.plain)
-                            .font(OFFont.ui(13, .medium))
-                            .foregroundStyle(.ofAccent)
+                        .readerClamped(expanded ? nil : (narrow ? 2 : 3), truncated: $summaryCut)
+                    if summaryCut || expanded {
+                        ReaderDisclosureButton(title: expanded ? "Show less" : "Show more", open: expanded, size: 13) {
+                            expanded.toggle()
+                        }
                     }
                 }
-                .padding(.top, 20)
+                .padding(.top, narrow ? 12 : 20)
             }
 
             if showsComments || showsTranscript {
@@ -181,12 +228,12 @@ struct ReaderVideoBody: View {
                         Color.clear.frame(height: headerHeight + 1).id(Self.tabsAnchor).padding(.top, -headerHeight)
                     }
                     .onGeometryChange(for: Bool.self) { $0.frame(in: .global).minY < pinLine - 0.5 } action: { tabsPinned = $0 }
-                    .padding(.top, 28)
+                    .padding(.top, narrow ? 18 : 28)
                 tabContent
             }
         }
-        .readerColumn(wide: wide)
-        .padding(.top, theater ? 24 : (wide ? 40 : 32))
+        .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
+        .padding(.top, narrow ? 16 : theater ? 24 : (wide ? 40 : 32))
         .padding(.bottom, 32)
     }
 
@@ -197,32 +244,50 @@ struct ReaderVideoBody: View {
                 ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                     thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
                                     resumeAt: resumeAt, controller: playback)
-                    .frame(maxWidth: Metrics.theaterMaxWidth)
+                    // The snap eases the player's height frame by frame, so the page under it is laid out again each
+                    // frame and moves with it, rather than each view sliding to its new place on its own.
+                    .keyframeAnimator(initialValue: CGFloat(0), trigger: bandSmall) { player, lag in
+                        let playerWidth = bandPlayerHeight.map { ($0 + lag) * 16 / 9 }
+                        // The inset and corners fade out as the player nears the reader's width, so a snap to or from
+                        // edge to edge doesn't jump.
+                        let inset = playerWidth.map { min(Metrics.theaterInset, max(0, width - $0) / 2) } ?? 0
+                        player
+                            .clipShape(RoundedRectangle(cornerRadius: min(10, inset), style: .continuous))
+                            .frame(maxWidth: playerWidth ?? Metrics.theaterMaxWidth)
+                            .padding(.vertical, inset)
+                    } keyframes: { _ in
+                        KeyframeTrack {
+                            MoveKeyframe(bandSnap)
+                            CubicKeyframe(0, duration: 0.3)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, wide ? 16 : 0)
-                    .background(Color.black)
+                    .background(Color.ofSurface)
             } else {
                 Color.clear.frame(height: 0)
             }
         }
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            headerTop = frame.minY
             pinLine = frame.maxY
             headerHeight = frame.height
         }
         .overlay(alignment: .bottom) {
             if tabsPinned {
                 tabBar
-                    .readerColumn(wide: wide)
+                    .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
                     .background(Color.ofSurface)
-                    .alignmentGuide(.bottom) { $0[.top] }
+                    // Hangs from the band's bottom edge in a frame of no height, rather than through an alignment
+                    // guide, which the band ignored, setting the bar over the bottom of the player and its corners.
+                    .frame(height: 0, alignment: .top)
             }
         }
     }
 
     private var tabBar: some View {
         ReaderVideoTabBar(tab: shownTab, comments: showsComments, commentCount: commentTotal,
-                          transcript: showsTranscript, transcriptLoading: transcriptLoading, url: item.item.url,
+                          transcript: showsTranscript, transcriptLoading: transcriptLoading, url: item.item.url, compact: narrow,
                           copy: transcript.map { found in { model.copyTranscript(found, durationSec: item.item.durationSec) } },
                           select: select)
     }
@@ -266,4 +331,6 @@ struct ReaderVideoBody: View {
 extension EnvironmentValues {
     /// The reader's scroll view, for a view inside it to scroll to one of its ids.
     @Entry var readerScroll: ScrollViewProxy? = nil
+    /// The video reader is narrower than `Metrics.narrowVideoReader`: its comments use smaller type.
+    @Entry var readerNarrow = false
 }
