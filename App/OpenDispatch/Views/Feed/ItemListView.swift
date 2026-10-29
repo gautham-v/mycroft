@@ -263,6 +263,9 @@ struct ItemListView: View {
             let previous = index > 0 ? items[index - 1].id : nil
             ListRow(item: item, previousID: previous, isPhone: isPhone) { row(item, previousID: previous) }
                 .equatable()
+                // Outside the equatable wrapper: List doesn't see row traits set inside it, and drew its own
+                // insets and separators around every row.
+                .plainListRow()
                 .onAppear {
                     if index >= prefetchFrom { Task { await model.loadMore() } }
                 }
@@ -305,7 +308,6 @@ struct ItemListView: View {
         .contextMenu { RowMenu(item: item, isPhone: isPhone, sendError: $sendError) }
         // iPhone: the menu's icons and labels in ink, like the drawer, rather than the accent blue.
         .tint(isPhone ? Color.ofInk : nil)
-        .plainListRow()
         .id(item.id)
     }
 
