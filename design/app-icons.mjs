@@ -26,6 +26,9 @@ function tremor(r) {
   return t => k.reduce((s, o) => s + o.a * Math.sin(6.283 * o.f * t + o.p), 0) / 1.75;
 }
 const f = p => p[0].toFixed(1) + " " + p[1].toFixed(1);
+// The drawn area of the icon being drawn, so svg() can scale the mark to fill the tile.
+let box;
+const track = pts => { for (const [x, y] of pts) box = [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] };
 // Catmull-Rom through the points as cubic Béziers.
 function segs(pts, closed) {
   const n = pts.length, P = i => closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))];
@@ -44,12 +47,14 @@ function rim(R, r) {
 function blob(cx, cy, R, r, fill) {
   const rr = rim(R, r), pts = [];
   for (let i = 0; i < 48; i++) { const th = i / 48 * 6.283; pts.push([cx + rr(th) * Math.cos(th), cy + rr(th) * Math.sin(th)]) }
+  track(pts);
   return `<path fill="${fill}" d="M${f(pts[0])}${segs(pts, true)}Z"/>`;
 }
 // Half a disc with a straight cut: side -1 keeps the left half, 1 the right.
 function half(cx, cy, R, side, r, fill) {
   const rr = rim(R, r), pts = [];
   for (let i = 0; i <= 24; i++) { const th = (side < 0 ? Math.PI / 2 : -Math.PI / 2) + i / 24 * Math.PI; pts.push([cx + rr(th) * Math.cos(th), cy + rr(th) * Math.sin(th)]) }
+  track(pts);
   return `<path fill="${fill}" d="M${f(pts[0])}${segs(pts)}Z"/>`;
 }
 // A marker stroke along fn(t): the centerline wobbles and the width breathes a little, with round ends.
@@ -63,6 +68,7 @@ function stroke(fn, W, r, fill) {
     const q = [p[0] + nx * off, p[1] + ny * off];
     L.push([q[0] + nx * h, q[1] + ny * h]); R.push([q[0] - nx * h, q[1] - ny * h]);
   }
+  track(L); track(R);
   const Rv = R.slice().reverse(), r1 = Math.hypot(L[N][0] - R[N][0], L[N][1] - R[N][1]) / 2, r0 = Math.hypot(L[0][0] - R[0][0], L[0][1] - R[0][1]) / 2;
   return `<path fill="${fill}" d="M${f(L[0])}${segs(L)}A${r1.toFixed(1)} ${r1.toFixed(1)} 0 0 0 ${f(Rv[0])}${segs(Rv)}A${r0.toFixed(1)} ${r0.toFixed(1)} 0 0 0 ${f(L[0])}Z"/>`;
 }
@@ -85,9 +91,17 @@ export const DESIGNS = {
   "trace-wave": { seed: 704, draw: (r, C) => blob(410, 620, 225, r, C.disc) + loop(540, 490, 215, r, C) + stroke(arc(540, 490, 315, -84, -8), 46, r, C.ink) },
 };
 
+// The mark's longer side as a share of the tile, about what the other icons in the Dock fill.
+const FILL = 0.8;
+
 export function svg(design, colorway) {
   const C = COLORWAYS[colorway], d = DESIGNS[design];
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><rect width="1024" height="1024" fill="${C.tile}"/>${d.draw(rng(d.seed), C)}</svg>\n`;
+  box = [Infinity, Infinity, -Infinity, -Infinity];
+  const mark = d.draw(rng(d.seed), C);
+  // Scale the mark about its own center and put that center in the middle of the tile.
+  const k = FILL * 1024 / Math.max(box[2] - box[0], box[3] - box[1]), cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
+  const fit = `translate(512 512) scale(${k.toFixed(4)}) translate(${(-cx).toFixed(1)} ${(-cy).toFixed(1)})`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><rect width="1024" height="1024" fill="${C.tile}"/><g transform="${fit}">${mark}</g></svg>\n`;
 }
 
 if (process.argv[2]) {
