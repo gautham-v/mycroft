@@ -1108,6 +1108,7 @@ enum ArticlePasses {
         for img in DOM.select(root, "img") where isTinyImg(img) || playerCover.test(DOM.attr(img, "alt") ?? "") { DOM.remove(img) }
         for svg in DOM.select(root, "svg") where DOM.isConnected(svg) && isIconSvg(svg) { DOM.remove(svg) }
         tidyFigures(root)
+        tidyCaptions(root)
         promoteBoldHeadings(root)
         for p in DOM.select(root, "p") where DOM.isConnected(p) && !hasMediaOrText(p) && DOM.first(p, "br") == nil { DOM.remove(p) }
         spaceAfterLabels(root)
@@ -1264,6 +1265,7 @@ enum ArticlePasses {
         removeAvatars(root)
         captionAttributes(root)
         captionBlocks(root)
+        captionFigures(root)
         rebuildYouTube(root)
         unlinkHeadings(root)
         collapsePictures(root)
