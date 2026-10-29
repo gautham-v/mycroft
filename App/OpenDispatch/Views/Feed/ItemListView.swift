@@ -25,6 +25,9 @@ import AppKit
 ///   item, the other pane's item gets a lighter highlight, and rows open in a background tab show a dot.
 /// - Scrolls to the top when the view/source/folder/search changes, and keeps the highlighted row
 ///   visible when it moves (keyboard).
+/// - Rows a refresh adds above the ones on screen don't push them down: what's on screen stays put and a pill over
+///   the top of the list says "↑ 4 new" (`NewRowsPill`), counting down as they scroll into view; clicking it scrolls
+///   to the top. Pull to refresh on iPhone shows them at the top instead.
 /// - Keyboard shortcuts (KeyboardShortcuts.swift) are attached here.
 struct ItemListView: View {
     @Environment(AppModel.self) private var model
@@ -38,10 +41,16 @@ struct ItemListView: View {
     /// `@State` here: hover changes constantly while scrolling (rows slide under a still pointer), and
     /// state on this view re-evaluated the whole list body, every row's menu included, each time.
     @State private var hover = RowHover()
-    /// Id of the list's first row while it is on screen (the list is scrolled to the top). Only read in
-    /// `onChange` handlers, so it lives in a plain reference: as `@State` its first change on scrolling
-    /// away from the top re-evaluated the whole list.
-    @State private var topRow = TopRowTracker()
+    /// New rows above the screen, for the pill; only the pill reads them.
+    @State private var newRows = NewRows()
+    #if os(macOS)
+    /// Whether the list is scrolled to the very top. Only read in `onChange` handlers, so it lives in a plain
+    /// reference: as `@State` its change on scrolling away from the top would re-evaluate the whole list.
+    @State private var scrollEdge = ScrollEdge()
+    #else
+    /// Keeps the rows on screen in place when rows land above them (List doesn't).
+    @State private var listAnchor = ListAnchor()
+    #endif
     /// iPhone: this is the stack's home list (the drawer's views and folders), not a source's feed pushed
     /// from Manage sources, which SourcesView creates with the default.
     var isPhoneHome = false
@@ -124,7 +133,15 @@ struct ItemListView: View {
     /// the list (`PhonePageOffset`) but not the bubbles.
     private var phoneColumn: some View {
         list
-            .refreshable { await model.refresh(force: true) }
+            .refreshable {
+                // Pulling down asks for the new rows, so they show at the top rather than behind the pill.
+                newRows.reveal(until: .distantFuture)
+                listAnchor.reveal(until: .distantFuture)
+                await model.refresh(force: true)
+                let end = Date().addingTimeInterval(1)
+                newRows.reveal(until: end)
+                listAnchor.reveal(until: end)
+            }
             .modifier(PhonePageOffset(isHome: isPhoneHome))
             .background(Color.ofSurface.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -157,6 +174,10 @@ struct ItemListView: View {
     private var list: some View {
         let items = model.items
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
+        #if os(iOS)
+        listAnchor.expect(items.map(\.id))
+        listAnchor.leadingRows = isPhone ? 1 : 0
+        #endif
         return ScrollViewReader { proxy in
             RowStack {
                 #if os(iOS)
@@ -186,19 +207,53 @@ struct ItemListView: View {
             .overlayScrollers()
             .background(Color.ofSurface)
             .environment(\.defaultMinListRowHeight, 1)
-            .onChange(of: model.currentQuery) { _, _ in
-                // The old list stays up while the next one loads; start the new one at the top.
+            #if os(macOS)
+            .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y <= -$0.contentInsets.top + 0.5 } action: { _, top in
+                scrollEdge.atTop = top
+            }
+            .onScrollTargetVisibilityChange(idType: Int64.self, threshold: 0.5) { ids in
+                newRows.scrolled(toFirstOf: ids, in: model.items)
+            }
+            #else
+            .background { ListAnchorFinder(anchor: listAnchor) }
+            .onAppear {
+                listAnchor.onTopRow = { [newRows, model] id in newRows.scrolled(toTop: id, in: model.items) }
+            }
+            #endif
+            .onChange(of: model.currentQuery.listIdentity) { _, _ in
+                // The old list stays up while the next one loads; start the new one at the top. (A refresh moves
+                // Hide Read Items' cutoff, which isn't another list.)
+                newRows.clear()
                 scrollToTop(proxy, firstID: model.items.first?.id)
             }
-            .onChange(of: model.items.first?.id) { old, new in
-                // New items arrived above (a refresh finished): if the list was at the top, stay at the
-                // top instead of keeping the old first row anchored in place.
-                guard let new, let old, old != new, topRow.id == old else { return }
-                topRow.id = new
-                scrollToTop(proxy, firstID: new)
+            .onChange(of: model.items.map(\.id)) { old, new in
+                #if os(macOS)
+                // SwiftUI keeps the rows on screen in place when rows land above them, except at the very top,
+                // where it keeps the top edge: put the old first row back at the top.
+                if scrollEdge.atTop, let first = old.first, first != new.first, new.contains(first) {
+                    proxy.scrollTo(first, anchor: .top)
+                }
+                #else
+                listAnchor.itemsChanged()
+                #endif
+            }
+            .onChange(of: model.arrivedItemIDs) { _, ids in
+                newRows.arrived(ids, in: model.items)
+            }
+            .overlay(alignment: .top) {
+                NewRowsPill(rows: newRows, isPhone: isPhone) {
+                    newRows.clear()
+                    withAnimation(.smooth(duration: 0.35)) { scrollToTop(proxy, firstID: model.items.first?.id) }
+                }
+                .padding(.top, pillTop)
             }
             .background { HighlightFollower(proxy: proxy) }
         }
+    }
+
+    /// The pill's place: under the desktop header, or on iPhone under the status bar's fade.
+    private var pillTop: CGFloat {
+        isPhone ? 10 : Self.headerHeight + 8
     }
 
     /// The list's states and rows, with the sentinel that pages in the next ones.
@@ -209,11 +264,7 @@ struct ItemListView: View {
             ListRow(item: item, previousID: previous, isPhone: isPhone) { row(item, previousID: previous) }
                 .equatable()
                 .onAppear {
-                    if index == 0 { topRow.id = item.id }
                     if index >= prefetchFrom { Task { await model.loadMore() } }
-                }
-                .onDisappear {
-                    if topRow.id == item.id { topRow.id = nil }
                 }
         }
         if model.nextCursor != nil {
@@ -495,7 +546,9 @@ private struct HighlightFollower: View {
     var body: some View {
         Color.clear
             .onChange(of: model.highlightedItemID) { _, id in
-                guard let id else { return }
+                // Only an opened item: the default tab's first row changes when a refresh adds rows above it,
+                // which mustn't pull the list up to them.
+                guard let id, model.panes[model.focusedPane].activeTab.itemID != nil else { return }
                 proxy.scrollTo(id)
             }
     }
@@ -565,10 +618,12 @@ private struct RowMarks<Content: View>: View {
     var id: Int64?
 }
 
-/// The first row on screen. Deliberately not observable.
-private final class TopRowTracker {
-    var id: Int64?
+#if os(macOS)
+/// Whether the list is at its very top. Deliberately not observable.
+private final class ScrollEdge {
+    var atTop = true
 }
+#endif
 
 /// A row's hover-dependent part, so a hover change re-evaluates the rows on screen that read it (the
 /// hovered row, and the one below it for its divider) instead of the whole list.
@@ -703,6 +758,7 @@ private struct RowStack<Content: View>: View {
         #if os(macOS)
         ScrollView {
             LazyVStack(spacing: 0) { content }
+                .scrollTargetLayout()
         }
         #else
         List { content }
