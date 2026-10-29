@@ -1124,6 +1124,7 @@ enum ArticlePasses {
         tidyStyling(root)
         tidyFigures(root)
         tidyCaptions(root)
+        polish2(root)
         inlineCaptionParagraphs(root)
         promoteBoldHeadings(root)
         for p in DOM.select(root, "p") where DOM.isConnected(p) && !hasMediaOrText(p) && DOM.first(p, "br") == nil { DOM.remove(p) }
@@ -1282,6 +1283,7 @@ enum ArticlePasses {
         promoteLazyImages(root)
         prepareContent2(root)
         prepareRecipes(root)
+        preparePolish2(root)
         absolutize(root, base: base)
         normalizeEmbeds(root)
         media2Embeds(root, base: base)

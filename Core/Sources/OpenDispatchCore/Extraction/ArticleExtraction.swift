@@ -77,6 +77,7 @@ public struct ArticleExtraction: Sendable {
         // After the repeated header: that one takes the line of names under the title with it.
         clean = clean.map { Self.dropTitleHeading($0, titles: titles.compactMap { $0 }) }
         clean = clean.map { Passes.completeRecipe($0, document: document) }
+        clean = clean.map { Passes.leadCaption($0, document: document, lead: lead) }
         if let audio {
             // The story is the audio; the text beside it may be a line or nothing.
             let text = clean ?? SiteVideo.description(document).map { ArticleSanitizer.sanitize($0) } ?? ""
