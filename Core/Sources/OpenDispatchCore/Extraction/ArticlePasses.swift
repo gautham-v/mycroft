@@ -568,6 +568,7 @@ enum ArticlePasses {
             saved.append(DOM.outerHTML(el))
             DOM.replace(box, with: img)
         }
+        protectFigures(root, &saved)
         for el in DOM.select(root, "video, audio, svg") {
             guard DOM.isConnected(el) else { continue }
             if let parent = el.parent(), DOM.closest(parent, "svg, video, audio") != nil { continue }
@@ -1258,6 +1259,7 @@ enum ArticlePasses {
         normalizeEmbeds(root)
         removeScreenReaderText(root)
         removePlayerChrome(root)
+        unwrapZoomButtons(root)
         removeInterface(root)
         normalizeCodeBlocks(root)
         dropDarkVariants(root)
@@ -1268,6 +1270,7 @@ enum ArticlePasses {
         unlinkHeadings(root)
         collapsePictures(root)
         removeSamePageNav(root, pageURL: pageURL)
+        restoreFigures(root)
         markClientRenderedFigures(root, pageURL: pageURL)
         placePayloadVideos(root, videos)
     }
