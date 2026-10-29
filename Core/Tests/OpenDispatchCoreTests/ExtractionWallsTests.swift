@@ -5,6 +5,38 @@ import Testing
 
 /// Bot checks served as the page (The Sun), notices and widgets that are no part of the story (NHK's licensing dialog,
 /// SCMP's text-to-speech player, Nature's jobs board), a framework's error text (Politico) and a poster-only video.
+/// Canned responses by URL (this suite's own copy of ExtractionStubProtocol, so the suites can run side by side).
+final class WallsStub: URLProtocol, @unchecked Sendable {
+    struct Canned: Sendable { var status: Int; var headers: [String: String]; var body: String }
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var routes: [String: Canned] = [:]
+    nonisolated(unsafe) private static var log: [String] = []
+
+    static func reset(_ r: [String: [Canned]]) { lock.lock(); routes = r.compactMapValues(\.first); log = []; lock.unlock() }
+    static func requests() -> [String] { lock.lock(); defer { lock.unlock() }; return log }
+    static func session() -> URLSession {
+        let c = URLSessionConfiguration.ephemeral
+        c.protocolClasses = [WallsStub.self]
+        return URLSession(configuration: c)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let url = request.url?.absoluteString ?? ""
+        Self.lock.lock()
+        Self.log.append(url)
+        let canned = Self.routes[url] ?? Canned(status: 500, headers: [:], body: "")
+        Self.lock.unlock()
+        if let res = HTTPURLResponse(url: request.url ?? URL(fileURLWithPath: "/"), statusCode: canned.status, httpVersion: "HTTP/1.1", headerFields: canned.headers) {
+            client?.urlProtocol(self, didReceive: res, cacheStoragePolicy: .notAllowed)
+        }
+        client?.urlProtocol(self, didLoad: Data(canned.body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
 @Suite("Extraction: walls and notices", .serialized)
 struct ExtractionWallsTests {
     typealias DOM = ExtractionDOM
@@ -24,8 +56,8 @@ struct ExtractionWallsTests {
 
     @Test func aBotCheckServedWithStatus200FailsInsteadOfBeingTheArticle() async throws {
         let page = "<html><head><title>Verifying Device</title></head><body><article><p>Verifying your device, please wait</p><p>Verification failed. Please try again.</p></article></body></html>"
-        ExtractionStubProtocol.reset(["https://e.com/bot": [.init(status: 200, headers: ["Content-Type": "text/html"], body: page)]])
-        let ex = DefaultContentExtractor(parser: StubItemParser(), readability: FakeReadability(), session: ExtractionStubProtocol.session())
+        WallsStub.reset(["https://e.com/bot": [.init(status: 200, headers: ["Content-Type": "text/html"], body: page)]])
+        let ex = DefaultContentExtractor(parser: StubItemParser(), readability: FakeReadability(), session: WallsStub.session())
         await #expect(throws: ExtractionError.botCheck) {
             try await ex.extractArticle(url: "https://e.com/bot", feed: nil)
         }
