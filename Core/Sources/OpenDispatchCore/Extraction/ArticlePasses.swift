@@ -1276,6 +1276,7 @@ enum ArticlePasses {
         promoteLazyImages(root)
         absolutize(root, base: base)
         normalizeEmbeds(root)
+        media2Embeds(root, base: base)
         embeds(root, pageURL: pageURL)
         removeScreenReaderText(root)
         unhideSoftBarrierText(root)
@@ -1302,5 +1303,6 @@ enum ArticlePasses {
         footnoteMarkers(root)
         markClientRenderedFigures(root, pageURL: pageURL)
         placePayloadVideos(root, videos)
+        media2Tidy(root)
     }
 }
