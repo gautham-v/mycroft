@@ -555,6 +555,7 @@ enum ArticlePasses {
     /// Stand each one in as a placeholder <img> while Readability runs; restoreMedia puts the originals back.
     static func protectMedia(_ root: Element) -> [String] {
         var saved: [String] = []
+        protectEmbeds(root, saved: &saved)
         // An embedded post's blockquote is mostly a link, which Readability drops with the box it sits in.
         // Its wrappers go with it, so a class like WordPress's `is-provider-bluesky-social` can't get it thrown out.
         for el in DOM.select(root, "blockquote") where DOM.isConnected(el) && EmbeddedPosts.post(of: el) != nil {
@@ -1256,6 +1257,7 @@ enum ArticlePasses {
         resolveStreamedBoundaries(root)
         absolutize(root, base: base)
         normalizeEmbeds(root)
+        embeds(root, pageURL: pageURL)
         removeScreenReaderText(root)
         removePlayerChrome(root)
         removeInterface(root)

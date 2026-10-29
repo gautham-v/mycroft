@@ -64,7 +64,8 @@ public enum ArticleSanitizer {
 
     static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
     /// TikTok's player is only ever put in by `EmbeddedPosts` (an article's own TikTok embed is a blockquote).
-    static let allowedIframeHosts: Set<String> = ["www.youtube-nocookie.com", "player.vimeo.com", "www.tiktok.com"]
+    /// Chart hosts (Datawrapper, Flourish) are `ArticlePasses.chartHosts`.
+    static let allowedIframeHosts: Set<String> = Set(["www.youtube-nocookie.com", "player.vimeo.com", "www.tiktok.com"]).union(ArticlePasses.chartHosts)
     static let schemeCheckedAttributes: Set<String> = ["href", "src", "cite", "poster"]
     /// Attributes that may be present with an empty value (boolean attributes plus alt).
     static let emptyAllowed: Set<String> = ["alt", "controls", "autoplay", "loop", "muted", "playsinline", "allowfullscreen"]

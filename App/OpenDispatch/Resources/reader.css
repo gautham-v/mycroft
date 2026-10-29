@@ -226,6 +226,8 @@ body { overflow-y: hidden; }
   margin-bottom: 1.4em;
 }
 .prose-opendispatch picture { display: block; }
+/* A portrait clip (MLB's phone-shaped ones) at the column's width would be a screen and a half tall. */
+.prose-opendispatch video { max-height: 560px; }
 /* Inline SVG figures (diagrams, charts). Icons are stripped by the extractor. */
 .prose-opendispatch svg {
   display: block;
@@ -239,6 +241,18 @@ body { overflow-y: hidden; }
   border: 0;
   border-radius: 10px;
 }
+/* A chart (Datawrapper, Flourish) has the height its page declared, which its script keeps current as the chart
+   reports a size; the 16:9 box would cut a tall table. */
+.prose-opendispatch iframe[src*="datawrapper.dwcdn.net"],
+.prose-opendispatch iframe[src*="flo.uri.sh"],
+.prose-opendispatch iframe[src*="public.flourish.studio"] {
+  display: block;
+  aspect-ratio: auto;
+  min-height: 120px;
+  border-radius: 0;
+}
+/* A link card on its own (Substack's embedded post) is a block between paragraphs. */
+.prose-opendispatch .x-card:not(.x-post .x-card) { margin: 1.4em 0; }
 .prose-opendispatch figcaption {
   margin-top: -0.8em;
   font-size: 13px;
