@@ -132,11 +132,15 @@ public struct ExtractResult: Sendable, Hashable {
     public var leadImage: String?
     /// contentHtml came from the Jina Reader rendered-page fallback.
     public var rendered: Bool
+    /// The page showed only the part a site gives non-subscribers (`PaywallDetection`). Not cached by ContentService,
+    /// so a sign-in reads the article again.
+    public var paywalled: Bool
 
-    public init(contentHtml: String?, leadImage: String?, rendered: Bool = false) {
+    public init(contentHtml: String?, leadImage: String?, rendered: Bool = false, paywalled: Bool = false) {
         self.contentHtml = contentHtml
         self.leadImage = leadImage
         self.rendered = rendered
+        self.paywalled = paywalled
     }
 }
 
