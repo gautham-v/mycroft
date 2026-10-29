@@ -348,6 +348,8 @@ private struct ListStateRows: View {
                 Text("Searched titles, summaries, authors and full text in \(model.listTitle)")
                     .font(OFFont.ui(13))
                     .foregroundStyle(.ofMuted)
+            } else if let topic = model.activeTopic {
+                topicEmptyState(topic)
             } else if model.sources.isEmpty {
                 // First run: nothing is preinstalled, so the empty list is the way in.
                 Text("Add your first sources")
@@ -376,8 +378,6 @@ private struct ListStateRows: View {
                 .buttonStyle(.plain)
                 .padding(.top, 12)
                 .accessibilityLabel("Add sources")
-            } else if let topic = model.activeTopic {
-                topicEmptyState(topic)
             } else {
                 Text(model.selectedView == .saved && !model.isInSourceFeed ? "Nothing saved yet" : "Nothing here yet")
                     .font(OFFont.ui(15, .medium))

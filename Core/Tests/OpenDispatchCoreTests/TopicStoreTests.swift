@@ -250,6 +250,56 @@ struct TopicStoreTests {
         #expect(try await db.items(ItemQuery()).items.allSatisfy { !$0.item.guid.hasPrefix("t") })
     }
 
+    @Test func aSubscriptionItemTheTopicAlreadyStoredListsOnce() async throws {
+        let db = try Fixture.db()
+        let t = try await topic(db)
+        let blog = try Fixture.source(db, title: "Blog")
+        try store(db, t, [item("t1", "Vision Pro review", age: 1_000, url: "https://blog.example/review")])
+        try store(db, blog, [
+            item("b1", "Vision Pro review", age: 1_000, url: "https://blog.example/review"),
+            item("b2", "Vision Pro notes", age: 2_000),
+        ])
+        #expect(try await db.items(ItemQuery(sourceId: t.id)).items.map(\.item.guid) == ["t1", "b2"])
+    }
+
+    @Test func markAllReadOnATopicLeavesTheUsersOwnItemsUnread() async throws {
+        let db = try Fixture.db()
+        let t = try await topic(db)
+        let blog = try Fixture.source(db, title: "Blog")
+        try store(db, t, [item("t1", "Vision Pro stored", age: 1_000), item("t2", "Vision Pro again", age: 3_000)])
+        try store(db, blog, [item("b1", "Our Vision Pro take", age: 2_000)])
+        #expect(try await db.items(ItemQuery(sourceId: t.id)).items.count == 3)
+        #expect(try await db.markAllRead(ItemQuery(sourceId: t.id)) == 2)
+        let unread = try await db.unreadCounts()
+        #expect(unread[t.id] == nil)
+        #expect(unread[blog.id] == 1)
+    }
+
+    @Test func editingOtherOptionsKeepsItemsThatMatchedByHostAndHighlightsSurviveAKeywordChange() async throws {
+        let db = try Fixture.db()
+        let t = try await topic(db, "OpenAI")
+        let rows = try store(db, t, [
+            item("host", "Three new discoveries in mathematics", age: 100, url: "https://openai.com/index/math"),
+            item("hn", "Another discovery", age: 200, url: "https://news.ycombinator.com/item?id=1"),
+            item("title", "OpenAI ships a thing", age: 300),
+        ])
+        _ = rows
+        var options = try #require(t.topicOptions)
+        options.notableOnly = true
+        options.skipPaywalled = false
+        _ = try await db.updateTopic(id: t.id, options: options)
+        #expect(try await db.items(ItemQuery(sourceId: t.id)).items.map(\.item.guid) == ["host", "hn", "title"])
+
+        // A different keyword drops what no longer matches, but not a highlighted item.
+        let highlighted = try #require(try await db.items(ItemQuery(sourceId: t.id)).items.first { $0.item.guid == "hn" })
+        _ = try await db.insertHighlight(Highlight(
+            sourceFeedUrl: t.feedUrl, itemGuid: "hn", itemUrl: highlighted.item.url, itemTitle: highlighted.item.title,
+            sourceTitle: t.title, text: "discovery"))
+        options.keyword = "Anthropic"
+        _ = try await db.updateTopic(id: t.id, options: options)
+        #expect(try await db.items(ItemQuery(sourceId: t.id)).items.map(\.item.guid) == ["hn"])
+    }
+
     @Test func unreadCountsAreEachSourcesOwnItems() async throws {
         let db = try Fixture.db()
         let t = try await topic(db)
@@ -261,9 +311,9 @@ struct TopicStoreTests {
         let first = try #require(try await db.feedItem(id: rows[0].id))
         _ = try await db.setRead(HistoryEntry(item: first), read: true)
         #expect(try await db.unreadCounts() == [t.id: 1, blog.id: 1])
-        // Mark All as Read on the topic's list (which includes the blog's matching item) reads them all.
+        // Mark All as Read on the topic's list (which shows the blog's matching item too) reads the topic's own items only.
         _ = try await db.markAllRead(ItemQuery(sourceId: t.id))
-        #expect(try await db.unreadCounts().isEmpty)
+        #expect(try await db.unreadCounts() == [blog.id: 1])
     }
 
     // MARK: Reading a topic's items

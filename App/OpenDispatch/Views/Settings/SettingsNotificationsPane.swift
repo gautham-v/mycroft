@@ -13,7 +13,8 @@ struct SettingsNotificationsPane: View {
     @State private var errorMessage: String?
 
     private var sources: [Source] {
-        model.sources.filter { !$0.isOpenedLinks }
+        // Topics too: their Notify on New Matches is the same switch.
+        (model.sources + model.topics).filter { !$0.isOpenedLinks }
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
@@ -23,7 +24,7 @@ struct SettingsNotificationsPane: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(
                 title: "Notifications",
-                hint: "Get a notification when a source publishes a new post. They arrive at each refresh while the app is running, and only on this device.")
+                hint: "Get a notification when a source publishes a new post or a topic finds a new match. They arrive at each refresh while the app is running, and only on this device.")
             SettingsCard {
                 SettingsRow(label: "Allow notifications", hint: statusHint) {
                     switch status {
@@ -58,7 +59,7 @@ struct SettingsNotificationsPane: View {
             }
             SettingsCard {
                 ForEach(list) { source in
-                    SettingsRow(label: source.title, hint: source.host.isEmpty ? nil : source.host) {
+                    SettingsRow(label: source.title, hint: source.isTopic ? "Topic" : source.host.isEmpty ? nil : source.host) {
                         Toggle("Notify on new posts from \(source.title)", isOn: binding(source))
                             .labelsHidden()
                             .toggleStyle(.switch)

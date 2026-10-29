@@ -1102,18 +1102,20 @@ History treat it like any source. Migration `v8-topics` rebuilds `sources` (new 
   them out (sidebar tree, Settings, Sources tab, add-source duplicate check); `Queries.topics` / `AppDatabase.topics()` / `observeTopics()` list them.
   `SourceList` functions skip topics (`SourceList.topics` lists them). OPML export skips them. Unread counts: `Queries.unreadCounts` / `AppDatabase.unreadCounts()` /
   `observeUnreadCounts()` give `[sourceId: unread]` of each source's own items.
-- API: `AppDatabase.createTopic(_:)` (an existing topic with the same keyword is returned unchanged), `updateTopic(id:options:)` (title follows the keyword; unsaved items
-  that no longer match are removed), `deleteTopic(id:)`, `topic(keyword:)`. Notify: the existing `setSourceNotify`. `NewPostAlert` carries `itemAuthor`/`isTopic`;
-  `heading` is "<keyword> · <origin>" for a topic.
+- API: `AppDatabase.createTopic(_:)` (an existing topic with the same keyword is returned unchanged), `updateTopic(id:options:)` (title follows the keyword; when the keyword or the leave-out
+  words changed, unsaved, unhighlighted items that no longer match, counting the site host as a mention, are removed; other edits remove nothing), `deleteTopic(id:)`, `topic(keyword:)`. Notify: the existing `setSourceNotify`. `NewPostAlert` carries `itemAuthor`/`isTopic`;
+  `heading` is "<keyword> · <origin>" for a topic (a grouped "N new posts" notification uses the plain keyword). `HistoryEntry.originLabel` is the same label for History snapshots.
 - Items: a topic's items never appear in All / Articles / Posts / Video / Podcasts / folder views or searches; they list in `ItemQuery(sourceId: topic.id)`, Saved and
   History. With `places.subscriptions` on, that list also includes items of the user's own sources whose title or summary match (`opendispatch_topic_matches`, same rule as
-  `TopicMatcher`), keyset paging unchanged. `ItemQuery.topicFilter` (`TopicContentFilter`: all / articles / discussions / videos / episodes) drives the chips.
+  `TopicMatcher`; `TopicMatcherCache` keeps the last matcher so the SQL function doesn't rebuild it per row), keyset paging unchanged. A subscription item whose
+  link the topic already stored is listed once (as the topic's). Mark All as Read on a topic reads only the topic's own items, the ones its badge counts. `ItemQuery.topicFilter` (`TopicContentFilter`: all / articles / discussions / videos / episodes) drives the chips.
 - Reading: `Source.shown(for:)` (already used by `FeedItem` rows) rewrites a topic row's `kind` per item: a video id makes it `.youtube`, audio `.podcast`, else `.rss`, and
   `url` becomes the item's site. So `item.source.kind` / `.type`, History's `sourceKind`, transcripts and Copy as Markdown follow the item; use `source.isTopic` (not `kind == .topic`)
   and `item.originName` (the author: Hacker News, publisher, channel, show) for the origin. `Source.holdsStandaloneItems` marks sources whose items aren't entries of their own feed.
 - Search (`Topics/`): `TopicSearching` / `DefaultTopicSearch` (injectable fetch and `ExploreSearching`), no keys. News: Bing News RSS (`qft=sortbydate`; article URL from the
   `apiclick` link's `url`; publisher from `News:Source`; Google News links need JavaScript so it is not used). Discussions: Hacker News via Algolia (points, comments, discussion
-  URL) and Reddit (`search.json`, falling back to `search.rss`, which has no score). Media: YouTube (innertube `params` = last month by upload date, English so "3 hours ago"
+  URL) and Reddit (`search.json`, falling back to `search.rss`, which has no score: from a network that gets the 403, Reddit posts are
+  notable only through a followed source, since no open endpoint gives the score). Media: YouTube (innertube `params` = last month by upload date, English so "3 hours ago"
   reads as a date) and the iTunes episode search (up to 200 hits, 4 per show), items identical to Explore's opened videos and episodes. Everything is filtered by recency,
   `TopicMatcher` (all keyword words, none of the excluded; a word matches at word starts, short ones whole; the site host counts as a mention for news and Hacker News),
   `TopicPaywalls` (host suffix or publisher name), notable when asked, and capped at 30 per provider. A place fails when each of its providers did; the topic records
@@ -1131,7 +1133,7 @@ History treat it like any source. Migration `v8-topics` rebuilds `sources` (new 
   `refreshTopic(id:)`, `markAllRead(topic:)`, `beginNewTopic(_:)` / `beginEditTopic(_:)` (set `topicEditor`, which RootView presents as `TopicEditorView` on every platform). Notify
   is the existing `setSourceNotify`.
 - Views: `Views/Topics/TopicEditorView.swift` (the sheet), `TopicListBar.swift` (status, bell, Edit and `TopicChips` under the list header; Mac and iPad), `Views/Sidebar/SidebarTopics.swift`
-  (the "Topics" group between the view rows and the sources), `ExploreTopicButton` (Follow / Following; on the Mac's results header, reusable on the iPhone). Rows name a topic's
+  (the "Topics" group between the view rows and the sources), `ExploreTopicButton` (Follow / Following; on the Mac's results header, reusable on the iPhone). Settings › Notifications lists topics with the sources. Rows name a topic's
   item by its origin (`ItemRowView.showsTopic` adds the keyword outside the topic's list); the reader, speech, now-playing and highlights use `FeedItem.originName`.
 
 ### Topics (App: iPhone) — 2026-10-28

@@ -542,7 +542,7 @@ private struct PlayedRow: View {
                         .foregroundStyle(.ofInk)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    Text(entry.sourceTitle)
+                    Text(entry.originLabel)
                         .font(OFFont.ui(13))
                         .foregroundStyle(.ofMuted)
                         .lineLimit(1)
@@ -554,7 +554,7 @@ private struct PlayedRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(entry.itemTitle), \(entry.sourceTitle)")
+        .accessibilityLabel("\(entry.itemTitle), \(entry.originLabel)")
     }
 }
 #endif

@@ -49,7 +49,11 @@ public enum Queries {
                 let match = SQL("""
                     opendispatch_topic_matches(\(Item.Columns.title), \(Item.Columns.summary), \(options.keyword), \(options.excluded.joined(separator: "\n")))
                     """).sqlExpression
-                let subscribed = kind != SourceKind.topic.rawValue && !OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl]) && match
+                // An article the topic already stored (its search found a followed site's story too) lists once, as the topic's own.
+                let stored = SQL("""
+                    NOT EXISTS (SELECT 1 FROM items t WHERE t.source_id = \(s) AND t.url = "items"."url")
+                    """).sqlExpression
+                let subscribed = kind != SourceKind.topic.rawValue && !OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl]) && match && stored
                 c.append(Item.Columns.sourceId == s || subscribed)
             } else {
                 c.append(Item.Columns.sourceId == s)

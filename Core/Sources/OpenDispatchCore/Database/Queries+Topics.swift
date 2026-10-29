@@ -62,12 +62,24 @@ extension Queries {
         guard !o.keyword.isEmpty else { throw QueryError.invalid("keyword is required") }
         guard var s = try Source.fetchOne(db, key: id) else { throw QueryError.notFound("Topic") }
         guard s.isTopic else { throw QueryError.invalid("Not a topic") }
+        let before = s.topicOptions
         s.title = o.keyword
         s.topicOptions = o
         try s.update(db)
+        // What matches is decided by the keyword and the leave-out words alone, so other edits (notify, places, Show)
+        // can't turn a stored item into a non-match.
+        guard before?.keyword != o.keyword || before?.excluded != o.excluded else { return s }
         let matcher = TopicMatcher(o)
-        let rows = try Row.fetchAll(db, sql: "SELECT id, title, summary FROM items WHERE source_id = ? AND is_saved = 0", arguments: [id])
-        let stale = rows.filter { !matcher.matches(title: $0["title"], summary: $0["summary"]) }.map { $0["id"] as Int64 }
+        // Highlighted items stay, as in retention. The host counts like it did when the search stored the item.
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT id, title, summary, url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
+              SELECT 1 FROM highlights h WHERE h.source_feed_url = ? AND h.item_guid = items.guid)
+            """, arguments: [id, s.feedUrl])
+        let stale = rows.filter { row in
+            let url: String = row["url"]
+            let host = URLHost.host(of: url)
+            return !matcher.matches(title: row["title"], summary: row["summary"], host: host == "news.ycombinator.com" ? nil : host)
+        }.map { $0["id"] as Int64 }
         for chunk in stride(from: 0, to: stale.count, by: 500).map({ Array(stale[$0..<min($0 + 500, stale.count)]) }) {
             try db.execute(sql: "DELETE FROM items WHERE id IN (\(databaseQuestionMarks(count: chunk.count)))", arguments: StatementArguments(chunk))
         }

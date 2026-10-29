@@ -98,7 +98,7 @@ struct HistoryListView: View {
     private var days: [HistoryDay] {
         let terms = model.searchQuery.lowercased().split(whereSeparator: \.isWhitespace)
         let entries = model.history.opened.filter { e in
-            terms.isEmpty || terms.allSatisfy { "\(e.itemTitle) \(e.sourceTitle)".lowercased().contains($0) }
+            terms.isEmpty || terms.allSatisfy { "\(e.itemTitle) \(e.originLabel)".lowercased().contains($0) }
         }
         return HistoryDay.group(entries)
     }

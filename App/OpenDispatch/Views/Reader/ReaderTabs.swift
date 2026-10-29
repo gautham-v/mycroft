@@ -100,7 +100,7 @@ struct NewTabView: View {
             VStack(alignment: .leading, spacing: 2) {
                 sectionTitle("Recently read")
                 ForEach(entries) { entry in
-                    NewTabRow(host: URLHost.host(of: entry.itemUrl), sourceTitle: entry.sourceTitle, title: entry.itemTitle) {
+                    NewTabRow(host: URLHost.host(of: entry.itemUrl), sourceTitle: entry.originLabel, title: entry.itemTitle) {
                         model.focusPane(pane)
                         Task { await model.open(entry) }
                     }

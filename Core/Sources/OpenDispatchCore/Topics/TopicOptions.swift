@@ -185,7 +185,9 @@ public struct TopicMatcher: Sendable, Hashable {
         let titleHasAll = words.allSatisfy { Self.contains(t, $0) }
         // The summary is only stripped and folded when the title alone doesn't settle it.
         if titleHasAll && excluded.isEmpty { return true }
-        let s = Self.fold(TextFormat.stripHTML(summary))
+        // Plain summaries (most of them) have no markup or entity to take out, which is the costly part.
+        let plain = summary.map { $0.contains("<") || $0.contains("&") ? TextFormat.stripHTML($0) : $0 } ?? ""
+        let s = Self.fold(plain)
         if excluded.contains(where: { Self.contains(s, $0) }) { return false }
         if titleHasAll { return true }
         let both = t + "\n" + s
@@ -234,5 +236,22 @@ public enum Topic {
     static func isRedditPost(_ url: String) -> Bool {
         let host = URLHost.host(of: url)
         return (host == "reddit.com" || host.hasSuffix(".reddit.com")) && url.contains("/comments/")
+    }
+}
+
+/// The matcher the SQL function used last. A list query calls the function once per candidate row with the same topic, and building
+/// a matcher folds the keyword and leave-out words each time.
+final class TopicMatcherCache: @unchecked Sendable {
+    static let shared = TopicMatcherCache()
+    private let lock = NSLock()
+    private var last: (keyword: String, excluded: [String], matcher: TopicMatcher)?
+
+    func matcher(keyword: String, excluded: [String]) -> TopicMatcher {
+        lock.lock()
+        defer { lock.unlock() }
+        if let last, last.keyword == keyword, last.excluded == excluded { return last.matcher }
+        let m = TopicMatcher(keyword: keyword, excluded: excluded)
+        last = (keyword, excluded, m)
+        return m
     }
 }

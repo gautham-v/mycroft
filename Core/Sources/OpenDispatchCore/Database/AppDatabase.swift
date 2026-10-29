@@ -47,7 +47,7 @@ public final class AppDatabase: Sendable {
         guard let keyword = String.fromDatabaseValue(values[2]) else { return false }
         let excluded = (String.fromDatabaseValue(values[3]) ?? "").split(separator: "\n").map(String.init)
         let title = String.fromDatabaseValue(values[0]) ?? ""
-        return TopicMatcher(keyword: keyword, excluded: excluded).matches(title: title, summary: String.fromDatabaseValue(values[1]))
+        return TopicMatcherCache.shared.matcher(keyword: keyword, excluded: excluded).matches(title: title, summary: String.fromDatabaseValue(values[1]))
     }
 
     /// Directory holding the database: Application Support/OpenDispatch (inside the sandbox container on macOS).

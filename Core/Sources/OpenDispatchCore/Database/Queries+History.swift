@@ -88,9 +88,11 @@ extension Queries {
         q.limit = 200
         q.cursor = nil
         var marked = 0
+        // A topic's list also shows matching items of the user's own sources; those aren't the topic's to mark (its badge doesn't count them).
+        let topicId = try topicScope(db, q)?.id
         while true {
             let page = try items(db, q)
-            for item in page.items {
+            for item in page.items where topicId == nil || item.item.sourceId == topicId {
                 let before = try existing(db, HistoryEntry(item: item))
                 if before?.readAt == nil {
                     try setRead(db, HistoryEntry(item: item), read: true, now: now)
