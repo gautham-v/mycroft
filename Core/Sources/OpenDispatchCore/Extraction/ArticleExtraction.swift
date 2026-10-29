@@ -64,6 +64,9 @@ public struct ArticleExtraction: Sendable {
         }
         let titles = [DOM.first(document, "meta[property=og:title]").flatMap { DOM.attr($0, "content") }, title]
         clean = clean.map { Self.dropTitleHeading($0, titles: titles.compactMap { $0 }) }
+        let description = DOM.first(document, "meta[property=og:description]").flatMap { DOM.attr($0, "content") }
+            ?? DOM.first(document, "meta[name=description]").flatMap { DOM.attr($0, "content") }
+        clean = clean.map { Passes.dropRepeatedHeader($0, titles: titles.compactMap { $0 }, description: description) }
         if let audio {
             // The story is the audio; the text beside it may be a line or nothing.
             let text = clean ?? SiteVideo.description(document).map { ArticleSanitizer.sanitize($0) } ?? ""

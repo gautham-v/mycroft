@@ -823,11 +823,12 @@ enum ArticlePasses {
         return bioRole.test(head) || (bioPlace.test(head) && pronoun.test(t))
     }
 
-    /// The outermost ancestor (below root) holding exactly the same text: the block a line sits in.
+    /// The outermost ancestor (below root) holding exactly the same text: the block a line sits in. A box that also
+    /// holds a picture or player is more than the line (a caption's wrapper, a video with its fallback text).
     static func lineBlock(_ el: Element, root: Element) -> Element {
         let t = DOM.text(el)
         var b = el
-        while let p = b.parent(), p !== root, !(p is Document), DOM.text(p) == t { b = p }
+        while let p = b.parent(), p !== root, !(p is Document), DOM.text(p) == t, !DOM.matches(p, contentMedia), DOM.first(p, contentMedia) == nil { b = p }
         return b
     }
 
@@ -1107,6 +1108,7 @@ enum ArticlePasses {
         // After author cards: their profile links are what identifies them.
         removeBoilerplate(root)
         removeRecirculationText(root, base: base)
+        removeInterfaceBlocks(root, base: base)
         for img in DOM.select(root, "img") where isTinyImg(img) || playerCover.test(DOM.attr(img, "alt") ?? "") { DOM.remove(img) }
         for svg in DOM.select(root, "svg") where DOM.isConnected(svg) && isIconSvg(svg) { DOM.remove(svg) }
         removeDividerImages(root)
@@ -1275,6 +1277,7 @@ enum ArticlePasses {
         unwrapImageButtons(root)
         removeInterface(root)
         removeRecirculation(root, pageURL: pageURL)
+        removePageInterface(root, pageURL: pageURL)
         normalizeCodeBlocks(root)
         dropDarkVariants(root)
         removeAvatars(root)
