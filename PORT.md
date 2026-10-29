@@ -1185,3 +1185,38 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
   gone; pressing and holding the title gives `TopicListMenuItems` (Show, Notify on New Matches, Edit Topic…, Mark All as Read) and Hide Read Items. Remove Topic… is in the drawer row's menu.
 - Explore (`ExplorePhoneView`): a row at the top of the results, "Follow as a topic" with `ExploreTopicButton` (Following opens the topic).
 - Not run on the simulator beyond launch (no way to tap from the command line here); build-checked for iOS and macOS.
+
+### Discussions (Core + App) — 2026-10-29
+Explore searches posts, and the reader shows comments under a thread and under every YouTube video.
+- Model (`Discussions/Discussion.swift`): `DiscussionPlace` (reddit, x, bluesky, hackerNews, youtube; `searched` is Explore's order;
+  `thread(of:)` tells a thread URL's place: a Reddit post on any host, an X status, a Bluesky post, `news.ycombinator.com/item?id=`, a YouTube video).
+  `DiscussionPost` (a search hit: headline or text, author/handle/community, avatar, date, score, comments, thumbnail). A thread is
+  `[DiscussionEntry]` in reading order: `.comment(DiscussionComment)` (author, avatar, `RichText` body, date, score, depth, `byAuthor`) or
+  `.more(DiscussionMore)` (a place's opaque token, the depth its comments go at, a count). `DiscussionEntry.placed(_:at:)` shifts loaded
+  replies to the more row's depth. `RichText` is paragraphs (plain, quote, code, bullet) of runs (link, bold, italic, code) from HTML (SwiftSoup) or plain text.
+- `DiscussionLoading` / `DefaultDiscussions` (on `OpenDispatchServices.discussions`): `search(_:query:)`, `comments(for:)`, `more(_:in:)`.
+  - Reddit (`RedditPages`): the search page (`/search/?q=<phrase>&type=link&sort=relevance&t=week`, a month too under 3 posts; units are the
+    elements with `view-events="search/view/post"`, adult posts left out), a post page (`shreddit-post` attributes and body, `shreddit-comment`s
+    with `depth`/`score`/`created`, the `div[slot=comment]` body), and "more comments" partials (`faceplate-partial[src*=/more-comments/]`, posted
+    with its `cursor` input and the `csrf_token` cookie; token = src + U+001F + cursor). Document order is reading order.
+  - X (`XPages`): timeline cells (`[data-testid=cellInnerDiv]`) as HTML: `article[data-testid=tweet]`, `User-Name`, `tweetText`, the first `time`'s link,
+    the `role=group` label's counts. On a post page, replies start after the post itself, an empty cell ends a group (later posts in a group are depth 1),
+    and a "Discover more" heading ends them.
+  - Bluesky (`BlueskyThreads`): `searchPosts` on api.bsky.app (sort=top, last 14 days; public.api refuses search), `getPostThread` (depth 6) with replies most liked first.
+  - Hacker News (`HackerNewsThreads`): Algolia `search` (stories, last 30 days) and `items/<id>` (the whole tree; deleted comments kept only with replies).
+  - YouTube (`YouTubeComments`): innertube `next` with the video id gives the comment section's continuation; `next` with it gives threads, whose text,
+    author and counts are in `frameworkUpdates.entityBatchUpdate.mutations` by `commentKey`. Each thread's replies and the next page are more rows.
+- `DiscussionWeb` (main actor, WebKit): hidden views on the default data store with images, media and fonts blocked by a content rule list.
+  Reddit: a page load passes the JavaScript challenge, then `fetch` runs inside the page in an isolated content world; a block (403/429, the block page, the
+  small challenge page with its `"solution"` field) loads a page again once, then throws `blocked`. Post pages are cached three minutes (the reader asks for the
+  body and the comments separately). X: one page at a time; loads the URL, waits for posts (or the login wall: `signInRequired`), scrolls twice for a search and three
+  times for replies, and keeps each cell once (keyed by its post). `WebAccount` (x, reddit): `isSignedIn()` (the session cookie `auth_token` / `reddit_session`
+  in the default store), `signOut()` (removes the site's data), `browserUserAgent` (Safari's).
+- Reader content: `DefaultContentExtractor` reads a Reddit post (`DiscussionContent`: its text, image, gallery or link) and a Hacker News item (Ask HN text, a link
+  to the story) instead of their pages; a title-only post is an empty paragraph, so the reader shows the title and comments. `openLink` stores a pasted Reddit post from its page through the web view.
+  `OpenDispatchServices.openExplorePost` stores a hit as an opened link (`OpenedLinks.item(post:)`: X and Bluesky authors as "Name (@handle)", a Reddit post's community as author, score and comments in `hnPoints`/`hnComments`).
+- App: `WebAccountStore` (`model.accounts`: `signedIn`, `signingIn` for RootView's `WebSignInView` sheet, `changes`), refreshed at launch and when the sheet closes
+  (`AppModel.didCloseSignIn`, which also searches X for Explore's query). `ExploreStore.posts` by place, `shownPostPlace` / `pickPostPlace`, `retryPosts`, `ExploreTarget.post`.
+  `ReaderComments` (`Views/Reader/ReaderComments.swift`) under the article (`ReaderComments.target(for:)`: the item's own thread, loaded at once, or its `hnCommentsUrl`,
+  loaded on "Show comments") and under a video's transcript: a heading with the count and "On <place>", rails per depth, the author line folds a comment and its replies,
+  more rows load in place, X signed out shows the sign-in note. Settings › Integrations › Signed-in sites: X and Reddit, Sign In… / Sign Out.

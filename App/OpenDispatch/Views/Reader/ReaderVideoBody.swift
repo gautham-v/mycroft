@@ -5,7 +5,7 @@ import SwiftUI
 /// player up to 960pt. Otherwise the player sits in the text column under the title and meta row.
 /// A Short skips the band: a 9:16 player centered in the column, above the title in theater, as tall
 /// as the reader less room for the title to show under it. The transcript (if the video has captions)
-/// follows the description; the theater band stays pinned at the top while it scrolls.
+/// follows the description, then the comments; the theater band stays pinned at the top while it scrolls.
 struct ReaderVideoBody: View {
     let item: FeedItem
     let autoplay: Bool
@@ -142,6 +142,12 @@ struct ReaderVideoBody: View {
 
             if model.settings.videoTranscript, item.item.videoId != nil {
                 ReaderVideoTranscript(item: item, playback: playback)
+                    .padding(.top, 28)
+            }
+
+            if item.item.videoId != nil {
+                ReaderComments(url: item.item.url, place: .youtube)
+                    .id(item.id)
                     .padding(.top, 28)
             }
         }

@@ -22,21 +22,25 @@ enum ExplorePhase<Value> {
 enum ExploreTarget: Hashable, Identifiable {
     case video(ExploreVideo)
     case episode(ExploreEpisode)
+    case post(DiscussionPost)
 
     var id: String {
         switch self {
         case .video(let video): "video:" + video.id
         case .episode(let episode): "episode:" + episode.id
+        case .post(let post): "post:" + post.id
         }
     }
 }
 
-/// Explore's three searches (videos, podcast episodes, sources to follow) and the last results, which
+/// Explore's searches (videos, posts, podcast episodes, sources to follow) and the last results, which
 /// stay while you open one and come back (⌘T again, or back from the reader on iPhone). AppModel owns it
 /// (`model.explore`); the New Tab page and the iPhone's Explore page read and drive it.
 ///
 /// A search runs on Return, not per keystroke; a new one cancels the one before. Sources to follow are the
 /// YouTube channels the video search matched, then the existing Add Source search (feeds and podcasts).
+/// Posts are searched on each place of `DiscussionPlace.searched` at once, each landing on its own; X only when the app is
+/// signed in to it (`WebAccountStore`), otherwise its tab offers the sign-in.
 @MainActor
 @Observable
 final class ExploreStore {
@@ -51,6 +55,10 @@ final class ExploreStore {
     private(set) var videos: ExplorePhase<ExploreVideoResults> = .idle
     private(set) var episodes: ExplorePhase<[ExploreEpisode]> = .idle
     private(set) var feeds: ExplorePhase<[SourceSearchResult]> = .idle
+    /// Posts by place. A place missing from it wasn't searched (X when signed out).
+    private(set) var posts: [DiscussionPlace: ExplorePhase<[DiscussionPost]>] = [:]
+    /// The place the posts section shows when one was picked for this search; otherwise `shownPostPlace` picks.
+    private(set) var pickedPostPlace: DiscussionPlace?
     /// The last few searches, newest first. Persisted.
     private(set) var recents: [String]
     /// The result (`ExploreTarget.id`) or link being opened, which shows a spinner.
@@ -59,17 +67,19 @@ final class ExploreStore {
     private(set) var openError: String?
 
     @ObservationIgnored private let services: OpenDispatchServices
+    @ObservationIgnored private let accounts: WebAccountStore
     @ObservationIgnored private var tasks: [Part: Task<Void, Never>] = [:]
     /// Bumped by each search, so a section that lands late for an older one is dropped.
     @ObservationIgnored private var generation = 0
 
-    private enum Part: Hashable { case videos, episodes, feeds }
+    private enum Part: Hashable { case videos, episodes, feeds, posts(DiscussionPlace) }
 
     private static let recentsKey = "openfeed.explore-recents"
     private static let maxRecents = 8
 
-    init(services: OpenDispatchServices) {
+    init(services: OpenDispatchServices, accounts: WebAccountStore) {
         self.services = services
+        self.accounts = accounts
         recents = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
     }
 
@@ -107,6 +117,27 @@ final class ExploreStore {
         return URL(string: "https://www.google.com/search?q=" + encoded)
     }
 
+    /// The posts section's place: the one picked, else the first (in `DiscussionPlace.searched` order) with posts, else the
+    /// first still loading, else Reddit.
+    var shownPostPlace: DiscussionPlace {
+        if let pickedPostPlace { return pickedPostPlace }
+        let places = DiscussionPlace.searched
+        return places.first { posts[$0]?.value?.isEmpty == false } ?? places.first { posts[$0]?.isLoading == true } ?? .reddit
+    }
+
+    func pickPostPlace(_ place: DiscussionPlace) { pickedPostPlace = place }
+
+    /// Every place searched has answered with nothing (or failed), so the section has nothing to show.
+    var postsAreEmpty: Bool {
+        !posts.isEmpty && posts.values.allSatisfy { phase in
+            switch phase {
+            case .loaded(let found): found.isEmpty
+            case .failed: true
+            case .idle, .loading: false
+            }
+        }
+    }
+
     // MARK: Searching
 
     /// Runs the three searches for `text` (trimmed), replacing the results. A blank query clears them.
@@ -119,7 +150,16 @@ final class ExploreStore {
         query = q
         openError = nil
         remember(q)
+        pickedPostPlace = nil
+        posts = [:]
         for section in [Part.videos, .episodes, .feeds] { load(section) }
+        for place in DiscussionPlace.searched where place != .x || accounts.isSignedIn(.x) { load(.posts(place)) }
+    }
+
+    /// Searches one place's posts again (its Try Again, and X once the app has signed in to it).
+    func retryPosts(_ place: DiscussionPlace) {
+        guard !query.isEmpty else { return }
+        load(.posts(place))
     }
 
     /// Runs one section again for the current query (its Try Again).
@@ -134,6 +174,8 @@ final class ExploreStore {
         videos = .idle
         episodes = .idle
         feeds = .idle
+        posts = [:]
+        pickedPostPlace = nil
         openError = nil
     }
 
@@ -170,6 +212,15 @@ final class ExploreStore {
                 guard !Task.isCancelled, gen == generation else { return }
                 feeds = phase
             }
+        case .posts(let place):
+            posts[place] = .loading
+            let discussions = services.discussions
+            tasks[section] = Task {
+                let phase: ExplorePhase<[DiscussionPost]>
+                do { phase = .loaded(try await discussions.search(place, query: q)) } catch { phase = .failed(HTTP.message(error)) }
+                guard !Task.isCancelled, gen == generation else { return }
+                posts[place] = phase
+            }
         }
     }
 
@@ -205,6 +256,7 @@ final class ExploreStore {
             switch target {
             case .video(let video): try await services.openExploreVideo(video)
             case .episode(let episode): try await services.openExploreEpisode(episode)
+            case .post(let post): try await services.openExplorePost(post)
             }
         }
     }

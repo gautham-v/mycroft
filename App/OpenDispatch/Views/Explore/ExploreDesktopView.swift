@@ -6,7 +6,8 @@ import AppKit
 
 /// Explore on the Mac and iPad: the New Tab page's field, its recent searches and its results. The field
 /// searches on Return, or opens a web address typed or pasted into it (the New Tab page's old address field).
-/// Results are Videos (a grid), Podcast episodes, Sources to follow and a last row that searches the web;
+/// Results are Videos (a grid), Posts (Reddit, X, Bluesky, Hacker News), Podcast episodes, Sources to follow and a last
+/// row that searches the web;
 /// each section lands on its own. A result opens in this tab, or ⌘-click (the menu's Open in New Tab) in a
 /// tab after it, leaving the page and its results in place.
 struct ExploreSearchField: View {
@@ -28,7 +29,7 @@ struct ExploreSearchField: View {
                     .foregroundStyle(.ofMuted)
                     .accessibilityHidden(true)
                 TextField("", text: $explore.draft,
-                          prompt: Text("Search videos, podcasts and sources, or enter a link").foregroundStyle(.ofFaint))
+                          prompt: Text("Search videos, posts, podcasts and sources, or enter a link").foregroundStyle(.ofFaint))
                     .textFieldStyle(.plain)
                     .font(OFFont.ui(14))
                     .foregroundStyle(.ofInk)
@@ -168,10 +169,12 @@ struct ExploreDesktopResults: View {
     let pane: Int
     @Environment(AppModel.self) private var model
     @State private var allVideos = false
+    @State private var allPosts = false
     @State private var allEpisodes = false
     @State private var allSources = false
 
     private static let videoLimit = 6
+    private static let postLimit = 5
     private static let episodeLimit = 4
     private static let sourceLimit = 6
 
@@ -180,6 +183,7 @@ struct ExploreDesktopResults: View {
         VStack(alignment: .leading, spacing: 26) {
             topicRow(explore)
             videos(explore)
+            posts(explore)
             episodes(explore)
             sources(explore)
             ExploreWebRow(query: explore.query)
@@ -223,6 +227,15 @@ struct ExploreDesktopResults: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder private func posts(_ explore: ExploreStore) -> some View {
+        if !explore.query.isEmpty {
+            let count = explore.posts[explore.shownPostPlace]?.value?.count ?? 0
+            section("Posts", count: count, limit: Self.postLimit, expanded: $allPosts) {
+                ExplorePostsSection(limit: allPosts ? nil : Self.postLimit) { open($0, inNewTab: $1) }
             }
         }
     }

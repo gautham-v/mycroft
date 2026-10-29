@@ -176,6 +176,12 @@ struct ReaderItemView: View {
                                     viewportHeight: viewportHeight)
                 } else {
                     article
+                    if let thread = ReaderComments.target(for: item) {
+                        ReaderComments(url: thread.url, place: thread.place, onDemand: thread.onDemand, count: item.item.hnComments)
+                            .id(item.id)
+                            .readerColumn(wide: wide)
+                            .padding(.bottom, 40)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

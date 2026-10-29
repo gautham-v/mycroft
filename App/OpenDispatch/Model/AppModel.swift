@@ -97,6 +97,8 @@ final class AppModel {
     let explore: ExploreStore
     /// Topics (followed keyword searches) and their unread counts.
     let topicStore: TopicStore
+    /// The sites signed in to in the app (X, Reddit), for Explore's posts and the reader's replies.
+    let accounts: WebAccountStore
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
@@ -285,7 +287,8 @@ final class AppModel {
     init(services: OpenDispatchServices) {
         self.services = services
         history = HistoryStore(database: services.database)
-        explore = ExploreStore(services: services)
+        accounts = WebAccountStore()
+        explore = ExploreStore(services: services, accounts: accounts)
         topicStore = TopicStore(database: services.database)
         let defaults = UserDefaults.standard
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
@@ -332,6 +335,7 @@ final class AppModel {
         await restorePinnedTabs()
         await loadStats()
         await loadIntegrations()
+        await accounts.refresh()
         // Not awaited: the first fetch from iCloud must not hold up the first refresh.
         Task { await startSync() }
         await refresh(force: false)
@@ -812,6 +816,23 @@ final class AppModel {
     }
 
     // MARK: Transcripts
+
+    /// A thread's comments for the reader (`ReaderComments`): a Reddit, X, Bluesky or Hacker News post's replies, or a
+    /// YouTube video's comments. Not cached: each opening reads them fresh.
+    func comments(for url: String) async throws -> DiscussionThread {
+        try await services.discussions.comments(for: url)
+    }
+
+    /// What a "more replies" row of that thread stands for.
+    func moreComments(_ more: DiscussionMore, in url: String) async throws -> [DiscussionEntry] {
+        try await services.discussions.more(more, in: url)
+    }
+
+    /// The sign-in sheet closed: read the sign-ins again, and search X's posts for Explore's query if it is now signed in.
+    func didCloseSignIn() async {
+        await accounts.refresh()
+        if accounts.isSignedIn(.x), explore.posts[.x]?.value == nil, explore.posts[.x]?.isLoading != true { explore.retryPosts(.x) }
+    }
 
     /// A video's transcript for the reader: YouTube's captions, fetched once per video while the app
     /// runs. nil when the video has none or the fetch failed (tried again next time it opens).

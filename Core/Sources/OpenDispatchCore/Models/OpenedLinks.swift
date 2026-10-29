@@ -121,6 +121,23 @@ public enum OpenedLinks {
             thumbnailUrl: "https://i.ytimg.com/vi/\(video.id)/hqdefault.jpg", videoId: video.id, durationSec: video.durationSeconds)
     }
 
+    /// The item for an Explore post: the headline (or the post's first line), the community (Reddit) or "Name (@handle)"
+    /// (X, Bluesky, the form posts are split back into) as the author, the post's full text as the summary, and its votes or
+    /// likes and comment count.
+    public static func item(post: DiscussionPost, now: Date = Date()) -> ParsedItem {
+        let author: String? = switch post.place {
+        case .x, .bluesky:
+            post.handle.map { h in post.author.map { "\($0) (@\(h))" } ?? "@\(h)" } ?? post.author
+        case .reddit:
+            post.community ?? post.author
+        case .hackerNews, .youtube:
+            post.author
+        }
+        return ParsedItem(
+            guid: post.url, url: post.url, title: post.headline, summary: post.title == nil ? post.text : nil, author: author,
+            publishedAt: post.published ?? now, thumbnailUrl: post.thumbnailUrl, hnPoints: post.score, hnComments: post.comments)
+    }
+
     /// The item for a link whose page couldn't be read: its address as the title, opened now.
     public static func fallbackItem(url: String, videoID: String?, now: Date = Date()) -> ParsedItem {
         let host = URLHost.host(of: url)

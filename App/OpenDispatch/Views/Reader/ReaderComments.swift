@@ -1,0 +1,368 @@
+import OpenDispatchCore
+import SwiftUI
+
+/// The comments under a thread in the reader: a Reddit, X, Bluesky or Hacker News post's replies, a YouTube video's
+/// comments, or (when asked, with "Show comments") the Hacker News discussion of an article. Read fresh each time the item
+/// opens, through `AppModel.comments(for:)`.
+///
+/// Comments come flattened with their depth; a rail per level shows the nesting, and clicking a comment's author line folds
+/// it with its replies. "N more replies" and "More comments" rows load the rest in place. X's replies need the app signed in
+/// to X, so a signed-out reader shows the sign-in note instead and loads once signed in.
+struct ReaderComments: View {
+    let url: String
+    let place: DiscussionPlace
+    /// Wait for "Show comments" before loading (an article whose discussion is elsewhere).
+    var onDemand = false
+    /// The comment count the item already knows, for the heading before they load.
+    var count: Int?
+
+    @Environment(AppModel.self) private var model
+    @State private var phase: Phase = .idle
+    @State private var entries: [DiscussionEntry] = []
+    @State private var total: Int?
+    @State private var folded: Set<String> = []
+    @State private var loadingMore: Set<String> = []
+    @State private var failedMore: Set<String> = []
+
+    private enum Phase: Equatable { case idle, loading, loaded, failed(String), signIn }
+
+    /// The thread an item's comments come from: the item itself when it is a thread, else its Hacker News discussion.
+    static func target(for item: FeedItem) -> (url: String, place: DiscussionPlace, onDemand: Bool)? {
+        let url = item.item.url
+        if let place = DiscussionPlace.thread(of: url) { return (url, place, false) }
+        if let hn = item.item.hnCommentsUrl, DiscussionPlace.thread(of: hn) == .hackerNews { return (hn, .hackerNews, true) }
+        return nil
+    }
+
+    private var shownCount: Int? { total ?? count }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(Color.ofHairline).frame(height: 1)
+            heading
+            content
+        }
+        .task(id: "\(url)#\(model.accounts.changes)") {
+            if !onDemand || phase != .idle { await load() }
+        }
+    }
+
+    private var heading: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(place == .youtube ? "Comments" : onDemand ? "Discussion on \(place.name)" : "Comments")
+                .font(OFFont.ui(15, .semibold))
+                .foregroundStyle(.ofInk)
+                .accessibilityAddTraits(.isHeader)
+            if let n = shownCount, n > 0 {
+                Text(ExploreFormat.count(n))
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
+                    .monospacedDigit()
+            }
+            if phase == .loading { ProgressView().controlSize(.small) }
+            Spacer(minLength: 8)
+            if let link = URL(string: url) {
+                Link(destination: link) {
+                    HStack(spacing: 5) {
+                        Text(place == .youtube ? "On YouTube" : "On \(place.name)")
+                        OFIcon.external.image.font(.system(size: 11))
+                    }
+                    .font(OFFont.ui(12.5))
+                    .foregroundStyle(.ofMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Open the thread in your browser")
+            }
+        }
+        .padding(.vertical, 14)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch phase {
+        case .idle:
+            Button { Task { await load() } } label: {
+                HStack(spacing: 6) {
+                    OFIcon.comment.image.font(.system(size: 13))
+                    Text(shownCount.map { "Show \($0 == 1 ? "1 comment" : "\(ExploreFormat.count($0)) comments")" } ?? "Show comments")
+                }
+                .font(OFFont.ui(14, .medium))
+                .foregroundStyle(.ofAccent)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 8)
+        case .loading:
+            ExploreSkeleton(style: .rows)
+                .padding(.bottom, 8)
+        case .signIn:
+            ExploreSignInNote(account: .x, what: "replies")
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Couldn\u{2019}t load the comments")
+                    .font(OFFont.ui(14, .medium))
+                    .foregroundStyle(.ofInk)
+                Text(message)
+                    .font(OFFont.ui(12.5))
+                    .foregroundStyle(.ofMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Try Again") { Task { await load() } }
+                    .buttonStyle(.plain)
+                    .font(OFFont.ui(13, .medium))
+                    .foregroundStyle(.ofAccent)
+                    .padding(.top, 2)
+            }
+            .padding(.bottom, 8)
+        case .loaded:
+            if entries.isEmpty {
+                ExploreEmptyNote(text: "No comments yet")
+                    .padding(.bottom, 8)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(visible) { entry in
+                        switch entry {
+                        case .comment(let comment):
+                            ReaderCommentRow(comment: comment, place: place, folded: folded.contains(comment.id), replies: replyCount(comment)) {
+                                if folded.contains(comment.id) { folded.remove(comment.id) } else { folded.insert(comment.id) }
+                            }
+                        case .more(let more):
+                            ReaderMoreCommentsRow(more: more, loading: loadingMore.contains(more.id), failed: failedMore.contains(more.id)) {
+                                Task { await loadMore(more) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The entries not under a folded comment.
+    private var visible: [DiscussionEntry] {
+        var out: [DiscussionEntry] = []
+        var hiddenBelow: Int?
+        for entry in entries {
+            if let limit = hiddenBelow {
+                if entry.depth > limit { continue }
+                hiddenBelow = nil
+            }
+            out.append(entry)
+            if case .comment(let c) = entry, folded.contains(c.id) { hiddenBelow = c.depth }
+        }
+        return out
+    }
+
+    /// How many replies a folded comment hides (loaded ones only).
+    private func replyCount(_ comment: DiscussionComment) -> Int {
+        guard folded.contains(comment.id), let i = entries.firstIndex(where: { $0.id == comment.id }) else { return 0 }
+        return entries[(i + 1)...].prefix { $0.depth > comment.depth }.filter { $0.comment != nil }.count
+    }
+
+    // MARK: Loading
+
+    private func load() async {
+        if place == .x, !model.accounts.isSignedIn(.x) {
+            phase = .signIn
+            return
+        }
+        phase = .loading
+        do {
+            let thread = try await model.comments(for: url)
+            guard !Task.isCancelled else { return }
+            entries = thread.entries
+            total = thread.total
+            folded = []
+            phase = .loaded
+        } catch DiscussionError.signInRequired {
+            phase = .signIn
+        } catch {
+            guard !Task.isCancelled else { return }
+            phase = .failed(HTTP.message(error))
+        }
+    }
+
+    /// Puts what a "more" row stands for in its place; a row that brings nothing goes.
+    private func loadMore(_ more: DiscussionMore) async {
+        guard !loadingMore.contains(more.id) else { return }
+        loadingMore.insert(more.id)
+        failedMore.remove(more.id)
+        defer { loadingMore.remove(more.id) }
+        do {
+            let loaded = try await model.moreComments(more, in: url)
+            guard let i = entries.firstIndex(where: { $0.id == more.id }) else { return }
+            let known = Set(entries.map(\.id))
+            entries.replaceSubrange(i...i, with: loaded.filter { !known.contains($0.id) })
+        } catch {
+            failedMore.insert(more.id)
+        }
+    }
+}
+
+/// One comment: its author line (avatar, name, age, score) over its text, indented by a rail per level. Clicking the
+/// author line folds it and its replies.
+private struct ReaderCommentRow: View {
+    let comment: DiscussionComment
+    let place: DiscussionPlace
+    let folded: Bool
+    /// Replies hidden while folded.
+    let replies: Int
+    let toggle: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ReaderCommentRails(depth: comment.depth)
+            VStack(alignment: .leading, spacing: 5) {
+                Button(action: toggle) { header }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(comment.author), \(folded ? "folded" : "")")
+                    .accessibilityHint(folded ? "Shows the comment" : "Folds the comment and its replies")
+                if !folded {
+                    ReaderRichText(text: comment.body, size: 15)
+                }
+            }
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            if let avatar = comment.avatarUrl, let url = URL(string: avatar) {
+                CachedAsyncImage(url: url, maxPixelSize: 54) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: { _ in
+                    Color.ofCode
+                }
+                .frame(width: 18, height: 18)
+                .clipShape(Circle())
+                .accessibilityHidden(true)
+            }
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                let name = Text(verbatim: comment.author).fontWeight(.semibold)
+                    .foregroundStyle(comment.byAuthor ? Color.ofAccent : Color.ofInk)
+                var tail = ""
+                if let date = comment.published { tail += " \u{00B7} " + RelativeTime.format(date, now: context.date) }
+                if let score = comment.score, score > 0 || place == .reddit {
+                    let unit = place == .reddit ? "point" : "like"
+                    tail += " \u{00B7} \(ExploreFormat.count(score)) \(score == 1 ? unit : unit + "s")"
+                }
+                if folded { tail += replies > 0 ? " \u{00B7} \(replies) more" : " \u{00B7} folded" }
+                return Text("\(name)\(Text(verbatim: tail).foregroundStyle(Color.ofMuted))")
+                    .font(OFFont.ui(13))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// "27 more replies" / "More comments", indented like the comments it stands for.
+private struct ReaderMoreCommentsRow: View {
+    let more: DiscussionMore
+    let loading: Bool
+    let failed: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 0) {
+            ReaderCommentRails(depth: more.depth)
+            Button(action: action) {
+                HStack(spacing: 6) {
+                    if loading { ProgressView().controlSize(.small) }
+                    Text(label)
+                        .font(OFFont.ui(13.5, .medium))
+                        .foregroundStyle(failed ? Color.ofDanger : Color.ofAccent)
+                }
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(loading)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var label: String {
+        if failed { return "Couldn\u{2019}t load them. Try again" }
+        let noun = more.depth == 0 ? "comments" : "replies"
+        if let n = more.count, n > 0 { return "\(ExploreFormat.count(n)) more \(n == 1 ? String(noun.dropLast()) : noun)" }
+        return "More \(noun)"
+    }
+}
+
+/// A thin line per level of nesting (at most eight, so deep threads keep their width).
+private struct ReaderCommentRails: View {
+    let depth: Int
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<min(depth, 8), id: \.self) { _ in
+                Rectangle()
+                    .fill(Color.ofHairline)
+                    .frame(width: 1)
+                    .padding(.leading, 5)
+                    .padding(.trailing, 10)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// `RichText` as paragraphs: links in the accent color, bold and italic as written, quotes behind a bar, code blocks on a
+/// tinted ground and list items with a bullet.
+struct ReaderRichText: View {
+    let text: RichText
+    var size: CGFloat = 15
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: size * 0.5) {
+            ForEach(Array(text.paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                switch paragraph.style {
+                case .plain:
+                    line(paragraph)
+                case .quote:
+                    HStack(alignment: .top, spacing: 10) {
+                        Rectangle().fill(Color.ofBorder).frame(width: 2)
+                        line(paragraph).foregroundStyle(.ofMuted)
+                    }
+                case .code:
+                    line(paragraph)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                case .bullet:
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(verbatim: "\u{2022}").foregroundStyle(.ofMuted)
+                        line(paragraph)
+                    }
+                }
+            }
+        }
+    }
+
+    private func line(_ paragraph: RichText.Paragraph) -> some View {
+        Text(Self.attributed(paragraph))
+            .font(OFFont.ui(size))
+            .lineSpacing(size * 0.3)
+            .foregroundStyle(.ofInk)
+            .tint(.ofAccent)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Built as an NSAttributedString, as `ReaderText.linkified` is: links (drawn in the tint), bold and italic.
+    static func attributed(_ paragraph: RichText.Paragraph) -> AttributedString {
+        let out = NSMutableAttributedString()
+        for run in paragraph.runs {
+            var attributes: [NSAttributedString.Key: Any] = [:]
+            if let link = run.link, let url = URL(string: link) { attributes[.link] = url }
+            var intent: InlinePresentationIntent = []
+            if run.bold { intent.insert(.stronglyEmphasized) }
+            if run.italic { intent.insert(.emphasized) }
+            if !intent.isEmpty { attributes[.inlinePresentationIntent] = intent.rawValue }
+            out.append(NSAttributedString(string: run.text, attributes: attributes))
+        }
+        return AttributedString(out)
+    }
+}

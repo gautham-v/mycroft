@@ -14,7 +14,8 @@ public enum ExtractionError: Error, LocalizedError, Equatable {
 
 /// Full-text extraction (port of extractArticle / extractPodcastNotes in src/lib/extract.ts).
 ///
-/// Order for an article: X posts first (status page data, then oEmbed); otherwise the page is fetched (403/401 retried
+/// Order for an article: X posts first (status page data, then oEmbed), a Reddit post or Hacker News item from
+/// `DiscussionContent`; otherwise the page is fetched (403/401 retried
 /// once with browser headers unless Cloudflare's challenge) and run through `ArticleExtraction` (pre-passes,
 /// Readability in WebKit, cleanup, sanitize) while the feed's own content:encoded copy is fetched alongside (rss
 /// sources, not hnrss). A fuller feed copy (`preferFeed`) beats a cut-short page; when the page fails the feed copy
@@ -51,6 +52,14 @@ public struct DefaultContentExtractor: ContentExtractor {
     public func extractArticle(url: String, feed: FeedRef?) async throws -> ExtractResult {
         if TweetExtraction.tweetURL.test(url) {
             if let t = try? await TweetExtraction.extract(url: url, timeout: Self.extractTimeout, session: session) { return t }
+        } else if let place = DiscussionPlace.thread(of: url), place == .reddit || place == .hackerNews {
+            let session = session
+            let post = await DiscussionContent.extract(url: url) { u in
+                let (data, res) = try await HTTP.fetch(u, timeout: Self.extractTimeout, headers: ["Accept": "application/json"], session: session)
+                guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
+                return data
+            }
+            if let post { return post }
         } else if SocialPosts.network(of: url) != nil {
             let session = session
             let post = await SocialPosts.extract(url: url) { u, h in

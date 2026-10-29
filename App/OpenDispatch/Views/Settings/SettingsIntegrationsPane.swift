@@ -4,7 +4,8 @@ import SwiftUI
 /// Integrations pane (IntegrationsPane): Readwise Reader token and webhook URL, saved together with
 /// Save; each configured target has a test button and Remove. The token never comes back from the
 /// Keychain: the field starts empty and the status shows its hint ("Token …abcd"). Below them, the
-/// Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field.
+/// Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field. Last, the sites
+/// the app is signed in to (X for Explore's posts and their replies, Reddit optionally), each with Sign In… or Sign Out.
 struct SettingsIntegrationsPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
@@ -26,6 +27,8 @@ struct SettingsIntegrationsPane: View {
     @State private var error: String?
     @State private var tests: [SendTarget: TestState] = [:]
     @State private var savedFlash: Task<Void, Never>?
+    /// The sign-in sheet opened from here (Settings is itself a sheet on iOS, so RootView's can't show over it).
+    @State private var signingIn: WebAccount?
     @FocusState private var focus: Field?
 
     private var state: IntegrationsState { model.integrations }
@@ -46,7 +49,12 @@ struct SettingsIntegrationsPane: View {
             webhookSection
             footer
             copySection
+            accountsSection
         }
+        .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { account in
+            WebSignInView(account: account)
+        }
+        .task { await model.accounts.refresh() }
         .onChange(of: focus) { old, _ in if old == .copyPrompt { commitPrompt() } }
         .onDisappear {
             savedFlash?.cancel()
@@ -187,6 +195,39 @@ struct SettingsIntegrationsPane: View {
         }
         .padding(.top, compact ? 0 : 12)
         .settingsSectionChrome()
+    }
+
+    private var accountsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Signed-in sites")
+                .font(OFFont.ui(compact ? 17 : 14))
+                .foregroundStyle(.ofInk)
+            Text("OpenDispatch keeps its own sign-ins; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them.")
+                .font(OFFont.ui(compact ? 13.5 : 12))
+                .foregroundStyle(.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+            ForEach(WebAccount.allCases) { account in
+                let on = model.accounts.isSignedIn(account)
+                SettingsRow(label: account.name, hint: accountHint(account, signedIn: on)) {
+                    Button(on ? "Sign Out" : "Sign In\u{2026}") {
+                        if on { Task { await model.accounts.signOut(account) } } else { signingIn = account }
+                    }
+                    .buttonStyle(SettingsSmallButtonStyle(quiet: on))
+                }
+            }
+        }
+        .padding(.top, compact ? 0 : 12)
+        .settingsSectionChrome()
+    }
+
+    private func accountHint(_ account: WebAccount, signedIn: Bool) -> String {
+        switch (account, signedIn) {
+        case (.x, true): "Signed in. Explore shows posts from X, and the reader their replies."
+        case (.x, false): "Sign in to see posts from X in Explore and their replies in the reader."
+        case (.reddit, true): "Signed in. Reddit is read as you."
+        case (.reddit, false): "Optional: Reddit posts and comments are read without an account."
+        }
     }
 
     private func header(_ title: String, on: Bool, status: String) -> some View {

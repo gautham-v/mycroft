@@ -22,12 +22,13 @@ public struct OpenDispatchServices: Sendable {
     public let copy: CopyService
     public let sponsorBlock: any SponsorBlockFetching
     public let explore: any ExploreSearching
+    public let discussions: any DiscussionLoading
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
         extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService,
         search: any SourceSearching = DefaultSourceSearch(), sponsorBlock: any SponsorBlockFetching = DefaultSponsorBlock(),
-        explore: any ExploreSearching = DefaultExploreSearch()
+        explore: any ExploreSearching = DefaultExploreSearch(), discussions: any DiscussionLoading = DefaultDiscussions()
     ) {
         self.database = database
         self.feedParser = feedParser
@@ -40,6 +41,7 @@ public struct OpenDispatchServices: Sendable {
         self.search = search
         self.sponsorBlock = sponsorBlock
         self.explore = explore
+        self.discussions = discussions
         self.content = ContentService(database: database, extractor: extractor)
         self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }
@@ -95,6 +97,11 @@ public struct OpenDispatchServices: Sendable {
             return try await database.insertOpenedLink(OpenedLinks.audioItem(url: url))
         }
 
+        // Reddit refuses the link scraper; its post is read through the hidden web view.
+        if RedditPages.isThread(url), let post = await DiscussionContent.redditItem(url: url) {
+            if let opened = try await database.openedLink(feedUrl: OpenedLinks.linksFeedURL, url: post.url) { return opened }
+            return try await database.insertOpenedLink(post)
+        }
         guard var item = await scraper.fetchLinkItem(url: url, videoID: videoID, timeout: 10) else {
             return try await database.insertOpenedLink(OpenedLinks.fallbackItem(url: url, videoID: videoID))
         }
@@ -125,6 +132,14 @@ public struct OpenDispatchServices: Sendable {
     public func openExploreEpisode(_ episode: ExploreEpisode) async throws -> FeedItem {
         guard let item = ApplePodcastEpisode.item(explore: episode) else { return try await openLink(episode.appleUrl) }
         if let opened = try await database.openedLink(feedUrl: OpenedLinks.episodesFeedURL, url: item.guid) { return opened }
+        return try await database.insertOpenedLink(item)
+    }
+
+    /// An Explore post (Reddit, X, Bluesky, Hacker News) as an opened link, from what the search result shows, with no
+    /// request: the reader reads the post and its comments when it opens.
+    public func openExplorePost(_ post: DiscussionPost) async throws -> FeedItem {
+        let item = OpenedLinks.item(post: post)
+        if let opened = try await database.openedLink(feedUrl: OpenedLinks.linksFeedURL, url: item.url) { return opened }
         return try await database.insertOpenedLink(item)
     }
 

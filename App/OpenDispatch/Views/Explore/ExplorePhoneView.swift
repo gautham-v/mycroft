@@ -4,9 +4,10 @@ import SwiftUI
 
 /// Explore on the iPhone, the drawer's first row: a page in the home column with the drawer's hamburger and
 /// a search field at the top. With nothing searched it lists recent searches and what was played last
-/// (History). A search (Return) shows filter chips (All, Videos, Episodes, Sources) over the results, which
+/// (History). A search (Return) shows filter chips (All, Videos, Posts, Episodes, Sources) over the results, which
 /// start with a row that follows the search as a topic (Follow, then Following, which opens the topic): in All,
-/// videos in a row to swipe through, then three episodes and three sources, each with See All; a chip shows
+/// videos in a row to swipe through, then three posts (with their places to pick from), three episodes and three
+/// sources, each with See All; a chip shows
 /// one kind in full. A last row searches the web in the default browser. Typing a web address instead of
 /// words opens it directly. A result opens in the reader pushed onto the stack, like a History row, and
 /// the page and its results are as they were on coming back.
@@ -20,7 +21,7 @@ struct ExplorePhoneView: View {
     @State private var handledFocusRequest = 0
 
     private enum Filter: String, CaseIterable {
-        case all = "All", videos = "Videos", episodes = "Episodes", sources = "Sources"
+        case all = "All", videos = "Videos", posts = "Posts", episodes = "Episodes", sources = "Sources"
     }
 
     private static let side: CGFloat = 16
@@ -88,7 +89,7 @@ struct ExplorePhoneView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.ofMuted)
                         .accessibilityHidden(true)
-                    TextField("", text: $explore.draft, prompt: Text("Videos, podcasts and sources").foregroundStyle(.ofFaint))
+                    TextField("", text: $explore.draft, prompt: Text("Videos, posts, podcasts and sources").foregroundStyle(.ofFaint))
                         .font(OFFont.ui(17))
                         .foregroundStyle(.ofInk)
                         .textInputAutocapitalization(.never)
@@ -96,7 +97,7 @@ struct ExplorePhoneView: View {
                         .submitLabel(.search)
                         .focused($focused)
                         .disabled(explore.isOpeningLink)
-                        .accessibilityLabel("Search videos, podcasts and sources")
+                        .accessibilityLabel("Search videos, posts, podcasts and sources")
                         .onSubmit(submit)
                         .onChange(of: explore.draft) { explore.dismissOpenError() }
                     if explore.isOpeningLink {
@@ -241,6 +242,7 @@ struct ExplorePhoneView: View {
         switch filter {
         case .all: allSections(explore)
         case .videos: videoSection(explore, all: true)
+        case .posts: postSection(explore, all: true)
         case .episodes: episodeSection(explore, all: true)
         case .sources: sourceSection(explore, all: true)
         }
@@ -278,6 +280,7 @@ struct ExplorePhoneView: View {
     /// All: videos, episodes and sources, each cut short with See All, and left out when it came back empty.
     @ViewBuilder private func allSections(_ explore: ExploreStore) -> some View {
         videoSection(explore, all: false)
+        postSection(explore, all: false)
         episodeSection(explore, all: false)
         sourceSection(explore, all: false)
         if isEmpty(explore) {
@@ -289,7 +292,7 @@ struct ExplorePhoneView: View {
 
     private func isEmpty(_ explore: ExploreStore) -> Bool {
         (explore.videos.value?.videos.isEmpty ?? false) && (explore.episodes.value?.isEmpty ?? false)
-            && (explore.sourcesPhase.value?.isEmpty ?? false)
+            && (explore.sourcesPhase.value?.isEmpty ?? false) && explore.postsAreEmpty
     }
 
     @ViewBuilder private func videoSection(_ explore: ExploreStore, all: Bool) -> some View {
@@ -327,6 +330,16 @@ struct ExplorePhoneView: View {
                 .scrollIndicators(.hidden)
             }
         }
+    }
+
+    /// The places to pick from and the shown place's posts: three in All, every one under the Posts chip.
+    @ViewBuilder private func postSection(_ explore: ExploreStore, all: Bool) -> some View {
+        if !all {
+            let count = explore.posts[explore.shownPostPlace]?.value?.count ?? 0
+            header("Posts", seeAll: count > 3 ? .posts : nil)
+        }
+        ExplorePostsSection(isPhone: true, limit: all ? nil : 3) { target, _ in open(target) }
+            .padding(.top, all ? 6 : 0)
     }
 
     @ViewBuilder private func episodeSection(_ explore: ExploreStore, all: Bool) -> some View {

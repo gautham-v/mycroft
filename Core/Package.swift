@@ -30,7 +30,7 @@ let package = Package(
         .testTarget(
             name: "OpenDispatchCoreTests",
             dependencies: ["OpenDispatchCore"],
-            resources: [.copy("Fixtures/ApplePodcasts"), .copy("Fixtures/Explore"), .copy("Fixtures/Topics")],
+            resources: [.copy("Fixtures/ApplePodcasts"), .copy("Fixtures/Discussions"), .copy("Fixtures/Explore"), .copy("Fixtures/Topics")],
             swiftSettings: [
                 .swiftLanguageMode(.v5),
                 .enableUpcomingFeature("StrictConcurrency"),
