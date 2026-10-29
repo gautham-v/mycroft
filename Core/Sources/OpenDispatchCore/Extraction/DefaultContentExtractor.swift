@@ -15,7 +15,9 @@ public enum ExtractionError: Error, LocalizedError, Equatable {
 /// Full-text extraction (port of extractArticle / extractPodcastNotes in src/lib/extract.ts).
 ///
 /// Order for an article: X posts first (status page data, then oEmbed), a Reddit post or Hacker News item from
-/// `DiscussionContent`, an MSN article from its content API (`MSNArticle`); otherwise the page is fetched (403/401 retried
+/// `DiscussionContent`, an MSN article from its content API (`MSNArticle`), an Apple documentation page from its DocC JSON
+/// (`AppleDocumentation`), a Stack Exchange question from the sites' API (`StackExchangeQuestion`), an arXiv PDF link as its
+/// abstract page; otherwise the page is fetched (403/401 retried
 /// once with browser headers unless Cloudflare's challenge) and run through `ArticleExtraction` (pre-passes,
 /// Readability in WebKit, cleanup, sanitize) while the feed's own content:encoded copy is fetched alongside (rss
 /// sources, not hnrss). A fuller feed copy (`preferFeed`) beats a cut-short page; when the page fails the feed copy
@@ -95,6 +97,20 @@ public struct DefaultContentExtractor: ContentExtractor {
         } else if let api = MSNArticle.apiURL(url) {
             if let (data, res) = try? await HTTP.fetch(api, timeout: Self.extractTimeout, headers: ["Accept": "application/json"], session: session),
                (200..<300).contains(res.statusCode), let article = MSNArticle.render(data, pageURL: url) { return article }
+        } else if let api = AppleDocumentation.apiURL(url) {
+            if let (data, res) = try? await HTTP.fetch(api, timeout: Self.extractTimeout, headers: ["Accept": "application/json"], session: session),
+               (200..<300).contains(res.statusCode), let page = AppleDocumentation.render(data, pageURL: url) { return page }
+        } else if StackExchangeQuestion.question(url) != nil {
+            let session = session
+            let post = await StackExchangeQuestion.extract(url: url) { u in
+                let (data, res) = try await HTTP.fetch(u, timeout: Self.extractTimeout, headers: ["Accept": "application/json"], session: session)
+                guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
+                return data
+            }
+            if let post { return post }
+        } else if let abstract = ArticlePasses.arxivAbstractURL(forPDF: url) {
+            // A paper's PDF can't be read; its abstract page can.
+            if let page = try? await extractPlain(url: abstract), page.contentHtml != nil { return page }
         }
         let started = Date()
         // The feed's copy is fetched alongside the page: the fallback when the page fails and the yardstick for a page

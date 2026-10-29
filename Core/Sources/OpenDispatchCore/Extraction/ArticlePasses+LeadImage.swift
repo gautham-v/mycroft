@@ -230,7 +230,7 @@ public enum LeadImage {
     /// A file named for what it is, not for the article: og, og-image, opengraph-image, social-card, social-share-card,
     /// social-preview-v3, share, twitter-card (not a bare og.jpg, nor IIIF's default.jpg).
     private static let cardName = P("^(?:og(?=[-_])|opengraph|social|share|twitter)(?:[-_](?:og|opengraph|social|share|twitter|default|image|img|card|preview))*(?:[-_]?v?\\d+)?$", caseInsensitive: true)
-    private static let cardDir = P("/og[-_ ]?images?/|/opengraph[-_]?images?/", caseInsensitive: true)
+    private static let cardDir = P("/og[-_ ]?images?/|/opengraph[-_]?images?/|/social[-_]previews?/", caseInsensitive: true)
 
     /// The site's own sharing card, not the article's picture: GitHub's repo card, og-image.png, social-card.png,
     /// social-share-card.jpg, share.png, opengraph-image.png, a blob folder of "OG Images". Better no lead than these.

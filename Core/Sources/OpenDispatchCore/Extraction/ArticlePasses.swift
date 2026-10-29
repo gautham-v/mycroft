@@ -1118,6 +1118,7 @@ enum ArticlePasses {
         removeDividerImages(root)
         dedupeAdjacentImages(root)
         fullWidthImages(root)
+        markBadges(root)
         tidyStyling(root)
         tidyFigures(root)
         tidyCaptions(root)
@@ -1272,6 +1273,7 @@ enum ArticlePasses {
     /// Page-wide cleanup that must happen while the page's class names and structure are intact.
     static func prepare(_ root: Element, base: String, pageURL: String, videos: [ExtractionPayload.Video] = []) {
         resolveStreamedBoundaries(root)
+        prepareReference(root)
         prepareStructure(root)
         promoteLazyImages(root)
         absolutize(root, base: base)

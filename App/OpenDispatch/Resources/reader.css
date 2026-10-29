@@ -230,6 +230,16 @@ body { overflow-y: hidden; }
   margin-bottom: 1.4em;
 }
 .prose-opendispatch picture { display: block; }
+/* README badges (build status, version, chat; ArticlePasses+Reference marks them) sit side by side, not a line each. */
+.prose-opendispatch img.x-badge {
+  display: inline-block;
+  margin: 0 6px 6px 0;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+/* MathML from a LaTeX paper (arXiv's HTML); block equations are centered by the browser. */
+.prose-opendispatch math { font-size: 1.08em; }
+.prose-opendispatch math[display="block"] { margin: 0.4em 0; }
 /* A portrait clip (MLB's phone-shaped ones) at the column's width would be a screen and a half tall. */
 .prose-opendispatch video { max-height: 560px; }
 /* Inline SVG figures (diagrams, charts). Icons are stripped by the extractor. */
@@ -294,6 +304,8 @@ body { overflow-y: hidden; }
 .prose-opendispatch dt { font-size: 13px; color: var(--muted); margin-top: 0.8em; }
 .prose-opendispatch dt:first-child { margin-top: 0; }
 .prose-opendispatch dd { margin: 0.1em 0 0; color: var(--ink); }
+/* A nested list (MDN's callbackFn → element, index, array) is indented under its parent term. */
+.prose-opendispatch dd > dl { margin-left: 0.4em; padding-left: 1em; border-left: 1px solid var(--hairline); }
 .prose-opendispatch code {
   font-family: var(--font-mono);
   font-size: 0.86em;
@@ -326,6 +338,13 @@ body { overflow-y: hidden; }
   border-collapse: collapse;
   font-size: 15px;
   margin: 1.4em 0;
+}
+.prose-opendispatch caption {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  color: var(--muted);
+  padding-bottom: 6px;
 }
 .prose-opendispatch th,
 .prose-opendispatch td {

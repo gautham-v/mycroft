@@ -29,17 +29,31 @@ public enum ArticleSanitizer {
         "letter-spacing", "textLength",
     ])
 
+    // MathML (arXiv's HTML papers): presentation markup WebKit draws. `semantics` is unwrapped and its `annotation`
+    // (the LaTeX source) dropped, so the formula shows once. No href, style or class.
+    static let mathTags: Set<String> = [
+        "math", "mrow", "mi", "mn", "mo", "mtext", "mspace", "ms", "msub", "msup", "msubsup", "mfrac", "msqrt", "mroot",
+        "mover", "munder", "munderover", "mmultiscripts", "mprescripts", "none", "mtable", "mtr", "mtd", "mstyle", "mpadded",
+        "mphantom", "menclose",
+    ]
+
+    static let mathAttrs: Set<String> = [
+        "display", "mathvariant", "mathsize", "stretchy", "fence", "separator", "form", "lspace", "rspace", "largeop",
+        "movablelimits", "symmetric", "minsize", "maxsize", "accent", "accentunder", "displaystyle", "scriptlevel",
+        "linethickness", "columnalign", "rowalign", "columnspan", "rowspan", "notation", "width", "height", "depth",
+    ]
+
     static let allowedTags: Set<String> = Set([
         "p", "br", "hr", "b", "strong", "i", "em", "u", "s", "sub", "sup", "small", "mark",
         "a", "img", "pre", "code", "kbd", "samp",
         "h1", "h2", "h3", "h4", "h5", "h6",
         "ul", "ol", "li", "dl", "dt", "dd",
         "blockquote", "figure", "figcaption", "picture", "video", "source", "iframe",
-        "table", "thead", "tbody", "tr", "th", "td", "span", "div",
-    ]).union(svgTags)
+        "table", "caption", "thead", "tbody", "tr", "th", "td", "span", "div",
+    ]).union(svgTags).union(mathTags)
 
     /// Tags whose content is dropped along with them when disallowed (sanitize-html nonTextTags).
-    static let nonTextTags: Set<String> = ["script", "style", "textarea", "option", "xmp"]
+    static let nonTextTags: Set<String> = ["script", "style", "textarea", "option", "xmp", "annotation", "annotation-xml"]
 
     static let allowedAttributes: [String: Set<String>] = {
         var map: [String: Set<String>] = [
@@ -54,6 +68,7 @@ public enum ArticleSanitizer {
             "td": ["colspan", "rowspan"],
         ]
         for t in svgTags { map[t] = svgAttrs }
+        for t in mathTags { map[t] = mathAttrs }
         // allowedClasses implicitly allows `class` on these, filtered to x-* tokens.
         for t in classFilteredTags { map[t, default: []].insert("class") }
         return map
