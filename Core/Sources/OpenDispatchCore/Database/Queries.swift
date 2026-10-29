@@ -44,7 +44,8 @@ public enum Queries {
         // Topic items stay out of the curated views: they list in their topic, Saved and History.
         if q.view != .saved, q.sourceId == nil { c.append(kind != SourceKind.topic.rawValue) }
         if let s = q.sourceId {
-            // A topic lists one row per story: the articles behind a lead and the Hacker News thread about it list with the lead.
+            // A topic lists one row per story: the articles behind a lead, the Hacker News thread about it and the posts sharing it
+            // list with the lead.
             if topic != nil { c.append(Item.Columns.storyId == nil) }
             if let options = topic?.topicOptions, options.places.subscriptions {
                 // The topic's own matches, plus what the user's subscriptions say about the keyword.

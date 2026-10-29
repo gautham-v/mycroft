@@ -21,6 +21,15 @@ public struct TopicOutlet: Sendable, Hashable, Identifiable {
         self.host = URLHost.host(of: url)
         self.publishedAt = publishedAt
     }
+
+    /// A post's author as a story lists it: the name a post was stored with, without its handle ("Nikkei Asia (@asia.nikkei.com)"
+    /// is "Nikkei Asia"); the handle when there is no name. nil for none.
+    static func postAuthor(_ author: String?) -> String? {
+        guard let author, !author.isEmpty else { return nil }
+        guard author.hasSuffix(")"), let open = author.range(of: " (@", options: .backwards) else { return author }
+        let name = author[..<open.lowerBound].trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? String(author[open.upperBound...].dropLast()) : name
+    }
 }
 
 /// The Hacker News thread about a news story.
@@ -40,18 +49,22 @@ public struct TopicDiscussion: Sendable, Hashable, Identifiable {
     }
 }
 
-/// What stands behind a story row in a topic's list: the other outlets' articles and the Hacker News thread. A list row has one
-/// when its lead has either (`FeedItem.story`); a lone article, a video, an episode or a Hacker News thread of its own has none.
+/// What stands behind a story row in a topic's list: the other outlets' articles, the Hacker News thread and the posts on X and
+/// Bluesky sharing it. A list row has one when its lead has any of them (`FeedItem.story`); a lone article, a video, an episode,
+/// a post or a Hacker News thread of its own has none.
 public struct TopicStory: Sendable, Hashable {
     /// Every article of the story, the lead first and then the others newest first (the lead's outlet is in the stack too, so
     /// "Yahoo, KHOU, The Cool Down" is `outlets.map(\.name)`). One for a story that only has a discussion.
     public var outlets: [TopicOutlet]
     /// The story's Hacker News thread (the one with the most points when several were submitted).
     public var discussion: TopicDiscussion?
+    /// The posts on X and Bluesky sharing the story, newest first: the author as `name`, the post's text as `title`.
+    public var posts: [TopicOutlet]
 
-    public init(outlets: [TopicOutlet], discussion: TopicDiscussion? = nil) {
+    public init(outlets: [TopicOutlet], discussion: TopicDiscussion? = nil, posts: [TopicOutlet] = []) {
         self.outlets = outlets
         self.discussion = discussion
+        self.posts = posts
     }
 
     /// The other outlets (everything but the lead).
@@ -64,7 +77,8 @@ public struct TopicStory: Sendable, Hashable {
 /// one- and two-letter words, each cut back to a rough stem ("reunites" and "reunited" are "reunit"). Two articles are one story
 /// when they were published within `window` of each other and their sets overlap enough (`isSameStory`), weighing each word by
 /// how rare it is among the topic's titles (`Weights`). A Hacker News thread joins a story whose article it links to, or whose
-/// title it matches the same way.
+/// title it matches the same way. A post on X or Bluesky joins a story whose article it links to, or whose headline it repeats or
+/// closely rewords (`postOverlaps`), since most of a topic's posts are outlets and readers sharing the day's articles.
 public enum TopicStories {
     /// How far apart two articles of one story were published.
     public static let window: TimeInterval = 3 * 86_400
@@ -77,6 +91,13 @@ public enum TopicStories {
     static let minShared = 2
     static let minScore = 0.24
     static let minScoreTwoWords = 0.45
+
+    /// A post joins an article's story when they share `minPostShared` words carrying `minPostScore` of the lighter one's weight:
+    /// stricter than two articles, since a post's text is longer and wanders. Tuned on the chip exports topic: reshares and
+    /// rewordings of its three headlines score 0.48 to 1.0 against them, while posts about China's chip exports, Korea's GDP
+    /// figure or the Bank of Korea's warning (against the GDP story) score 0.21 to 0.39.
+    static let minPostShared = 3
+    static let minPostScore = 0.45
 
     /// How much each word says about which story a title is about, from every title being grouped: a word few of the topic's
     /// titles use ("smart", "window") says more than one most of them share. A word's weight is log(1 + titles / titles using it).
@@ -154,6 +175,11 @@ public enum TopicStories {
         a.intersection(b).count >= minShared && score(a, b, weights: weights) >= minScore
     }
 
+    /// A post's words against an article's: alike enough for the post to be about that article's story (`minPostScore`).
+    static func postOverlaps(_ post: Set<String>, _ article: Set<String>, weights: Weights) -> Bool {
+        post.intersection(article).count >= minPostShared && score(post, article, weights: weights) >= minPostScore
+    }
+
     /// Two articles: published within `window` of each other with title words that overlap.
     public static func isSameStory(_ a: Set<String>, _ aDate: Date, _ b: Set<String>, _ bDate: Date, weights: Weights = .uniform) -> Bool {
         abs(aDate.timeIntervalSince(bDate)) <= window && overlaps(a, b, weights: weights)
@@ -171,4 +197,10 @@ extension Topic {
         if videoId != nil || audioUrl != nil { return .media }
         return .news
     }
+
+    /// The stored item is a post on X or Bluesky (by its guid, as `place` reads it).
+    static func isPost(guid: String) -> Bool { guid.hasPrefix("x:") || guid.hasPrefix("bsky:") }
+
+    /// SQL for `isPost` on the `items` row `table` names.
+    static func isPostSQL(_ table: String) -> String { "(\(table).guid LIKE 'x:%' OR \(table).guid LIKE 'bsky:%')" }
 }

@@ -6,9 +6,10 @@ import GRDB
 /// - A story's lead is its first stored article (the lowest id). It keeps `story_id` NULL, so the topic's list (which shows only
 ///   items with a NULL `story_id`) shows it, and carries `story_at`, the time of its newest article: the story sorts there, so
 ///   fresh coverage lifts a story back up the list. The keyset cursor is (`story_at` or `published_at`, id).
-/// - Every other article of the story, and the Hacker News thread about it, has `story_id` = the lead's id.
-/// - Only news articles open or join a story. Videos, episodes, Reddit posts and a Hacker News thread with no article stay rows
-///   of their own, and so does an article no other outlet matched.
+/// - Every other article of the story, the Hacker News thread about it and the posts on X and Bluesky sharing it have `story_id` =
+///   the lead's id.
+/// - Only news articles open or join a story, and only they move its time. Videos, episodes, Reddit posts, and a Hacker News
+///   thread or a post with no article stay rows of their own, and so does an article no other outlet matched.
 /// - Grouping is saved, so a story doesn't change between pages. Each refresh (and each launch) works the stories out again
 ///   from every stored article (`groupTopicStories`); removing a lead gives its story to the next article (`repairStories`).
 extension Queries {
@@ -22,7 +23,11 @@ extension Queries {
         var words: Set<String>
         var storyId: Int64?
         var isHackerNews: Bool
+        /// The addresses a post's text links to.
+        var links: [String] = []
     }
+
+    private static let linkPattern = ExtractionDOM.Pattern(#"https?://[^\s<>"]+"#)
 
     /// Group a topic's stored articles into stories and attach Hacker News threads to them. Run in the transaction that stores a
     /// refresh's items, so a notification never sees an article of an existing story as a new post, and at launch
@@ -35,10 +40,11 @@ extension Queries {
         guard topic.isTopic else { return 0 }
         let keyword = topic.topicOptions?.keyword ?? topic.title
         let rows = try Row.fetchAll(db, sql: """
-            SELECT id, guid, url, title, published_at, story_id, video_id, audio_url, hn_comments_url FROM items WHERE source_id = ? ORDER BY id
+            SELECT id, guid, url, title, summary, published_at, story_id, video_id, audio_url, hn_comments_url FROM items WHERE source_id = ? ORDER BY id
             """, arguments: [topic.id])
         var news: [Article] = []
         var threads: [Article] = []
+        var posts: [Article] = []
         for row in rows {
             let guid: String = row["guid"]
             let url: String = row["url"]
@@ -46,6 +52,13 @@ extension Queries {
             let audio: String? = row["audio_url"]
             let comments: String? = row["hn_comments_url"]
             let place = Topic.place(guid: guid, videoId: video, audioUrl: audio)
+            if place == .x || place == .bluesky {
+                let summary: String? = row["summary"]
+                posts.append(Article(
+                    id: row["id"], url: url, published: row["published_at"], words: TopicStories.words(of: row["title"], keyword: keyword),
+                    storyId: row["story_id"], isHackerNews: false, links: summary.map { linkPattern.allMatches($0).compactMap { $0[0] } } ?? []))
+                continue
+            }
             let isThread = place == .hackerNews
             guard isThread || (place == .news && comments == nil && !Topic.isRedditPost(url)) else { continue }
             let article = Article(
@@ -99,6 +112,24 @@ extension Queries {
             }
         }
 
+        // Posts: the story whose article the post links to, else the one whose article it repeats or rewords most closely. Their
+        // words are weighed among everything grouped, posts included, so the words every reshare repeats count for less.
+        let postWeights = TopicStories.Weights((news + threads + posts).map(\.words))
+        var postStory: [Int64: Int64] = [:]
+        for p in posts {
+            if let article = p.links.lazy.compactMap({ FeedDedupe.linkKey($0).flatMap { byLink[$0] } }).first {
+                postStory[p.id] = storyOf[article]
+                continue
+            }
+            var best: (score: Double, story: Int64)?
+            for b in news where abs(p.published.timeIntervalSince(b.published)) <= TopicStories.window
+                && TopicStories.postOverlaps(p.words, b.words, weights: postWeights) {
+                let score = TopicStories.score(p.words, b.words, weights: postWeights)
+                if best == nil || score > best!.score, let story = storyOf[b.id] { best = (score, story) }
+            }
+            if let best { postStory[p.id] = best.story }
+        }
+
         var changed = 0
         var readCarried = Set<Int64>()
         for a in news {
@@ -114,6 +145,10 @@ extension Queries {
         }
         for t in threads where threadStory[t.id] != t.storyId {
             try db.execute(sql: "UPDATE items SET story_id = ? WHERE id = ?", arguments: [threadStory[t.id], t.id])
+            changed += 1
+        }
+        for p in posts where postStory[p.id] != p.storyId {
+            try db.execute(sql: "UPDATE items SET story_id = ? WHERE id = ?", arguments: [postStory[p.id], p.id])
             changed += 1
         }
         for story in readCarried where try !isRead(db, itemId: story) {
@@ -133,12 +168,12 @@ extension Queries {
     }
 
     /// `story_at` of every lead with something behind it is its newest article's time; leads with nothing behind them have none.
-    /// The Hacker News thread doesn't move a story: it is listed with it, not as news.
+    /// The Hacker News thread and the posts don't move a story: they are listed with it, not as news.
     static func refreshStoryTimes(_ db: Database) throws {
         try db.execute(sql: """
             UPDATE items SET story_at = (
                 SELECT max(m.published_at) FROM items m
-                WHERE (m.id = items.id OR m.story_id = items.id) AND m.hn_comments_url IS NULL)
+                WHERE (m.id = items.id OR m.story_id = items.id) AND m.hn_comments_url IS NULL AND NOT \(Topic.isPostSQL("m")))
             WHERE story_id IS NULL AND EXISTS (SELECT 1 FROM items m WHERE m.story_id = items.id)
             """)
         try db.execute(sql: """
@@ -160,13 +195,13 @@ extension Queries {
     }
 
     /// After items were deleted: a story whose lead is gone passes to its oldest remaining article (and the others follow it),
-    /// and a Hacker News thread left with no article of its story is a row of its own again. A story whose old lead was read
+    /// and a Hacker News thread or a post left with no article of its story is a row of its own again. A story whose old lead was read
     /// (`readLeads`, from `readStoryLeads` before the delete) stays read: the new lead is marked read. The stories' times are
     /// renewed too, as a deleted newest article moves them. Returns how many items changed.
     @discardableResult
     static func repairStories(_ db: Database, readLeads: Set<Int64> = []) throws -> Int {
         let orphans = try Row.fetchAll(db, sql: """
-            SELECT id, story_id, hn_comments_url FROM items
+            SELECT id, guid, story_id, hn_comments_url FROM items
             WHERE story_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM items l WHERE l.id = items.story_id)
             ORDER BY id
             """)
@@ -174,8 +209,10 @@ extension Queries {
         var byStory: [Int64: [Row]] = [:]
         for row in orphans { byStory[row["story_id"], default: []].append(row) }
         for (oldLead, rows) in byStory {
-            let articles = rows.filter { ($0["hn_comments_url"] as String?) == nil }
-            let threads = rows.filter { ($0["hn_comments_url"] as String?) != nil }
+            // Threads and posts follow the story; only an article can lead it.
+            let isArticle = { (row: Row) in (row["hn_comments_url"] as String?) == nil && !Topic.isPost(guid: row["guid"]) }
+            let articles = rows.filter(isArticle)
+            let threads = rows.filter { !isArticle($0) }
             let lead: Int64? = articles.first?["id"]
             for row in articles {
                 let id: Int64 = row["id"]
@@ -196,21 +233,27 @@ extension Queries {
 
     // MARK: Reading
 
-    /// Give each lead in a page of a topic's list the outlets and discussion behind it, in one query for the page.
+    /// Give each lead in a page of a topic's list the outlets, discussion and posts behind it, in one query for the page.
     static func attachStories(_ db: Database, to items: [FeedItem], topicId: Int64) throws -> [FeedItem] {
         let leads = items.filter { $0.item.sourceId == topicId && $0.item.storyId == nil }
         guard !leads.isEmpty else { return items }
         let ids = leads.map(\.item.id)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT id, story_id, url, title, author, published_at, hn_points, hn_comments, hn_comments_url
+            SELECT id, guid, story_id, url, title, author, published_at, hn_points, hn_comments, hn_comments_url
             FROM items WHERE story_id IN (\(databaseQuestionMarks(count: ids.count))) ORDER BY published_at DESC, id
             """, arguments: StatementArguments(ids))
         guard !rows.isEmpty else { return items }
         var outlets: [Int64: [TopicOutlet]] = [:]
         var discussions: [Int64: TopicDiscussion] = [:]
+        var posts: [Int64: [TopicOutlet]] = [:]
         for row in rows {
             let lead: Int64 = row["story_id"]
-            if let comments: String = row["hn_comments_url"] {
+            if Topic.isPost(guid: row["guid"]) {
+                let url: String = row["url"]
+                posts[lead, default: []].append(TopicOutlet(
+                    id: row["id"], name: TopicOutlet.postAuthor(row["author"]) ?? URLHost.host(of: url), title: row["title"], url: url,
+                    publishedAt: row["published_at"]))
+            } else if let comments: String = row["hn_comments_url"] {
                 let thread = TopicDiscussion(id: row["id"], points: row["hn_points"] ?? 0, comments: row["hn_comments"] ?? 0, url: comments)
                 if let current = discussions[lead], (current.points, current.comments) >= (thread.points, thread.comments) { continue }
                 discussions[lead] = thread
@@ -227,9 +270,10 @@ extension Queries {
             guard feed.item.sourceId == topicId, feed.item.storyId == nil else { return feed }
             let others = outlets[feed.item.id] ?? []
             let discussion = discussions[feed.item.id]
-            guard !others.isEmpty || discussion != nil else { return feed }
+            let shared = posts[feed.item.id] ?? []
+            guard !others.isEmpty || discussion != nil || !shared.isEmpty else { return feed }
             let lead = TopicOutlet(id: feed.item.id, name: feed.originName, title: feed.item.title, url: feed.item.url, publishedAt: feed.item.publishedAt)
-            feed.story = TopicStory(outlets: [lead] + others, discussion: discussion)
+            feed.story = TopicStory(outlets: [lead] + others, discussion: discussion, posts: shared)
             return feed
         }
     }

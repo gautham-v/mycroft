@@ -41,6 +41,48 @@ private func redditPost(_ id: String, _ title: String, hoursAgo: Double) -> Pars
                publishedAt: storyBase.addingTimeInterval(-hoursAgo * 3600), hnPoints: 5, hnComments: 2)
 }
 
+private func post(_ guid: String, _ text: String, _ author: String, hoursAgo: Double, summary: String? = nil) -> ParsedItem {
+    let url = guid.hasPrefix("x:") ? "https://x.com/someone/status/\(guid.dropFirst(2))" : "https://bsky.app/profile/someone/post/\(guid.dropFirst(5))"
+    return ParsedItem(guid: guid, url: url, title: text, summary: summary ?? text, author: author,
+                      publishedAt: storyBase.addingTimeInterval(-hoursAgo * 3600), hnPoints: 3, hnComments: 1)
+}
+
+/// Real headlines and posts from the chip exports topic (Bing News, X and Bluesky, Oct 26-29 2026), hours before Oct 29 18:00.
+private enum ChipExports {
+    static let nikkeiURL = "https://asia.nikkei.com/business/tech/semiconductors/ai-boom-soaring-memory-prices-lift-japan-s-chip-exports-41"
+    static let bankOfKorea = "Bank of Korea warns country's chip exports could fall by up to $100 billion if AI spending slows"
+    static let nikkei = "AI boom, soaring memory prices lift Japan's chip exports 41%"
+
+    static let articles = [
+        article("nikkei", nikkei, "Nikkei Asia", hoursAgo: 9.6, url: nikkeiURL),
+        article("charlotte", bankOfKorea, "Charlotte Observer", hoursAgo: 74.3),
+        article("reuters", bankOfKorea, "Reuters", hoursAgo: 44),
+        article("briefasia", "South Korea's Economy Grows Faster Than Expected on Chip Exports", "briefasia.com", hoursAgo: 49),
+    ]
+
+    /// Reshares and rewordings of those articles.
+    static let sharing = [
+        post("bsky:nikkei", nikkei, "Nikkei Asia (Official) (@asia.nikkei.com)", hoursAgo: 2.6, summary: nikkei + "\n" + nikkeiURL),
+        post("x:1", "\u{1F1EF}\u{1F1F5} NEWS: Japan chip exports jump 41% on AI boom, memory price surge", "World in Motion (@WorldInMotionHQ)", hoursAgo: 2.5),
+        post("bsky:reuters", bankOfKorea + " reut.rs/3Wx1ibD", "Reuters (@reuters.com)", hoursAgo: 58.2),
+        post("bsky:cna", bankOfKorea, "CNA (@channelnewsasia.bsky.social)", hoursAgo: 63.6),
+        post("bsky:ticker", "*BANK OF KOREA WARNS CHIP EXPORTS COULD FALL BY UP TO $100 BILLION ON SLOWING AI SPENDING", "News Ticker (@headline-feed.bsky.social)", hoursAgo: 59.6),
+        post("bsky:zenith", "Bank of Korea Warns AI Slowdown Could Cut Chip Exports by Up to $100 Billion in 2027 zenithzim.blogspot.com/2026/10/bank...", "zenithzim (@kimnhe.bsky.social)", hoursAgo: 56),
+        post("bsky:ejph", "South Korea\u{2019}s economy grows a faster-than-expected 1% in the third quarter on AI chip exports, and the Kospi jumps more than 4%", "EJPH News (@ejphnews.bsky.social)", hoursAgo: 59.6),
+        post("bsky:qnc", "South Korea Economy Grows 1% in Q3 as Chip Exports Surge", "QNC News (@qncnews.bsky.social)", hoursAgo: 63.3),
+    ]
+
+    /// Posts with something of their own to say, or about something no article covers.
+    static let ownRows = [
+        post("x:2", "Chip exports up 218.7%, GDP growth at 1.0% vs a 0.3% forecast. Moody's names the catch: growth is concentrated in chips. So a whole country\u{2026}", "Hermann del Campo (@hermanndelcampo)", hoursAgo: 0.6),
+        post("bsky:megaspeed", "US probed Chinese spy plot via Megaspeed exec close to Nvidia CEO over AI chip exports. #AI #Semiconductors #ExportControl", "The Daily Tech Feed (@thedailytechfeed.com)", hoursAgo: 0.58),
+        post("x:3", "''Chinese chip exports nearly doubled in the first half of 2026, to $177bn, helped by soaring memory prices. China now ships more cars than\u{2026}", "Khalid Al Zarooni (@Khalidalzarouni)", hoursAgo: 10.7),
+        post("bsky:trade", "\u{1F1F0}\u{1F1F7} South Korea's Q3 GDP grew 1.0% vs 0.7% forecast", "Trade2Spike (@trade2spike.bsky.social)", hoursAgo: 49),
+        post("bsky:cv", "South Korea warns an AI slowdown could hurt chip exports. #Korea #Economy www.reuters.com/world/asia-p...", "CYNC Verity Media (@cvmedia.bsky.social)", hoursAgo: 52.5),
+        post("x:4", "The US has already weaponised AI chip exports against China. India\u{2019}s access is not guaranteed. Delaying infrastructure in the name of envir\u{2026}", "Kyo (@KyoTheFraud)", hoursAgo: 78.8),
+    ]
+}
+
 private struct StoryScraper: PageScraper {
     func scrape(listingURL: String, known: Set<String>, budget: TimeInterval?) async throws -> ScrapeResult { throw HTTPError.status(404) }
     func findArticleLinks(html: String, pageURL: String) -> [String] { [] }
@@ -667,6 +709,64 @@ struct TopicStoryTests {
         }
         // Saved lists every saved item by its own time, story members included.
         #expect(paged == ["yahoo2", "pcworld", "lone", "khou"])
+    }
+
+    @Test func postsSharingAnArticleListWithItsStory() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db, "chip exports")
+        try Fixture.items(db, sourceId: t.id, ChipExports.articles + ChipExports.sharing + ChipExports.ownRows)
+        try await group(db, t)
+
+        let list = try await rows(db, t)
+        // Three stories and the posts that share none of them; the reshares list with their story.
+        #expect(list.map(\.item.guid) == ["bsky:megaspeed", "x:2", "nikkei", "x:3", "charlotte", "bsky:trade", "briefasia", "bsky:cv", "x:4"])
+        let nikkei = try #require(list.first { $0.item.guid == "nikkei" })
+        // By the link in its text, and by its headline reworded.
+        #expect(nikkei.story?.posts.map(\.name) == ["World in Motion", "Nikkei Asia (Official)"])
+        #expect(nikkei.story?.posts.first?.host == "x.com")
+        #expect(nikkei.story?.outlets.count == 1 && nikkei.story?.discussion == nil)
+        let bank = try #require(list.first { $0.item.guid == "charlotte" })
+        #expect(bank.story?.outlets.map(\.name) == ["Charlotte Observer", "Reuters"])
+        #expect(bank.story?.posts.map(\.name) == ["zenithzim", "Reuters", "News Ticker", "CNA"])
+        #expect(list.first { $0.item.guid == "briefasia" }?.story?.posts.map(\.name) == ["EJPH News", "QNC News"])
+        // Posts don't move a story: it sits at its newest article, not at its newest post.
+        #expect(nikkei.item.storyAt == storyBase.addingTimeInterval(-9.6 * 3600))
+        #expect(bank.item.storyAt == storyBase.addingTimeInterval(-44 * 3600))
+        // The Posts filter lists the posts of their own; the rest list with their story.
+        #expect(try await rows(db, t, .posts).count == ChipExports.ownRows.count)
+        #expect(try await db.unreadCounts()[t.id] == list.count)
+        // Grouping again changes nothing.
+        try await group(db, t)
+        #expect(try await rows(db, t).map(\.item.guid) == list.map(\.item.guid))
+    }
+
+    @Test func postsFollowTheirStoryAndStandAloneWhenItsArticlesGo() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db, "chip exports")
+        try Fixture.items(db, sourceId: t.id, [ChipExports.articles[1], ChipExports.articles[2], ChipExports.sharing[2], ChipExports.sharing[3]])
+        try await group(db, t)
+        #expect(try await rows(db, t).map(\.item.guid) == ["charlotte"])
+
+        // The lead goes: the other article leads, never a post.
+        #expect(try await db.pruneOldItems(before: storyBase.addingTimeInterval(-70 * 3600)) == 1)
+        let list = try await rows(db, t)
+        #expect(list.map(\.item.guid) == ["reuters"])
+        #expect(list[0].story?.outlets.count == 1 && list[0].story?.posts.count == 2)
+
+        // The last article goes: the posts are rows of their own again.
+        try await db.writer.write { d in
+            try d.execute(sql: "DELETE FROM items WHERE guid = 'reuters'")
+            try Queries.repairStories(d)
+        }
+        #expect(try await rows(db, t).map(\.item.guid) == ["bsky:reuters", "bsky:cna"])
+        #expect(try allItems(db, t).allSatisfy { $0.storyId == nil && $0.storyAt == nil })
+    }
+
+    @Test func aPostsAuthorIsItsNameWithoutTheHandle() {
+        #expect(TopicOutlet.postAuthor("Nikkei Asia (Official) (@asia.nikkei.com)") == "Nikkei Asia (Official)")
+        #expect(TopicOutlet.postAuthor("@someone") == "@someone")
+        #expect(TopicOutlet.postAuthor(" (@someone)") == "someone")
+        #expect(TopicOutlet.postAuthor(nil) == nil)
     }
 
     @Test func theMigrationAddsTheStoryColumnsToExistingItems() throws {

@@ -425,13 +425,13 @@ final class AppModel {
     /// The item the reader shows: the opened one, else (tablet/desktop) the first in the list.
     var selectedItem: FeedItem? { activeItem(inPane: focusedPane) }
 
-    /// Id the list highlights (the opened item or the default first one). A story's other outlets and its Hacker News thread are
-    /// not rows of their own, so opening one highlights the story's row (its lead), and j/k move on from there.
+    /// Id the list highlights (the opened item or the default first one). A story's other outlets, its Hacker News thread and
+    /// its posts are not rows of their own, so opening one highlights the story's row (its lead), and j/k move on from there.
     var highlightedItemID: Int64? {
         guard let id = selectedItem?.id, !items.contains(where: { $0.id == id }) else { return selectedItem?.id }
         let lead = items.first { row in
             guard let story = row.story else { return false }
-            return story.discussion?.id == id || story.outlets.contains { $0.id == id }
+            return story.discussion?.id == id || story.outlets.contains { $0.id == id } || story.posts.contains { $0.id == id }
         }
         return lead?.id ?? id
     }

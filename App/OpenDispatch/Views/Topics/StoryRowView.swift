@@ -1,11 +1,12 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// A topic's list row for a news story: the lead article with the other outlets that covered it and the story's Hacker News
-/// thread behind it (`FeedItem.story`). Same bones as `ItemRowView` (meta line, headline, thumbnail on the right), but the
-/// meta line shows a stack of up to three overlapping favicons and the outlets' names, a "+N" when there are more, then the
-/// age of the newest coverage; "+N" opens the list of every outlet's own headline in place, and a chip under the headline
-/// gives the thread's points and comments. Tapping the row opens the lead; each outlet and the chip open their own page.
+/// A topic's list row for a news story: the lead article with the other outlets that covered it, the story's Hacker News
+/// thread and the posts on X and Bluesky sharing it behind it (`FeedItem.story`). Same bones as `ItemRowView` (meta line,
+/// headline, thumbnail on the right), but the meta line shows a stack of up to three overlapping favicons and the outlets'
+/// names, a "+N" when there are more, then the age of the newest coverage; "+N" opens the list of every outlet's own headline
+/// in place. Under the headline, a chip gives the thread's points and comments, and another the number of posts, which opens
+/// their list in place. Tapping the row opens the lead; each outlet, post and the thread chip open their own page.
 ///
 /// The row is not a Button: its parts are. `onTapGesture` on the whole row is the lead, and the inner buttons take their own
 /// clicks first. The closures (`StoryRowActions`) carry whatever the list needs for modifier keys and are not part of `==`.
@@ -38,7 +39,7 @@ struct StoryRowView: View, Equatable {
 struct StoryRowActions {
     /// Open the lead article.
     var openLead: () -> Void = {}
-    /// Open another outlet's article (the lead's own entry in the list opens the lead).
+    /// Open another outlet's article (the lead's own entry in the list opens the lead), or a post sharing the story.
     var openOutlet: (TopicOutlet) -> Void = { _ in }
     /// Open the Hacker News thread.
     var openDiscussion: () -> Void = {}
@@ -57,6 +58,7 @@ private struct StoryRowContent: View {
     let actions: StoryRowActions
 
     @State private var expanded = false
+    @State private var postsExpanded = false
     @Environment(\.listLayout) private var layout
 
     /// Read and drawn as read (see `ItemRowView.dimsRead`).
@@ -81,8 +83,18 @@ private struct StoryRowContent: View {
             if expanded && outlets.count > 1 {
                 StoryOutletList(outlets: outlets, open: pick)
             }
-            if let discussion = story.discussion {
-                DiscussionChip(discussion: discussion, action: actions.openDiscussion)
+            if story.discussion != nil || !story.posts.isEmpty {
+                HStack(spacing: 6) {
+                    if let discussion = story.discussion {
+                        DiscussionChip(discussion: discussion, action: actions.openDiscussion)
+                    }
+                    if !story.posts.isEmpty {
+                        PostsChip(posts: story.posts, expanded: postsExpanded, action: togglePosts)
+                    }
+                }
+            }
+            if postsExpanded && !story.posts.isEmpty {
+                StoryOutletList(outlets: story.posts, open: actions.openOutlet)
             }
         }
         .itemRowChrome(isSelected: isSelected, isSecondary: isSecondary, isHovered: isHovered, isPhone: isPhone)
@@ -91,6 +103,7 @@ private struct StoryRowContent: View {
     }
 
     private func toggleExpanded() { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } }
+    private func togglePosts() { withAnimation(.easeOut(duration: 0.15)) { postsExpanded.toggle() } }
 
     /// The "+N" button's label. The meta line sits inside the row's one accessibility element, so VoiceOver reaches the button
     /// as a custom action of the row.
@@ -204,6 +217,7 @@ private struct StoryRowContent: View {
         if let discussion = story.discussion {
             parts.append("\(DiscussionStats.pointsText(discussion.points)), \(DiscussionStats.commentsText(discussion.comments)) on Hacker News")
         }
+        if !story.posts.isEmpty { parts.append(PostsChip.text(story.posts)) }
         if let label = paywall.markLabel { parts.append(label) }
         if item.isSaved { parts.append("Saved") }
         if isRead { parts.append("Read") }
@@ -311,6 +325,54 @@ struct DiscussionChip: View {
     }
 }
 
+/// "[X][Bluesky] 9 posts" under a story's headline: the posts on X and Bluesky sharing it, which the chip lists in place.
+struct PostsChip: View {
+    let posts: [TopicOutlet]
+    let expanded: Bool
+    let action: () -> Void
+
+    /// The sites the posts are on (x.com, bsky.app), most posts first.
+    private var sites: [String] {
+        let counts = Dictionary(grouping: posts, by: \.host).mapValues(\.count)
+        return counts.keys.sorted { (counts[$0]!, $1) > (counts[$1]!, $0) }
+    }
+
+    /// "9 posts on Bluesky and X".
+    static func text(_ posts: [TopicOutlet]) -> String {
+        let names = Set(posts.map(\.host)).map { $0 == "x.com" ? "X" : $0 == "bsky.app" ? "Bluesky" : $0 }.sorted()
+        return "\(posts.count == 1 ? "1 post" : "\(posts.count) posts") on \(names.joined(separator: " and "))"
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                HStack(spacing: -3) {
+                    ForEach(Array(sites.enumerated()), id: \.element) { index, site in
+                        SourceBadge(host: site, title: site, size: 12)
+                            .zIndex(Double(sites.count - index))
+                    }
+                }
+                .accessibilityHidden(true)
+                Text(verbatim: posts.count == 1 ? "1 post" : "\(posts.count) posts")
+                    .font(OFFont.ui(12))
+                    .foregroundStyle(Color.ofInk.opacity(0.8))
+                    .lineLimit(1)
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Color.ofMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Self.text(posts))
+        .accessibilityHint(expanded ? "Hides the posts" : "Lists the posts")
+    }
+}
+
 /// A discussion row's numbers: "· ▲ 15 · 💬 4" at the end of the meta line, drawn with SF Symbols.
 enum DiscussionStats {
     /// Hacker News's orange.
@@ -356,7 +418,11 @@ enum DiscussionStats {
             TopicOutlet(id: 3, name: "The Cool Down on MSN", title: "Firefox ad takes aim at AI and tracking", url: "https://www.msn.com/c", publishedAt: now),
             TopicOutlet(id: 4, name: "Ad Age", title: "Watch the newest commercials from Ford, Kalshi, Firefox and more", url: "https://adage.com/d", publishedAt: now),
         ],
-        discussion: TopicDiscussion(id: 9, points: 10, comments: 4, url: "https://news.ycombinator.com/item?id=1"))
+        discussion: TopicDiscussion(id: 9, points: 10, comments: 4, url: "https://news.ycombinator.com/item?id=1"),
+        posts: [
+            TopicOutlet(id: 5, name: "Mozilla", title: "Remember these faces? Our new ad brings back the internet's early stars", url: "https://bsky.app/profile/mozilla.org/post/1", publishedAt: now),
+            TopicOutlet(id: 6, name: "Firefox", title: "The internet used to be fun. It still can be.", url: "https://x.com/firefox/status/1", publishedAt: now),
+        ])
     return VStack(spacing: 0) {
         StoryRowView(item: FeedItem(item: lead, source: topic, story: story))
         StoryRowView(item: FeedItem(item: lead, source: topic, story: story), isPhone: true)
