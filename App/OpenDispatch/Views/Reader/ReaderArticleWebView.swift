@@ -88,6 +88,17 @@ enum ReaderHTML {
       if (a && window.ResizeObserver) new ResizeObserver(report).observe(a);
       window.addEventListener('load', report);
       document.addEventListener('load', report, true);
+      // Charts (Datawrapper, Flourish) report their height to the page that holds them; their script isn't here.
+      window.addEventListener('message', function (e) {
+        try {
+          var d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data, h = 0;
+          if (d && d['datawrapper-height']) h = Object.values(d['datawrapper-height'])[0];
+          else if (d && d.sender === 'Flourish' && d.context === 'iframe.resize') h = parseInt(d.height, 10);
+          if (!(h > 100 && h < 5000)) return;
+          var frames = document.querySelectorAll('iframe');
+          for (var i = 0; i < frames.length; i++) if (frames[i].contentWindow === e.source) frames[i].style.height = Math.ceil(h) + 'px';
+        } catch (err) {}
+      });
       report();
     })();
     """
