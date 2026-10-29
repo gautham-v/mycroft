@@ -70,35 +70,38 @@ struct SettingsIntegrationsPane: View {
     // MARK: Sections
 
     private var readwiseSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header("Readwise Reader", on: state.readwiseConfigured,
-                   status: state.readwiseConfigured ? "Token \(state.readwiseTokenHint ?? "saved")" : "Not set up")
-            HStack(spacing: 0) {
-                Text("Access token from ")
-                Link("readwise.io/access_token", destination: Self.readwiseTokenURL)
-                    .foregroundStyle(.ofAccent)
-                Text(state.readwiseConfigured ? ". Paste a new one to replace it." : ".")
+        SettingsSection(title: "Readwise Reader") {
+            status(state.readwiseConfigured, state.readwiseConfigured ? "Token \(state.readwiseTokenHint ?? "saved")" : "Not set up")
+        } content: {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    Text("Access token from ")
+                    Link("readwise.io/access_token", destination: Self.readwiseTokenURL)
+                        .foregroundStyle(.ofAccent)
+                    Text(state.readwiseConfigured ? ". Paste a new one to replace it." : ".")
+                }
+                .font(OFFont.ui(compact ? 13.5 : 12))
+                .foregroundStyle(.ofMuted)
+                .lineLimit(2)
+
+                SecureField(
+                    state.readwiseConfigured ? "Saved (\(state.readwiseTokenHint ?? "…"))" : "Paste your access token",
+                    text: $token
+                )
+                .focused($focus, equals: .token)
+                .settingsFieldChrome(focused: focus == .token)
+                .textContentType(.password)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .onSubmit { Task { await save() } }
+                .padding(.top, 6)
+                .accessibilityLabel("Readwise Reader access token")
+
+                if state.readwiseConfigured { actions(.readwise, testLabel: "Check token") }
             }
-            .font(OFFont.ui(compact ? 13.5 : 12))
-            .foregroundStyle(.ofMuted)
-            .lineLimit(2)
-
-            SecureField(
-                state.readwiseConfigured ? "Saved (\(state.readwiseTokenHint ?? "…"))" : "Paste your access token",
-                text: $token
-            )
-            .focused($focus, equals: .token)
-            .settingsFieldChrome(focused: focus == .token)
-            .textContentType(.password)
-            .autocorrectionDisabled()
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
-            .onSubmit { Task { await save() } }
-            .padding(.top, 6)
-            .accessibilityLabel("Readwise Reader access token")
-
-            if state.readwiseConfigured { actions(.readwise, testLabel: "Check token") }
+            .padding(.vertical, 12)
 
             if state.readwiseConfigured {
                 SettingsRow(label: "Send highlights to Readwise", hint: "Highlights and notes you make on this device") {
@@ -112,43 +115,44 @@ struct SettingsIntegrationsPane: View {
                         .controlSize(.small)
                         #endif
                 }
-                .padding(.top, 12)
             }
         }
-        .settingsSectionChrome()
     }
 
     private var webhookSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header("Webhook", on: state.webhookConfigured, status: state.webhookConfigured ? "On" : "Not set up")
-            Text("Each sent item is POSTed as JSON: id, url, title, author, published_at, summary, source.")
-                .font(OFFont.ui(compact ? 13.5 : 12))
-                .foregroundStyle(.ofMuted)
-                .fixedSize(horizontal: false, vertical: true)
+        SettingsSection(title: "Webhook") {
+            status(state.webhookConfigured, state.webhookConfigured ? "On" : "Not set up")
+        } content: {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Each sent item is POSTed as JSON: id, url, title, author, published_at, summary, source.")
+                    .font(OFFont.ui(compact ? 13.5 : 12))
+                    .foregroundStyle(.ofMuted)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            TextField("https://example.com/hooks/opendispatch", text: Binding(
-                get: { webhook },
-                set: { value in
-                    // A result for the saved URL no longer describes what the field shows.
-                    if value != webhook { tests[.webhook] = nil }
-                    webhookDraft = value
-                }
-            ))
-            .focused($focus, equals: .webhook)
-            .settingsFieldChrome(focused: focus == .webhook)
-            .textContentType(.URL)
-            .autocorrectionDisabled()
-            #if os(iOS)
-            .keyboardType(.URL)
-            .textInputAutocapitalization(.never)
-            #endif
-            .onSubmit { Task { await save() } }
-            .padding(.top, 6)
-            .accessibilityLabel("Webhook URL")
+                TextField("https://example.com/hooks/opendispatch", text: Binding(
+                    get: { webhook },
+                    set: { value in
+                        // A result for the saved URL no longer describes what the field shows.
+                        if value != webhook { tests[.webhook] = nil }
+                        webhookDraft = value
+                    }
+                ))
+                .focused($focus, equals: .webhook)
+                .settingsFieldChrome(focused: focus == .webhook)
+                .textContentType(.URL)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                #endif
+                .onSubmit { Task { await save() } }
+                .padding(.top, 6)
+                .accessibilityLabel("Webhook URL")
 
-            if state.webhookConfigured { actions(.webhook, testLabel: "Send a test") }
+                if state.webhookConfigured { actions(.webhook, testLabel: "Send a test") }
+            }
+            .padding(.vertical, 12)
         }
-        .settingsSectionChrome()
     }
 
     private var footer: some View {
@@ -173,16 +177,14 @@ struct SettingsIntegrationsPane: View {
                 .disabled(!dirty || saving)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(.top, compact ? 0 : -8)
+        .padding(.top, -8)
         .padding(.bottom, 22)
         .animation(.easeOut(duration: 0.15), value: saved)
     }
 
     private var copySection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Copy as Markdown")
-                .font(OFFont.ui(compact ? 17 : 14))
-                .foregroundStyle(.ofInk)
+        SettingsSection(title: "Copy as Markdown",
+                        footer: "Added above the copied text, for when you always ask your AI the same thing.") {
             TextField("Start copied text with", text: Binding(
                 get: { promptDraft ?? model.settings.copyPrompt },
                 set: { promptDraft = $0 }
@@ -190,27 +192,13 @@ struct SettingsIntegrationsPane: View {
             .focused($focus, equals: .copyPrompt)
             .settingsFieldChrome(focused: focus == .copyPrompt)
             .onSubmit { commitPrompt() }
-            .padding(.top, 6)
-            Text("Added above the copied text, for when you always ask your AI the same thing.")
-                .font(OFFont.ui(compact ? 13.5 : 12))
-                .foregroundStyle(.ofMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 6)
+            .padding(.vertical, 12)
         }
-        .padding(.top, compact ? 0 : 12)
-        .settingsSectionChrome()
     }
 
     private var accountsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Signed-in sites")
-                .font(OFFont.ui(compact ? 17 : 14))
-                .foregroundStyle(.ofInk)
-            Text("OpenDispatch keeps its own sign-ins; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them.")
-                .font(OFFont.ui(compact ? 13.5 : 12))
-                .foregroundStyle(.ofMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
+        SettingsSection(title: "Signed-in sites",
+                        footer: "OpenDispatch keeps its own sign-ins; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them.") {
             ForEach(WebAccount.allCases) { account in
                 let on = model.accounts.isSignedIn(account)
                 SettingsRow(label: account.name, hint: accountHint(account, signedIn: on)) {
@@ -221,33 +209,20 @@ struct SettingsIntegrationsPane: View {
                 }
             }
         }
-        .padding(.top, compact ? 0 : 12)
-        .settingsSectionChrome()
     }
 
     // MARK: Paywalls
 
-    private var paywallSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Paywalled articles")
-                .font(OFFont.ui(compact ? 17 : 14))
-                .foregroundStyle(.ofInk)
+    @ViewBuilder private var paywallSection: some View {
+        SettingsSection(title: "Paywalled articles") {
             SettingsRow(label: "Articles from sites you don\u{2019}t subscribe to",
                         hint: "Sites you\u{2019}re signed in to always show in full.", stacked: compact) {
                 SettingsSegmented(label: "Paywalled articles", selection: Bindable(model).settings.paywallTreatment,
                                   options: PaywallTreatment.allCases.map { ($0, $0.label) })
             }
-            .padding(.top, 4)
-
-            Text("Sites with a paywall")
-                .font(OFFont.ui(compact ? 17 : 14))
-                .foregroundStyle(.ofInk)
-                .padding(.top, 16)
-            Text("Found as you read, plus the ones you sign in to. Signing in lets the reader open their articles as you.")
-                .font(OFFont.ui(compact ? 13.5 : 12))
-                .foregroundStyle(.ofMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
+        }
+        SettingsSection(title: "Sites with a paywall",
+                        footer: "Found as you read, plus the ones you sign in to. Signing in lets the reader open their articles as you.") {
             ForEach(paywallSites, id: \.self) { site in
                 let on = model.accounts.signedInSites.contains(site)
                 SettingsRow(label: site, hint: siteHint(site, signedIn: on)) {
@@ -260,8 +235,6 @@ struct SettingsIntegrationsPane: View {
             }
             addSiteRow
         }
-        .padding(.top, compact ? 0 : 12)
-        .settingsSectionChrome()
     }
 
     /// Sites the book has seen walled an article and the sites signed in to, most walled first.
@@ -307,7 +280,7 @@ struct SettingsIntegrationsPane: View {
                 .buttonStyle(SettingsSmallButtonStyle())
                 .disabled(site == nil)
         }
-        .padding(.top, 10)
+        .padding(.vertical, 12)
     }
 
     private func addSite(_ site: String?) {
@@ -335,16 +308,11 @@ struct SettingsIntegrationsPane: View {
         }
     }
 
-    private func header(_ title: String, on: Bool, status: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title)
-                .font(OFFont.ui(compact ? 17 : 14))
-                .foregroundStyle(.ofInk)
-            Spacer(minLength: 0)
-            Text(status)
-                .font(OFFont.ui(12))
-                .foregroundStyle(on ? Color.ofOK : Color.ofFaint)
-        }
+    /// A send target's state, beside its section title.
+    private func status(_ on: Bool, _ text: String) -> some View {
+        Text(text)
+            .font(OFFont.ui(12))
+            .foregroundStyle(on ? Color.ofOK : Color.ofFaint)
     }
 
     private func actions(_ target: SendTarget, testLabel: String) -> some View {
