@@ -3,11 +3,14 @@ import Foundation
 public enum ExtractionError: Error, LocalizedError, Equatable {
     case unsupportedContentType(String)
     case feedStatus(Int)
+    /// The page was a bot check, not the article.
+    case botCheck
 
     public var errorDescription: String? {
         switch self {
         case .unsupportedContentType(let ct): "Unsupported content type: \(ct)"
         case .feedStatus(let code): "Feed returned HTTP \(code)"
+        case .botCheck: "The site asked for a human check instead of showing the article"
         }
     }
 }
@@ -166,6 +169,7 @@ public struct DefaultContentExtractor: ContentExtractor {
         let html = HTTP.text(data, response: res)
         let pageURL = res.url?.absoluteString ?? url
         var out = try await extraction.extract(html: html, pageURL: pageURL)
+        if let body = out.contentHtml, ArticleExtraction.isBotCheck(body) { throw ExtractionError.botCheck }
         out.paywalled = PaywallDetection.isWalled(pageHTML: html, articleHTML: out.contentHtml, url: url)
         // A story the page only starts and its scripts finish (`hasUnfilledPrivateContent`): the rendered copy is the story.
         if ArticlePasses.hasUnfilledPrivateContent(html), let r = try? await extractRendered(url: url, timeout: Self.renderTimeout),
