@@ -151,7 +151,7 @@ final class ArticlePrefetcher {
     /// The hero the reader will draw above `html` (ReaderView.visibleHero), so it is cached too.
     private static func hero(_ item: FeedItem, html: String, lead: String?) -> String? {
         guard !TextFormat.isSocialPost(item.item.url) else { return nil }
-        let art = item.item.thumbnailUrl.flatMap { $0.isEmpty ? nil : $0 } ?? lead
+        let art = LeadImage.display(item.item.thumbnailUrl) ?? LeadImage.display(lead)
         guard let art, !ReaderText.contentHasHero(html, hero: art) else { return nil }
         return art
     }

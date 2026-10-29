@@ -24,7 +24,8 @@ public struct ContentService: Sendable {
             return (item, src.shown(for: item))
         }
         guard let (item, source) = pair else { throw QueryError.notFound("Item") }
-        let lead = item.thumbnailUrl
+        // A stored sharing card is not a lead (the extractor may find the page's own picture), a stored crop is cleaned.
+        let lead = LeadImage.display(item.thumbnailUrl)
         if source.kind == .youtube { return ExtractResult(contentHtml: nil, leadImage: lead) }
         if let html = item.contentHtml, !refresh {
             return ExtractResult(contentHtml: html, leadImage: lead, rendered: item.contentRendered)

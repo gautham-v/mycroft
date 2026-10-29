@@ -100,8 +100,9 @@ struct ReaderItemView: View {
     }
 
     private var leadArt: String? {
-        if let t = item.item.thumbnailUrl, !t.isEmpty { return t }
-        if case .ok(_, let lead, _) = content { return lead }
+        // A sharing crop is rewritten to the page's picture and the site's own card dropped (LeadImage.display).
+        if let t = LeadImage.display(item.item.thumbnailUrl) { return t }
+        if case .ok(_, let lead, _) = content { return LeadImage.display(lead) }
         return nil
     }
 
