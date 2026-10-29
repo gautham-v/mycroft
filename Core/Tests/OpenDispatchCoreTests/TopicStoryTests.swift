@@ -830,3 +830,21 @@ struct TopicRefreshRuleTests {
 
     }
 }
+
+@Suite("Topic balanced order")
+struct TopicBalancedOrderTests {
+    @Test func aSiteThatPostsALotSinksBelowAQuietOne() async throws {
+        let db = try Fixture.db()
+        let topic = try await makeTopic(db)
+        let posts = (0..<4).map { i in
+            ParsedItem(guid: "b\(i)", url: "https://bsky.app/profile/someone\(i).bsky.social/post/\(i)", title: "Firefox post \(i)",
+                       publishedAt: Fixture.base.addingTimeInterval(Double(i) * -600))
+        }
+        let news = ParsedItem(guid: "n0", url: "https://www.theverge.com/firefox-news", title: "Firefox news",
+                              publishedAt: Fixture.base.addingTimeInterval(-3600))
+        try Fixture.items(db, sourceId: topic.id, posts + [news])
+        #expect(try await rows(db, topic).map(\.item.guid) == ["b0", "b1", "b2", "b3", "n0"])
+        let balanced = try await db.items(ItemQuery(sourceId: topic.id, order: .balanced)).items
+        #expect(balanced.map(\.item.guid) == ["b0", "n0", "b1", "b2", "b3"])
+    }
+}

@@ -208,11 +208,11 @@ public struct ItemCursor: Sendable, Hashable, Codable {            // keyset ove
     public init(publishedAt: Date, id: Int64)
     public var stringValue: String                                  // "<iso>|<id>" like the web API
     public init?(string: String) }
-public enum FeedOrder: String { case latest, balanced }            // Settings → Appearance → Feed order
+public enum FeedOrder: String { case balanced, latest }            // Settings → Appearance → Feed order
 public struct ItemQuery: Sendable, Hashable {                       // GET /api/items params
     public var view: FeedView = .all; sourceId: Int64?; folderId: Int64?; filter: FeedFilter?
     public var search: String = ""; cursor: ItemCursor?; limit: Int = 50      // limit clamped 1...200
-    public var order: FeedOrder = .latest                           // .balanced ranks the first page outside a topic
+    public var order: FeedOrder = .latest                           // .balanced ranks the first page
     public static let defaultLimit = 50, maxQueryLength = 200, maxTerms = 8
     public init(view:sourceId:folderId:filter:search:cursor:limit:)  // all defaulted
     public var searchTerms: [String]                                // whitespace-split, ≤ 8 terms, ≤ 200 chars
@@ -429,8 +429,9 @@ extension AppDatabase {
 // Synchronous building blocks (Queries.swift), for use inside writer.write { db in … }
 public enum Queries {
     static func items(_ db: Database, _ q: ItemQuery) throws -> ItemPage      // published_at desc, id desc; limit+1 lookahead
-    // order .balanced, no cursor, not a topic: the newest ≤ 300 items within 48 h of the newest, each counted 2 h older per
-    // newer item from its source, as one page past `limit`; the cursor is the window's oldest item, so later pages are newest first
+    // order .balanced, no cursor: the newest ≤ 300 items within 48 h of the newest, each counted 2 h older per newer item from its
+    // source (in a topic: its site, `URLHost.host`, by story time), as one page past `limit`; the cursor is the window's oldest item,
+    // so later pages are newest first
     static func feedItem(_ db: Database, id: Int64) throws -> FeedItem?
     static func itemRecord(_ db: Database, id: Int64) throws -> Item?
     @discardableResult static func setSaved(_ db: Database, itemId: Int64, saved: Bool) throws -> FeedItem?

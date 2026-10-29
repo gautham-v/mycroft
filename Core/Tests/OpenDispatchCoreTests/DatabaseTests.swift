@@ -91,7 +91,7 @@ struct ItemTests {
         #expect(latest == ["b0", "b1", "b2", "b3", "b4", "b5", "q0"])
         let balanced = try await db.items(ItemQuery(order: .balanced)).items.map(\.item.guid)
         #expect(balanced == ["b0", "q0", "b1", "b2", "b3", "b4", "b5"])
-        // A source's list is never ranked.
+        // A source's own list has one source, so ranking keeps it newest first.
         #expect(try await db.items(ItemQuery(sourceId: busy.id, order: .balanced)).items.map(\.item.guid) == ["b0", "b1", "b2", "b3", "b4", "b5"])
     }
 

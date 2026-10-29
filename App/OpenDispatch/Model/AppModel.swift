@@ -379,9 +379,9 @@ final class AppModel {
                   topicFilter: isTopicSelected ? topicFilter : .all, order: listOrder)
     }
 
-    /// Feed order applies to All and its type views; a source, folder, Saved and a search stay newest first.
+    /// Feed order applies to All, its type views and topics; a source, folder, Saved and a search stay newest first.
     var listOrder: FeedOrder {
-        isInSourceFeed || selectedView == .saved || !searchQuery.isEmpty ? .latest : settings.feedOrder
+        (isInSourceFeed && !isTopicSelected) || selectedView == .saved || !searchQuery.isEmpty ? .latest : settings.feedOrder
     }
 
     /// Hide Read Items applies here: it's on, and the list isn't Saved (kept on purpose) or a search.
