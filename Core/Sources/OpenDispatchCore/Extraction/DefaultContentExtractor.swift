@@ -20,11 +20,16 @@ public enum ExtractionError: Error, LocalizedError, Equatable {
 /// Readability in WebKit, cleanup, sanitize) while the feed's own content:encoded copy is fetched alongside (rss
 /// sources, not hnrss). A fuller feed copy (`preferFeed`) beats a cut-short page; when the page fails the feed copy
 /// wins; then Jina Reader's rendered copy (`rendered: true`); then the page error is thrown.
+/// A site the reader has signed in to (`SiteSignIns`) is read first in a hidden web view that carries the sign-in
+/// (`SignedInPages`); a full article from it is the result, anything else carries on with the steps above. The page and a
+/// rendered copy are checked by `PaywallDetection` and come back `paywalled` when they are only the teaser; the feed's own copy
+/// and posts never do.
 /// Caching is done by ContentService.
 public struct DefaultContentExtractor: ContentExtractor {
     let parser: any FeedParser
     let extraction: ArticleExtraction
     let session: URLSession
+    let signedIn: SignedInReader
 
     /// Page fetch timeout (the web used 10 s under a 20 s serverless cap; the native app has no such cap).
     static let extractTimeout: TimeInterval = 15
@@ -40,16 +45,21 @@ public struct DefaultContentExtractor: ContentExtractor {
         self.init(parser: parser, readability: WebKitReadability.shared)
     }
 
-    /// Inject a Readability engine (tests) and a URLSession.
-    public init(parser: any FeedParser, readability: any ReadabilityEngine, session: URLSession = HTTP.session) {
+    /// Inject a Readability engine (tests), a URLSession and how signed-in sites are read.
+    public init(parser: any FeedParser, readability: any ReadabilityEngine, session: URLSession = HTTP.session,
+                signedIn: SignedInReader = .live) {
         self.parser = parser
         self.extraction = ArticleExtraction(readability: readability)
         self.session = session
+        self.signedIn = signedIn
     }
 
     // MARK: ContentExtractor
 
     public func extractArticle(url: String, feed: FeedRef?) async throws -> ExtractResult {
+        let isPost = TweetExtraction.tweetURL.test(url) || SocialPosts.network(of: url) != nil
+            || DiscussionPlace.thread(of: url).map { $0 == .reddit || $0 == .hackerNews } == true
+        if !isPost, signedIn.isSignedIn(url), let page = await extractSignedIn(url: url) { return page }
         if TweetExtraction.tweetURL.test(url) {
             if let t = try? await TweetExtraction.extract(url: url, timeout: Self.extractTimeout, session: session) { return t }
         } else if let place = DiscussionPlace.thread(of: url), place == .reddit || place == .hackerNews {
@@ -97,7 +107,8 @@ public struct DefaultContentExtractor: ContentExtractor {
         let ms = min(Self.renderTimeout, remaining)
         if url.lowercased().hasPrefix("http://") || url.lowercased().hasPrefix("https://"), ms >= Self.minRender {
             if let r = try? await extractRendered(url: url, timeout: ms), let html = r.contentHtml {
-                return ExtractResult(contentHtml: html, leadImage: plain?.leadImage ?? r.leadImage ?? ArticlePasses.firstImage(html), rendered: true)
+                return ExtractResult(contentHtml: html, leadImage: plain?.leadImage ?? r.leadImage ?? ArticlePasses.firstImage(html), rendered: true,
+                                     paywalled: r.paywalled)
             }
         }
         if let plainError { throw plainError }
@@ -128,7 +139,18 @@ public struct DefaultContentExtractor: ContentExtractor {
         let ct = res.value(forHTTPHeaderField: "Content-Type") ?? ""
         if !ct.isEmpty && !Self.htmlOrXML.test(ct) { throw ExtractionError.unsupportedContentType(ct) }
         let html = HTTP.text(data, response: res)
-        return try await extraction.extract(html: html, pageURL: res.url?.absoluteString ?? url)
+        let pageURL = res.url?.absoluteString ?? url
+        var out = try await extraction.extract(html: html, pageURL: pageURL)
+        out.paywalled = PaywallDetection.isWalled(pageHTML: html, articleHTML: out.contentHtml, url: url)
+        return out
+    }
+
+    /// The article as the signed-in reader sees it, or nil when the page didn't load, has no article, or is still walled
+    /// (the sign-in lapsed): the page is then fetched as for anyone.
+    func extractSignedIn(url: String) async -> ExtractResult? {
+        guard let html = await signedIn.html(url), let out = try? await extraction.extract(html: html, pageURL: url),
+              out.contentHtml != nil, !PaywallDetection.isWalled(pageHTML: html, articleHTML: out.contentHtml, url: url) else { return nil }
+        return out
     }
 
     func extractFromFeed(url: String, feed: FeedRef, timeout: TimeInterval) async throws -> ExtractResult? {
@@ -144,9 +166,11 @@ public struct DefaultContentExtractor: ContentExtractor {
         if let key = ProcessInfo.processInfo.environment["JINA_API_KEY"], !key.isEmpty { headers["Authorization"] = "Bearer \(key)" }
         let (data, res) = try await HTTP.fetch("https://r.jina.ai/\(url)", timeout: timeout, headers: headers, session: session)
         guard (200..<300).contains(res.statusCode) else { return nil }
-        let out = try await extraction.extract(html: HTTP.text(data, response: res), pageURL: url)
+        let page = HTTP.text(data, response: res)
+        let out = try await extraction.extract(html: page, pageURL: url)
         guard let html = out.contentHtml, !ArticleExtraction.isLoginWall(html) else { return nil }
-        return ExtractResult(contentHtml: html, leadImage: out.leadImage, rendered: true)
+        return ExtractResult(contentHtml: html, leadImage: out.leadImage, rendered: true,
+                             paywalled: PaywallDetection.isWalled(pageHTML: page, articleHTML: html, url: url))
     }
 
     // MARK: Helpers

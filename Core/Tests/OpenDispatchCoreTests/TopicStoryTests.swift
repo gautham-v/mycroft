@@ -171,7 +171,7 @@ struct TopicRuleTests {
             candidate("Harness Corp, an incremental game", summary: "Runs in Firefox with WebGPU"),
             candidate("Show HN: A thing", url: "https://www.firefox.com/en-US/blog"),
             candidate("Firefox rumor roundup", summary: nil),
-        ], TopicOptions(keyword: "Firefox", excluded: ["rumor"]), TopicMatcher(keyword: "Firefox", excluded: ["rumor"]), .empty, TopicFixtures.now, checkPaywall: false)
+        ], TopicOptions(keyword: "Firefox", excluded: ["rumor"]), TopicMatcher(keyword: "Firefox", excluded: ["rumor"]), .empty, TopicFixtures.now)
         #expect(out.map(\.title) == ["Firefox ships a thing"])
     }
 
@@ -180,7 +180,7 @@ struct TopicRuleTests {
             guid: "g", url: "https://example.com/a", title: "Firefox ships a thing", summary: "<p>A GIVEAWAY inside</p>",
             publishedAt: TopicFixtures.now.addingTimeInterval(-3600)))
         let o = TopicOptions(keyword: "Firefox", excluded: ["giveaway"])
-        #expect(DefaultTopicSearch.finish([candidate], o, TopicMatcher(o), .empty, TopicFixtures.now, checkPaywall: false).isEmpty)
+        #expect(DefaultTopicSearch.finish([candidate], o, TopicMatcher(o), .empty, TopicFixtures.now).isEmpty)
     }
 
     @Test func languagesAreTheReadersAndBingGetsTheirMarket() {
@@ -220,9 +220,9 @@ struct TopicRuleTests {
             guid: "es", url: "https://example.com/es", title: "Firefox: consejo para bajar juegos sin que me hackeen", publishedAt: TopicFixtures.now.addingTimeInterval(-3600)))
         let english = DefaultTopicSearch.Candidate(item: ParsedItem(
             guid: "en", url: "https://example.com/en", title: "Firefox: a tip for installing games safely", publishedAt: TopicFixtures.now.addingTimeInterval(-3600)))
-        let kept = DefaultTopicSearch.finish([spanish, english], o, TopicMatcher(o), .empty, TopicFixtures.now, checkPaywall: false, languages: TopicFixtures.english)
+        let kept = DefaultTopicSearch.finish([spanish, english], o, TopicMatcher(o), .empty, TopicFixtures.now, languages: TopicFixtures.english)
         #expect(kept.map(\.guid) == ["en"])
-        let all = DefaultTopicSearch.finish([spanish, english], o, TopicMatcher(o), .empty, TopicFixtures.now, checkPaywall: false)
+        let all = DefaultTopicSearch.finish([spanish, english], o, TopicMatcher(o), .empty, TopicFixtures.now)
         #expect(all.count == 2)
     }
 
@@ -780,20 +780,13 @@ struct TopicRefreshRuleTests {
         // Reddit on: it stays; the rest of the rules apply.
         let svc = service(db, ScriptedSearch([[], []]))
         _ = try await svc.refreshSource(id: t.id)
-        #expect(Set(try allItems(db, t).map(\.guid)) == ["keep", "saved", "highlighted", "reddit:1"])
+        #expect(Set(try allItems(db, t).map(\.guid)) == ["keep", "paywalled", "saved", "highlighted", "reddit:1"])
 
         // Reddit turned off: its posts go on the next refresh, saved ones would stay.
         _ = try await db.updateTopic(id: t.id, options: TopicOptions(keyword: "Firefox", places: TopicPlaces(reddit: false, subscriptions: false)))
         #expect(Set(try allItems(db, t).map(\.guid)).contains("reddit:1"))
         _ = try await svc.refreshSource(id: t.id)
-        #expect(Set(try allItems(db, t).map(\.guid)) == ["keep", "saved", "highlighted"])
-
-        // Skip paywalled off: the earlier removal is not undone, and later ones are kept.
-        let wsj = recent("wsj", "Firefox in a paywalled place", "The Wall Street Journal", hoursAgo: 8, url: "https://www.wsj.com/b")
-        _ = try await db.updateTopic(id: t.id, options: TopicOptions(keyword: "Firefox", places: TopicPlaces(subscriptions: false), skipPaywalled: false))
-        try Fixture.items(db, sourceId: t.id, [wsj])
-        _ = try await service(db, ScriptedSearch([[]])).refreshSource(id: t.id)
-        #expect(try allItems(db, t).contains { $0.guid == "wsj" })
+        #expect(Set(try allItems(db, t).map(\.guid)) == ["keep", "paywalled", "saved", "highlighted"])
     }
 
     @Test func theRealFirefoxTopicIsCleanedAtItsNextRefresh() async throws {

@@ -385,7 +385,7 @@ public final class DiscussionWeb: NSObject {
     }
 
     /// Blocks images, media and fonts in the hidden views; nil if WebKit won't compile the rules.
-    private func contentRules() async -> WKContentRuleList? {
+    func contentRules() async -> WKContentRuleList? {
         if rulesLoaded { return rules }
         let json = #"[{"trigger":{"url-filter":".*","resource-type":["image","media","font"]},"action":{"type":"block"}}]"#
         rules = try? await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "OpenDispatchDiscussions", encodedContentRuleList: json)

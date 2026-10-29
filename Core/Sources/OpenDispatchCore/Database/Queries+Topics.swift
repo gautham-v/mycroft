@@ -75,7 +75,7 @@ extension Queries {
     }
 
     /// Remove a topic's stored items that its current rules would not store: the keyword not in the title, a leave-out word in the
-    /// title or summary, a place now turned off (Reddit, say), a paywalled site when those are skipped, and with `languages` a
+    /// title or summary, a place now turned off (Reddit, say), and with `languages` a
     /// title in a language the user doesn't read. Saved and highlighted items stay. Stories left without their lead pass to
     /// their next article. Returns how many items were removed.
     @discardableResult
@@ -83,7 +83,7 @@ extension Queries {
         guard let options = topic.topicOptions else { return 0 }
         let matcher = TopicMatcher(options)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT id, guid, url, title, summary, author, video_id, audio_url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
+            SELECT id, guid, title, summary, video_id, audio_url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
               SELECT 1 FROM highlights h WHERE h.source_feed_url = ? AND h.item_guid = items.guid)
             """, arguments: [topic.id, topic.feedUrl])
         let stale = rows.filter { row in
@@ -92,11 +92,6 @@ extension Queries {
             if checkPlaces, !options.places.isSearched(place) { return true }
             if place.matchesText ? !matcher.matches(title: title, summary: row["summary"]) : !matcher.matchesTitle(title, summary: row["summary"]) { return true }
             if let languages, languages.rejects(title) { return true }
-            if checkPlaces, place == .news, options.skipPaywalled {
-                let url: String = row["url"]
-                let author: String? = row["author"]
-                if TopicPaywalls.isPaywalled(url) || author.map(TopicPaywalls.isPaywalled(publisher:)) == true { return true }
-            }
             return false
         }.map { $0["id"] as Int64 }
         var readLeads = Set<Int64>()

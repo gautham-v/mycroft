@@ -97,7 +97,8 @@ public struct TopicOptions: Codable, Sendable, Hashable {
     /// "Show: Notable only": store only notable matches (`TopicNotability`).
     public var notableOnly: Bool
     public var places: TopicPlaces
-    /// Skip articles from sites behind a hard paywall (`TopicPaywalls`).
+    /// Unused: a topic no longer leaves paywalled sites out; the lists show, mark or hide their articles by the global
+    /// Paywalled articles setting (`PaywallTreatment`). Kept so the field still encodes, decodes and syncs with older versions.
     public var skipPaywalled: Bool
 
     public init(keyword: String, excluded: [String] = [], notableOnly: Bool = false, places: TopicPlaces = .defaults,

@@ -218,22 +218,18 @@ struct TopicProviderTests {
         #expect(!DefaultTopicSearch.newsURL("rust").contains("mkt="))
     }
 
-    @Test func newsKeepsOnTopicArticlesAndSkipsPaywalledSites() async throws {
+    @Test func newsKeepsOnTopicArticlesFromPaywalledSitesToo() async throws {
         let net = TopicFixtures.Network()
         let places = TopicPlaces(news: true, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: false)
-        let kept = await net.search().search(TopicOptions(keyword: "iPhone Duo", places: places), subscriptions: .empty, now: now)
-        // CBS, IGN; the Investor's and Barron's items don't mention it; the New York Times one is paywalled.
-        #expect(kept.items.map { $0.author } == ["CBS News", "IGN"])
-        #expect(kept.failures.isEmpty)
-
-        let all = await net.search().search(TopicOptions(keyword: "iPhone Duo", places: places, skipPaywalled: false), subscriptions: .empty, now: now)
-        #expect(all.items.map { $0.author } == ["CBS News", "The New York Times", "IGN"])
-
-        // An aggregator's address hides the site; the publisher's name gives it away.
-        let tesla = await net.search().search(TopicOptions(keyword: "tesla", places: places), subscriptions: .empty, now: now)
-        #expect(tesla.items.map { $0.author } == ["Investor's Business Daily"])
-        let teslaAll = await net.search().search(TopicOptions(keyword: "tesla", places: places, skipPaywalled: false), subscriptions: .empty, now: now)
-        #expect(teslaAll.items.map { $0.author } == ["Barron's on MSN", "Investor's Business Daily"])
+        // CBS, the New York Times, IGN; the Investor's and Barron's items don't mention it. The lists mark or hide the paywalled one.
+        for skip in [true, false] {
+            let found = await net.search().search(TopicOptions(keyword: "iPhone Duo", places: places, skipPaywalled: skip), subscriptions: .empty, now: now)
+            #expect(found.items.map { $0.author } == ["CBS News", "The New York Times", "IGN"])
+            #expect(found.failures.isEmpty)
+            // An aggregator's address hides the site; the publisher's name gave it away, and it is kept as well.
+            let tesla = await net.search().search(TopicOptions(keyword: "tesla", places: places, skipPaywalled: skip), subscriptions: .empty, now: now)
+            #expect(tesla.items.map { $0.author } == ["Barron's on MSN", "Investor's Business Daily"])
+        }
     }
 
     @Test func hackerNewsStoriesCarryPointsAndTheirDiscussion() throws {
@@ -480,7 +476,7 @@ struct TopicProviderTests {
                 guid: "g\(i)", url: "https://example.com/\(i)", title: "rust \(i)", publishedAt: now.addingTimeInterval(-Double(i) * 60)))
         }
         let o = TopicOptions(keyword: "rust")
-        let out = DefaultTopicSearch.finish(candidates, o, TopicMatcher(o), .empty, now, checkPaywall: false)
+        let out = DefaultTopicSearch.finish(candidates, o, TopicMatcher(o), .empty, now)
         #expect(out.count == DefaultTopicSearch.perProviderCap)
         #expect(out.first?.guid == "g0" && out.last?.guid == "g29")
     }

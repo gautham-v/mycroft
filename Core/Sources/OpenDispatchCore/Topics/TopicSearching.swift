@@ -106,7 +106,7 @@ public enum TopicNotability {
 /// Searches the places outside the user's subscriptions for a topic. Behind a protocol so refresh tests fake it.
 public protocol TopicSearching: Sendable {
     /// Searches the places `options` turns on, concurrently. Never throws: a place that fails is in `failures`.
-    /// Matches are filtered by the keyword in the title and the leave-out words (`TopicMatcher`), the user's languages, paywalled sites when asked, and
+    /// Matches are filtered by the keyword in the title and the leave-out words (`TopicMatcher`), the user's languages, and
     /// non-notable ones when `notableOnly`.
     func search(_ options: TopicOptions, subscriptions: TopicSubscriptions, now: Date) async -> TopicSearchOutcome
 

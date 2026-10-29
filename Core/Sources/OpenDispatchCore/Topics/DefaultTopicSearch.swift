@@ -14,7 +14,7 @@ import Foundation
 ///
 /// Every answer is filtered here the same way: it must be recent (the retention window), have the keyword in its title and none
 /// of the leave-out words in its title or summary, be in a language the user reads (`TopicLanguages`), and (as the topic says)
-/// not come from a paywalled site and be notable. At most `perProviderCap` of the newest are kept per provider. Places run at
+/// be notable. Paywalled sites are not left out: the lists show, mark or hide their articles (`PaywallTreatment`). At most `perProviderCap` of the newest are kept per provider. Places run at
 /// the same time and one failing doesn't fail the others.
 public struct DefaultTopicSearch: TopicSearching {
     typealias Fetch = @Sendable (_ url: String, _ headers: [String: String]) async throws -> (Data, HTTPURLResponse)
@@ -131,7 +131,7 @@ public struct DefaultTopicSearch: TopicSearching {
                 switch result {
                 case .success(let candidates):
                     succeeded += 1
-                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now, checkPaywall: place == .news,
+                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now,
                                                          inText: place.matchesText, languages: languages))
                 case .failure(let error):
                     errors.append(error)
@@ -167,15 +167,13 @@ public struct DefaultTopicSearch: TopicSearching {
     /// Recent, on topic, in the user's language, wanted and notable as the topic asks; the newest `perProviderCap`. `languages` with
     /// no language in it keeps every language. `inText` finds the keyword in the summary too (posts, whose title is their first line).
     static func finish(_ candidates: [Candidate], _ o: TopicOptions, _ matcher: TopicMatcher, _ subs: TopicSubscriptions,
-                       _ now: Date, checkPaywall: Bool, inText: Bool = false, languages: TopicLanguages = TopicLanguages(preferred: [])) -> [ParsedItem] {
+                       _ now: Date, inText: Bool = false, languages: TopicLanguages = TopicLanguages(preferred: [])) -> [ParsedItem] {
         let cutoff = Retention.cutoff(now: now)
         var seen = Set<String>()
         let kept = candidates.filter { c in
             let item = c.item
             let onTopic = inText ? matcher.matches(title: item.title, summary: item.summary) : matcher.matchesTitle(item.title, summary: item.summary)
             guard item.publishedAt >= cutoff, onTopic, !languages.rejects(item.title) else { return false }
-            if checkPaywall, o.skipPaywalled,
-               TopicPaywalls.isPaywalled(item.url) || c.name.map(TopicPaywalls.isPaywalled(publisher:)) == true { return false }
             if o.notableOnly, !c.isNotable(subs) { return false }
             return seen.insert(item.guid).inserted
         }

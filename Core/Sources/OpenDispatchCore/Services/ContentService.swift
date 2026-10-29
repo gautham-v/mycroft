@@ -2,7 +2,8 @@ import Foundation
 
 /// Reader content for an item (port of GET /api/items/:id/content). Owner: Foundation.
 /// YouTube items have no body; cached content is served unless `refresh`; podcasts use show notes from the feed;
-/// other items go through the extractor (rss items with a feed fallback). Fresh results are cached.
+/// other items go through the extractor (rss items with a feed fallback). Fresh results are cached, except a paywalled one
+/// (only the teaser): it is returned as it is and read again next time, so signing in to the site shows the whole article.
 /// An opened Apple Podcasts episode (OpenedLinks), like a topic's episode, has its show's feed looked up first; an opened audio file has no notes.
 /// A topic's items are read by what they are (`Source.shown(for:)`): a video has no body, an episode has show notes, the rest are articles.
 public struct ContentService: Sendable {
@@ -41,7 +42,7 @@ public struct ContentService: Sendable {
         } else {
             out = try await extractor.extractArticle(url: item.url, feed: source.kind == .rss && !source.holdsStandaloneItems ? feed : nil)
         }
-        try await database.cacheContent(itemId: id, result: out)
-        return ExtractResult(contentHtml: out.contentHtml, leadImage: lead ?? out.leadImage, rendered: out.rendered)
+        if !out.paywalled { try await database.cacheContent(itemId: id, result: out) }
+        return ExtractResult(contentHtml: out.contentHtml, leadImage: lead ?? out.leadImage, rendered: out.rendered, paywalled: out.paywalled)
     }
 }
