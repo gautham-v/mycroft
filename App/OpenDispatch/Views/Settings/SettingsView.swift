@@ -100,15 +100,22 @@ struct SettingsView: View {
             ScrollView {
                 paneContent(pane)
                     .padding(.horizontal, 20)
-                    .padding(.top, 16)
                     .padding(.bottom, 20)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
+            // The close button sits in its own band above the pane, so rows scroll under it
+            // instead of colliding with a row's control on the right.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
+                    Spacer(minLength: 0)
+                    closeButton
+                }
+                .background(Color.ofSurface)
+            }
             .background(Color.ofSurface)
             .id(pane)
         }
-        .overlay(alignment: .topTrailing) { closeButton }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
