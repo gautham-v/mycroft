@@ -957,6 +957,13 @@ All in `App/OpenDispatch/Views/Settings/` (type names claimed; do not redeclare)
   `View.settingsFieldChrome(focused:)`, `EnvironmentValues.settingsCompact`.
 - OPML: `UTType.openDispatchOPML` (org.opml.opml), `SettingsOPMLDocument: FileDocument`, `SettingsOPMLButtons(status:)`,
   `SettingsOPMLStatus`; `SettingsOPMLButtons.summary(_:)` is the web's import result text.
+- 2026-10-29 Rex-style redesign: `SettingsSidebar`, `SettingsNavRow(pane:selected:action:)`,
+  `SettingsTab.groups` / `symbol` / `keywords` (SettingsNav.swift); `SettingsSection(title:footer:)`,
+  `SettingsPanelCard`, `View.settingsPanelChrome()`, `Color.ofSettingsCard` (SettingsControls.swift); new panes
+  `SettingsThemesPane` and `SettingsReaderPane` (font, size, spacing, width, highlight color, links, comments moved there
+  from Appearance); `SettingsToggle`, `SettingsMenuPicker`, `SettingsSwatch` (SettingsAppearancePane.swift). Themes
+  model: `ThemeBase`, `AppTheme`, `ThemePalette`, `ThemeColors`, `ThemeRuntime`, `AccentSetting` (Design/Themes.swift);
+  list rows: `ListLayout`, `EnvironmentValues.listLayout`, `UnreadDot` (Views/Shared/ListLayout.swift).
 - `ShortcutsView` (+ `ShortcutEntry`, `ShortcutGroup`, `ShortcutsView.groups` = SHORTCUTS, `SettingsKeyCap`). Esc,
   "?" and the close button dismiss it. Adds "⌘N Add a source" to the App group.
 - `SendToView(item: FeedItem, size: CGFloat = 30, iconSize: CGFloat = 17)` — port of send-to.tsx for the reader
