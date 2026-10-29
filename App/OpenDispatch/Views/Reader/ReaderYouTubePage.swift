@@ -26,8 +26,10 @@ import Foundation
 /// Messages to the `openDispatchYouTube` handler: `{type: "playing"}` once playback first starts,
 /// `{type: "failed"}` when the API or the video fails (the layer and bar are removed, YouTube's own
 /// player or error shows), `{type: "fullscreen" | "exitFullscreen", time}`, and `{type: "time", time, duration}`
-/// whenever the position crosses a second (the transcript follows it). `window.odPlayer.resume(t)`
-/// seeks and plays (once the player is ready, if it isn't yet), `window.odPlayer.toggle()` plays or pauses and `seekBy(s)` skips (Space and ←/→ in the app's window).
+/// whenever the position crosses a second (the transcript follows it), and `{type: "state", playing}` whenever it
+/// starts or stops playing. `window.odPlayer.resume(t)` seeks and plays (once the player is ready, if it isn't yet),
+/// `play()` plays where it is (the app, after iOS paused it on locking), `window.odPlayer.toggle()` plays or pauses
+/// and `seekBy(s)` skips (Space and ←/→ in the app's window).
 ///
 /// SponsorBlock: `window.odPlayer.setSegments(list)` (or `window.odPendingSegments = list` before the page is up,
 /// read at start) takes `{start, end, category, action: skip | mute | show | full | poi, label, color,
@@ -469,7 +471,9 @@ enum ReaderYouTubePage {
           var failTimer = setTimeout(fail, 12000);
 
           function setState(s) {
+            var was = isPlaying();
             state = s;
+            if (isPlaying() !== was) post({ type: 'state', playing: isPlaying() });
             if (isPlaying() && !started) {
               started = true;
               if (!ccOn) captionsOff();
@@ -769,6 +773,7 @@ enum ReaderYouTubePage {
               if (!ready) { pendingSeek = t; return; }
               player.seekTo(t, true); seeked(t); player.playVideo();
             },
+            play: function () { if (!failed && ready && !isPlaying()) player.playVideo(); },
             toggle: function () { if (failed) return; toggle(); poke(); },
             seekBy: function (d) { if (failed) return; seekBy(d); poke(); },
             setSegments: setSegments,

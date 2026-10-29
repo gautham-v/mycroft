@@ -1,6 +1,9 @@
 import OpenDispatchCore
 import SwiftUI
 import WebKit
+#if os(iOS)
+import AVFoundation
+#endif
 
 /// 16:9 (9:16 for a Short) youtube-nocookie embed with our own controls (ReaderYouTubePage). The embed sits in a tiny
 /// local page whose origin identifies the app, because YouTube refuses embeds without a referrer.
@@ -344,6 +347,14 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     /// page before it exists, and a reload starts with none.
     private var segmentsJSON: String?
     var onEvent: (ReaderYouTubeEvent) -> Void = { _ in }
+    #if os(iOS)
+    /// The page's last `state` message: the video is playing.
+    private var playing = false
+    /// It was playing as the app stopped being active, so it plays again once iOS has paused it in the background.
+    private var playingAtResign = false
+    private weak var webView: WKWebView?
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    #endif
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
@@ -382,8 +393,19 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         case "fullscreen": onEvent(.fullscreen(time))
         case "exitFullscreen": onEvent(.exitFullscreen(time))
         case "time": onEvent(.time(time, (body["duration"] as? NSNumber)?.doubleValue ?? 0))
+        case "state": stateChanged(playing: body["playing"] as? Bool ?? false)
         default: break
         }
+    }
+
+    private func stateChanged(playing: Bool) {
+        #if os(iOS)
+        self.playing = playing
+        if playing {
+            // .playback keeps the sound going with the silent switch on and, with UIBackgroundModes audio, locked.
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        }
+        #endif
     }
 
     /// Autoplay is always allowed: the web view only exists once playback is wanted (autoplay on, or the
@@ -401,6 +423,8 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         webView.scrollView.bounces = false
         webView.isOpaque = false
         webView.backgroundColor = .black
+        self.webView = webView
+        observeLifecycle()
         #endif
         return webView
     }
@@ -415,11 +439,47 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
 
     func dismantle(_ webView: WKWebView) {
         // Stop playback when the reader moves on.
+        #if os(iOS)
+        lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
+        lifecycleObservers = []
+        #endif
         webView.loadHTMLString("", baseURL: nil)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: ReaderYouTubePage.handlerName)
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
     }
+
+    #if os(iOS)
+    /// WebKit pauses a video with sound when the app goes to the background or the phone locks, unlike the
+    /// podcast player's AVPlayer. A video that was playing is told to play again a moment later, which WebKit
+    /// allows with the app's background audio mode, so the sound carries on with the screen off.
+    private func observeLifecycle() {
+        let center = NotificationCenter.default
+        lifecycleObservers.append(center.addObserver(forName: UIApplication.willResignActiveNotification,
+                                                     object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if let self { self.playingAtResign = self.playing } }
+        })
+        lifecycleObservers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                                     object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.resumeInBackground() }
+        })
+    }
+
+    private func resumeInBackground() {
+        guard playingAtResign, let webView else { return }
+        let app = UIApplication.shared
+        let task = app.beginBackgroundTask(withName: "Resume video", expirationHandler: nil)
+        Task { @MainActor [weak webView] in
+            // WebKit's pause can land after this notification, so ask more than once.
+            for delay in [0.3, 0.7, 1.0, 2.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard app.applicationState == .background, let webView else { break }
+                webView.evaluateJavaScript("window.odPlayer && window.odPlayer.play(); void 0", completionHandler: nil)
+            }
+            app.endBackgroundTask(task)
+        }
+    }
+    #endif
 }
 
 #if os(macOS)
