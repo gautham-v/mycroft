@@ -7,6 +7,8 @@ import SwiftUI
 /// as the reader less room for the title to show under it. Under the description, Comments and Transcript
 /// (if the video has captions) are tabs, Comments first; the theater band stays pinned at the top while it
 /// scrolls, and once the tab bar scrolls up to it (or to the top of the reader) a copy of the bar pins there too.
+/// A reader narrower than `Metrics.narrowVideoReader` tightens it all: smaller title, description and tabs, no date,
+/// Watch on YouTube as its icon, and comments in smaller type whose author lines wrap instead of cutting off.
 struct ReaderVideoBody: View {
     let item: FeedItem
     let autoplay: Bool
@@ -16,6 +18,9 @@ struct ReaderVideoBody: View {
     let viewportHeight: CGFloat
 
     @State private var expanded = false
+    /// The description is cut to its first lines.
+    @State private var summaryCut = false
+    @State private var width: CGFloat = 0
     @State private var playback = ReaderYouTubeController()
     @State private var tab: ReaderVideoTab = .comments
     @State private var transcript: Transcript?
@@ -37,9 +42,8 @@ struct ReaderVideoBody: View {
         max(Metrics.verticalVideoMinWidth, (viewportHeight - Metrics.verticalVideoTitleRoom) * 9 / 16)
     }
     private var summaryText: String { TextFormat.stripHTML(item.item.summary) }
-    private var isLong: Bool {
-        summaryText.count > 280 || summaryText.split(separator: "\n", omittingEmptySubsequences: false).count > 3
-    }
+    /// 0 until measured, which counts as wide.
+    private var narrow: Bool { width > 0 && width < Metrics.narrowVideoReader }
 
     private var band: Bool { theater && !vertical && item.item.videoId != nil }
 
@@ -73,6 +77,8 @@ struct ReaderVideoBody: View {
                 pinnedHeader
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .environment(\.readerNarrow, narrow)
         .task(id: model.settings.videoTranscript) {
             guard model.settings.videoTranscript, item.item.videoId != nil else {
                 transcriptLoading = false
@@ -103,8 +109,8 @@ struct ReaderVideoBody: View {
             }
 
             Text(item.item.title)
-                .font(wide ? OFFont.videoTitleWide : OFFont.videoTitle)
-                .tracking(-0.01 * (wide ? 22 : 20))
+                .font(narrow ? OFFont.videoTitleNarrow : wide ? OFFont.videoTitleWide : OFFont.videoTitle)
+                .tracking(-0.01 * (narrow ? 15 : wide ? 22 : 20))
                 .lineSpacing(2)
                 .foregroundStyle(.ofInk)
                 .textSelection(.enabled)
@@ -115,14 +121,28 @@ struct ReaderVideoBody: View {
                     HStack(spacing: 8) {
                         SourceBadge(host: item.source.host, title: item.originName, size: 22)
                         Text(item.originName).fontWeight(.medium).foregroundStyle(.ofInk)
+                            .lineLimit(narrow ? 1 : nil)
                     }
-                    if let dur = TextFormat.duration(item.item.durationSec) {
-                        Text(dur).monospacedDigit()
+                    if !narrow {
+                        if let dur = TextFormat.duration(item.item.durationSec) {
+                            Text(dur).monospacedDigit()
+                        }
+                        Text(TextFormat.date(item.item.publishedAt))
                     }
-                    Text(TextFormat.date(item.item.publishedAt))
                 }
                 Spacer(minLength: 8)
-                if let url = URL(string: item.item.url) {
+                if let url = URL(string: item.item.url), narrow {
+                    Button { openURL(url) } label: {
+                        OFIcon.external.image
+                            .font(.system(size: 13))
+                            .foregroundStyle(.ofMuted)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Watch on YouTube")
+                    .accessibilityLabel("Watch on YouTube")
+                } else if let url = URL(string: item.item.url) {
                     Button { openURL(url) } label: {
                         HStack(spacing: 6) {
                             Text("Watch on YouTube")
@@ -141,7 +161,7 @@ struct ReaderVideoBody: View {
             }
             .font(OFFont.ui(13))
             .foregroundStyle(.ofMuted)
-            .padding(.top, 12)
+            .padding(.top, narrow ? 8 : 12)
 
             if !theater, vertical, let videoID = item.item.videoId {
                 portraitPlayer(videoID)
@@ -155,22 +175,21 @@ struct ReaderVideoBody: View {
             }
 
             if !summaryText.isEmpty {
+                let size: CGFloat = narrow ? 13.5 : 14.5
                 VStack(alignment: .leading, spacing: 6) {
                     Text(ReaderText.linkified(item.item.summary ?? ""))
-                        .font(OFFont.ui(14.5))
-                        .lineSpacing(14.5 * 0.4)
+                        .font(OFFont.ui(size))
+                        .lineSpacing(size * 0.4)
                         .foregroundStyle(.ofInk)
-                        .lineLimit(expanded ? nil : 3)
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if isLong {
-                        Button(expanded ? "Show less" : "Show more") { expanded.toggle() }
-                            .buttonStyle(.plain)
-                            .font(OFFont.ui(13, .medium))
-                            .foregroundStyle(.ofAccent)
+                        .readerClamped(expanded ? nil : (narrow ? 2 : 3), truncated: $summaryCut)
+                    if summaryCut || expanded {
+                        ReaderDisclosureButton(title: expanded ? "Show less" : "Show more", open: expanded, size: 13) {
+                            expanded.toggle()
+                        }
                     }
                 }
-                .padding(.top, 20)
+                .padding(.top, narrow ? 12 : 20)
             }
 
             if showsComments || showsTranscript {
@@ -181,12 +200,12 @@ struct ReaderVideoBody: View {
                         Color.clear.frame(height: headerHeight + 1).id(Self.tabsAnchor).padding(.top, -headerHeight)
                     }
                     .onGeometryChange(for: Bool.self) { $0.frame(in: .global).minY < pinLine - 0.5 } action: { tabsPinned = $0 }
-                    .padding(.top, 28)
+                    .padding(.top, narrow ? 18 : 28)
                 tabContent
             }
         }
-        .readerColumn(wide: wide)
-        .padding(.top, theater ? 24 : (wide ? 40 : 32))
+        .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
+        .padding(.top, narrow ? 16 : theater ? 24 : (wide ? 40 : 32))
         .padding(.bottom, 32)
     }
 
@@ -213,7 +232,7 @@ struct ReaderVideoBody: View {
         .overlay(alignment: .bottom) {
             if tabsPinned {
                 tabBar
-                    .readerColumn(wide: wide)
+                    .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
                     .background(Color.ofSurface)
                     .alignmentGuide(.bottom) { $0[.top] }
             }
@@ -222,7 +241,7 @@ struct ReaderVideoBody: View {
 
     private var tabBar: some View {
         ReaderVideoTabBar(tab: shownTab, comments: showsComments, commentCount: commentTotal,
-                          transcript: showsTranscript, transcriptLoading: transcriptLoading, url: item.item.url,
+                          transcript: showsTranscript, transcriptLoading: transcriptLoading, url: item.item.url, compact: narrow,
                           copy: transcript.map { found in { model.copyTranscript(found, durationSec: item.item.durationSec) } },
                           select: select)
     }
@@ -266,4 +285,6 @@ struct ReaderVideoBody: View {
 extension EnvironmentValues {
     /// The reader's scroll view, for a view inside it to scroll to one of its ids.
     @Entry var readerScroll: ScrollViewProxy? = nil
+    /// The video reader is narrower than `Metrics.narrowVideoReader`: its comments use smaller type.
+    @Entry var readerNarrow = false
 }

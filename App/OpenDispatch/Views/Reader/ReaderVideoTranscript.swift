@@ -6,7 +6,9 @@ enum ReaderVideoTab { case comments, transcript }
 
 /// The Comments | Transcript bar under a video's description: the tabs that are on (with the comment count, and a spinner
 /// while the captions load), then "On YouTube" for comments or Copy for the transcript, over a hairline. The reader keeps a
-/// second copy of it pinned at the top while you scroll the tab's content (`ReaderVideoBody`).
+/// second copy of it pinned at the top while you scroll the tab's content (`ReaderVideoBody`). Tab names never wrap; when
+/// "On YouTube" doesn't fit beside them it is just its icon. Compact (a narrow reader) has smaller tabs without the count or
+/// "On YouTube", and Copy as its icon.
 struct ReaderVideoTabBar: View {
     let tab: ReaderVideoTab
     let comments: Bool
@@ -14,12 +16,13 @@ struct ReaderVideoTabBar: View {
     let transcript: Bool
     let transcriptLoading: Bool
     let url: String
+    var compact = false
     let copy: (() -> Void)?
     let select: (ReaderVideoTab) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 22) {
+            HStack(alignment: .center, spacing: compact ? 16 : 22) {
                 if comments { tabButton(.comments, "Comments", count: commentCount) }
                 if transcript { tabButton(.transcript, "Transcript", loading: transcriptLoading) }
                 Spacer(minLength: 8)
@@ -34,9 +37,9 @@ struct ReaderVideoTabBar: View {
         return Button { select(value) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(title)
-                    .font(OFFont.ui(15, .semibold))
+                    .font(OFFont.ui(compact ? 13 : 15, .semibold))
                     .foregroundStyle(on ? Color.ofInk : Color.ofMuted)
-                if let count, count > 0 {
+                if !compact, let count, count > 0 {
                     Text(ExploreFormat.count(count))
                         .font(OFFont.ui(13))
                         .foregroundStyle(.ofFaint)
@@ -44,8 +47,9 @@ struct ReaderVideoTabBar: View {
                 }
                 if loading { ProgressView().controlSize(.small) }
             }
-            .padding(.top, 13)
-            .padding(.bottom, 11)
+            .fixedSize()
+            .padding(.top, compact ? 10 : 13)
+            .padding(.bottom, compact ? 8 : 11)
             .overlay(alignment: .bottom) {
                 if on { Rectangle().fill(Color.ofInk).frame(height: 2).offset(y: 1) }
             }
@@ -57,33 +61,39 @@ struct ReaderVideoTabBar: View {
     }
 
     @ViewBuilder private var trailing: some View {
-        if tab == .comments, let link = URL(string: url) {
+        if tab == .comments, !compact, let link = URL(string: url) {
             Link(destination: link) {
-                HStack(spacing: 5) {
-                    Text("On YouTube")
-                    OFIcon.external.image.font(.system(size: 11))
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 5) {
+                        Text("On YouTube")
+                        OFIcon.external.image.font(.system(size: 11))
+                    }
+                    OFIcon.external.image.font(.system(size: 12))
                 }
                 .font(OFFont.ui(12.5))
                 .foregroundStyle(.ofMuted)
+                .lineLimit(1)
             }
             .buttonStyle(.plain)
             .help("Open the comments in your browser")
+            .accessibilityLabel("On YouTube")
         } else if tab == .transcript, let copy {
             Button(action: copy) {
                 HStack(spacing: 6) {
                     Image(systemName: "doc.on.doc").font(.system(size: 11.5))
-                    Text("Copy")
+                    if !compact { Text("Copy") }
                 }
                 .font(OFFont.ui(12.5))
                 .foregroundStyle(.ofInk)
-                .padding(.horizontal, 10)
-                .frame(height: 28)
+                .padding(.horizontal, compact ? 7 : 10)
+                .frame(height: compact ? 26 : 28)
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.ofHairline))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .fixedSize()
             .help("Copy the transcript as Markdown")
+            .accessibilityLabel("Copy transcript")
         }
     }
 }

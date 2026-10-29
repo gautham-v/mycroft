@@ -86,6 +86,7 @@ enum OFFont {
     /// Video title 20 (phone) / 22 (md+) / 600.
     static let videoTitle = ui(20, .semibold)
     static let videoTitleWide = ui(22, .semibold)
+    static let videoTitleNarrow = ui(15, .semibold)
 
     /// Reader headline size per text-size setting (HEADLINE_SIZE in reader.tsx), weight 600, leading 1.12.
     static func headlineSize(_ size: TextSizeSetting, wide: Bool) -> CGFloat {

@@ -167,6 +167,9 @@ enum Metrics {
     /// (`AppSettings.readerColumnWidth`, 640 by default).
     static let readerPaddingPhone: CGFloat = 20
     static let readerPaddingWide: CGFloat = 32
+    /// A video reader narrower than this tightens its layout (`ReaderVideoBody`), with this side padding.
+    static let narrowVideoReader: CGFloat = 360
+    static let readerPaddingNarrow: CGFloat = 12
     /// Video player max width in theater layout.
     static let theaterMaxWidth: CGFloat = 960
     /// A Short's 9:16 player is as tall as the reader less `verticalVideoTitleRoom`, so the title shows
