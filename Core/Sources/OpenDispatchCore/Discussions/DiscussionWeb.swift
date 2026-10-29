@@ -5,6 +5,7 @@ import WebKit
 #if os(iOS)
 import UIKit
 #endif
+import os
 
 /// The sites a signed-in session counts for. The app's web views share one persistent data store
 /// (`WKWebsiteDataStore.default()`), so signing in on the sign-in sheet signs the hidden views in too.
@@ -105,6 +106,7 @@ public final class DiscussionWeb: NSObject {
     private var rulesLoaded = false
 
     private static let world = WKContentWorld.world(name: "OpenDispatchDiscussions")
+    private let log = Logger(subsystem: "com.gauthamv.openfeed", category: "discussions")
 
     /// Drops a site's view, so the next use starts fresh (after signing in or out).
     public func forget(_ account: WebAccount) {
@@ -221,6 +223,13 @@ public final class DiscussionWeb: NSObject {
             return wall || empty || ((r?["posts"] as? NSNumber)?.intValue ?? 0) > 0
         }
         if wall { throw DiscussionError.signInRequired(.x) }
+        // A post's page draws the post first and its replies a moment later.
+        if XPages.statusID(url) != nil, !empty {
+            try? await view.waitUntil(timeout: 8) { view in
+                let r = try await view.call("return document.querySelectorAll('article[data-testid=tweet]').length;", in: Self.world)
+                return ((r as? NSNumber)?.intValue ?? 0) > 1
+            }
+        }
         for step in 0...scrolls {
             if step > 0 {
                 _ = try? await view.call("window.scrollBy(0, window.innerHeight * 2); return true;", in: Self.world)
@@ -234,7 +243,10 @@ public final class DiscussionWeb: NSObject {
                 if let id = Self.statusKey(cell) { last = id }
                 if seen.insert(key).inserted { found.append(cell) }
             }
+            let href = (try? await view.call("return location.href", in: Self.world)) as? String ?? "?"
+            log.info("x \(url, privacy: .public) step \(step) cells \((r?["cells"] as? [String])?.count ?? -1) posts \((r?["posts"] as? NSNumber)?.intValue ?? -1) empty \(empty) at \(href, privacy: .public)")
         }
+        log.info("x \(url, privacy: .public) kept \(found.count) cells, posts \(found.compactMap(Self.statusKey).joined(separator: " "), privacy: .public)")
         return found
     }
 
