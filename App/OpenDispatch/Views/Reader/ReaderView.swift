@@ -173,28 +173,31 @@ struct ReaderItemView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // A video's own header shows the source and date under the player, and a post's author row
-                // shows its author, age and network, so both skip this row.
-                if compact, !isVideo, !isPost {
-                    metaRow
-                        .readerColumn(wide: false)
-                        .padding(.top, 8)
-                }
-                if isVideo {
-                    ReaderVideoBody(item: item, autoplay: settings.autoplay && model.autoplayItemID == item.id, theater: settings.theater, wide: wide,
-                                    viewportHeight: viewportHeight)
-                } else {
-                    article
-                    if settings.showComments, let thread = ReaderComments.target(for: item) {
-                        ReaderComments(url: thread.url, place: thread.place, onDemand: thread.onDemand, count: item.item.hnComments)
-                            .id(item.id)
-                            .readerColumn(wide: wide)
-                            .padding(.bottom, 40)
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: 0) {
+                    // A video's own header shows the source and date under the player, and a post's author row
+                    // shows its author, age and network, so both skip this row.
+                    if compact, !isVideo, !isPost {
+                        metaRow
+                            .readerColumn(wide: false)
+                            .padding(.top, 8)
+                    }
+                    if isVideo {
+                        ReaderVideoBody(item: item, autoplay: settings.autoplay && model.autoplayItemID == item.id, theater: settings.theater, wide: wide,
+                                        viewportHeight: viewportHeight)
+                    } else {
+                        article
+                        if settings.showComments, let thread = ReaderComments.target(for: item) {
+                            ReaderComments(url: thread.url, place: thread.place, onDemand: thread.onDemand, count: item.item.hnComments)
+                                .id(item.id)
+                                .readerColumn(wide: wide)
+                                .padding(.bottom, 40)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .environment(\.readerScroll, proxy)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
         .onScrollGeometryChange(for: CGFloat.self) { geo in

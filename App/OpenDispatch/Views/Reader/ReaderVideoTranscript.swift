@@ -1,94 +1,97 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// The video's captions under its description, as paragraphs of 20 to 40 seconds. The paragraph
-/// being played is in full ink, the rest muted; clicking one plays from there. The heading folds it
-/// away (remembered across videos) and copies it. Nothing shows when the video has no captions.
-struct ReaderVideoTranscript: View {
-    let item: FeedItem
-    let playback: ReaderYouTubeController
+/// The two tabs under a video's description. Comments is shown first.
+enum ReaderVideoTab { case comments, transcript }
 
-    @Environment(AppModel.self) private var model
-    @State private var transcript: Transcript?
-    @State private var paragraphs: [Transcript.Paragraph] = []
-    @State private var loading = true
-
-    private var collapsed: Bool { model.settings.videoTranscriptCollapsed }
-    private var long: Bool { (paragraphs.last?.start ?? 0) >= 3600 }
+/// The Comments | Transcript bar under a video's description: the tabs that are on (with the comment count, and a spinner
+/// while the captions load), then "On YouTube" for comments or Copy for the transcript, over a hairline. The reader keeps a
+/// second copy of it pinned at the top while you scroll the tab's content (`ReaderVideoBody`).
+struct ReaderVideoTabBar: View {
+    let tab: ReaderVideoTab
+    let comments: Bool
+    let commentCount: Int?
+    let transcript: Bool
+    let transcriptLoading: Bool
+    let url: String
+    let copy: (() -> Void)?
+    let select: (ReaderVideoTab) -> Void
 
     var body: some View {
-        Group {
-            if loading || transcript != nil {
-                VStack(alignment: .leading, spacing: 0) {
-                    Rectangle().fill(Color.ofHairline).frame(height: 1)
-                    heading
-                    if !collapsed, transcript != nil {
-                        ReaderTranscriptParagraphs(paragraphs: paragraphs, long: long, playback: playback)
-                            .padding(.top, 4)
-                    }
-                }
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 22) {
+                if comments { tabButton(.comments, "Comments", count: commentCount) }
+                if transcript { tabButton(.transcript, "Transcript", loading: transcriptLoading) }
+                Spacer(minLength: 8)
+                trailing
             }
-        }
-        .task(id: item.id) {
-            let found = await model.transcript(for: item)
-            transcript = found
-            paragraphs = found?.paragraphs ?? []
-            loading = false
+            Rectangle().fill(Color.ofHairline).frame(height: 1)
         }
     }
 
-    private var heading: some View {
-        HStack(spacing: 10) {
-            Button {
-                model.settings.videoTranscriptCollapsed.toggle()
-            } label: {
-                HStack(spacing: 7) {
-                    OFIcon.chevron.image
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.ofMuted)
-                        .rotationEffect(.degrees(collapsed ? 0 : 90))
-                    Text("Transcript")
-                        .font(OFFont.ui(15, .semibold))
-                        .foregroundStyle(.ofInk)
-                    if loading {
-                        ProgressView().controlSize(.small)
-                    }
+    private func tabButton(_ value: ReaderVideoTab, _ title: String, count: Int? = nil, loading: Bool = false) -> some View {
+        let on = tab == value
+        return Button { select(value) } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(title)
+                    .font(OFFont.ui(15, .semibold))
+                    .foregroundStyle(on ? Color.ofInk : Color.ofMuted)
+                if let count, count > 0 {
+                    Text(ExploreFormat.count(count))
+                        .font(OFFont.ui(13))
+                        .foregroundStyle(.ofFaint)
+                        .monospacedDigit()
                 }
+                if loading { ProgressView().controlSize(.small) }
+            }
+            .padding(.top, 13)
+            .padding(.bottom, 11)
+            .overlay(alignment: .bottom) {
+                if on { Rectangle().fill(Color.ofInk).frame(height: 2).offset(y: 1) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(loading)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    @ViewBuilder private var trailing: some View {
+        if tab == .comments, let link = URL(string: url) {
+            Link(destination: link) {
+                HStack(spacing: 5) {
+                    Text("On YouTube")
+                    OFIcon.external.image.font(.system(size: 11))
+                }
+                .font(OFFont.ui(12.5))
+                .foregroundStyle(.ofMuted)
+            }
+            .buttonStyle(.plain)
+            .help("Open the comments in your browser")
+        } else if tab == .transcript, let copy {
+            Button(action: copy) {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.on.doc").font(.system(size: 11.5))
+                    Text("Copy")
+                }
+                .font(OFFont.ui(12.5))
+                .foregroundStyle(.ofInk)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.ofHairline))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(loading)
-            .accessibilityLabel(collapsed ? "Show transcript" : "Hide transcript")
-
-            Spacer(minLength: 8)
-
-            if let transcript {
-                Button {
-                    model.copyTranscript(transcript, durationSec: item.item.durationSec)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.on.doc").font(.system(size: 11.5))
-                        Text("Copy")
-                    }
-                    .font(OFFont.ui(12.5))
-                    .foregroundStyle(.ofInk)
-                    .padding(.horizontal, 10)
-                    .frame(height: 28)
-                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.ofHairline))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
-                .help("Copy the transcript as Markdown")
-            }
+            .fixedSize()
+            .help("Copy the transcript as Markdown")
         }
-        .padding(.vertical, 14)
     }
 }
 
-/// The paragraphs, lazily (a long video has hundreds). Only this view reads the playback time, so a
-/// tick redraws the transcript and nothing else in the reader.
-private struct ReaderTranscriptParagraphs: View {
+/// The video's captions in the Transcript tab, as paragraphs of 20 to 40 seconds. The paragraph being played is in full
+/// ink, the rest muted; clicking one plays from there. Lazily (a long video has hundreds), and only this view reads the
+/// playback time, so a tick redraws the transcript and nothing else in the reader.
+struct ReaderTranscriptParagraphs: View {
     let paragraphs: [Transcript.Paragraph]
     let long: Bool
     let playback: ReaderYouTubeController

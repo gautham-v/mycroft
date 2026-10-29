@@ -671,7 +671,7 @@ Design (App/OpenDispatch/Design):
 | Item rows: 16pt badge, source · relative time, title, 64×42 thumbnail (play glyph for video, headphones + duration for podcasts), 2-line snippet on phone, X-post rows (author @handle first), selected/hover backgrounds, inset hairlines, skeleton while loading, empty ("Nothing saved yet"/"Nothing here yet"), no-results ("No results for “q”"), error with Retry, infinite scroll, scroll to top on navigation (item-row.tsx) | Views/Feed/ItemRowView.swift, ItemListView.swift |
 | Keyboard: j/k/↓/↑ move, o/Enter open original, s save, r refresh, / search, ? help, g a/s/v/p views (1 s chord), Esc; arrows scroll the reader after clicking it; single keys off while typing or on iPhone (use-keyboard.ts) | Views/Feed/KeyboardShortcuts.swift (Feed UI agent), attached in ItemListView or RootView via a modifier it defines |
 | Reader: sticky toolbar (back on phone, host · date · read time, Save, Open original, Share/copy link, Send to menu, full screen), 32+ headline per text size (serif/sans), byline (source, author, duration, HN points/comments link), "Rendered copy" note, hero image unless the content starts with it, article HTML in WKWebView with reader.css (links open externally, height-fitted), loading skeleton, failure state with Open original button, X posts without headline (reader.tsx) | Views/Reader/ |
-| YouTube: youtube-nocookie embed 16:9 (autoplay setting: only an item the user opened plays by itself, not one the reader shows as the list's first), theater layout (full width ≤ 960, black band) vs inline, expandable 3-line description | Views/Reader/ |
+| YouTube: youtube-nocookie embed 16:9 (autoplay setting: only an item the user opened plays by itself, not one the reader shows as the list's first), theater layout (full width ≤ 960, black band) vs inline, expandable 3-line description, then Comments | Transcript tabs (Comments first; the bar pins under the band or at the top while scrolling) | Views/Reader/ |
 | SponsorBlock: segment client with 24 h cache, category modes → player segments, Settings → Playback section | Core/SponsorBlock/ (`SponsorBlockCategory`, `SponsorBlockMode`, `SponsorBlock.playerSegments`, `DefaultSponsorBlock`), Views/Settings/SettingsSponsorBlockSection.swift |
 | Podcasts: audio player with art (AVPlayer), never autoplays, resume position per item (UserDefaults "openfeed:podcast-pos:<id>"), show notes below with duplicate art stripped | Views/Reader/ |
 | Send to: one target sends directly, two show a menu, none opens Settings → Integrations (send-to.tsx) | Views/Reader/ (uses AppModel.integrations/send/showSettings) |
@@ -1023,6 +1023,9 @@ struct ReaderArticleWebView: View            // height-fitted WKWebView (html, h
 enum ReaderHTML { struct Appearance(font,size,theme,wide); static func document(...); stylesheet (reader.css) }
 struct ReaderYouTubePlayer: View             // 16:9 youtube-nocookie embed (videoID, title, autoplay)
 struct ReaderVideoBody: View                 // theater / inline video layout, Linkified 3-line description
+                                             // then ReaderVideoTabBar (Comments | Transcript, Comments first) and the tab's content; a copy of
+                                             // the bar hangs under the pinned section header once the inline bar scrolls past it, and picking
+                                             // a tab while pinned scrolls back to the bar (EnvironmentValues.readerScroll, the reader's ScrollViewProxy)
                                              // ReaderYouTubePlayer fetches SponsorBlock segments (services.sponsorBlock) and pushes them to the page
                                              // via window.odPlayer.setSegments; the coordinator replays them on didFinish
 struct ReaderPodcastPlayer: View; final class ReaderPodcastPlayback   // AVPlayer: play/pause, ±15/30 s, scrubber, speed 0.8–2x,
@@ -1250,7 +1253,7 @@ Explore searches posts, and the reader shows comments under a thread and under e
   (until `checked`, X's comments and Explore's X chip show a skeleton, not the sign-in note) and when the sheet closes
   (`AppModel.didCloseSignIn`, which also searches X for Explore's query). `ExploreStore.posts` by place, `shownPostPlace` / `pickPostPlace`, `retryPosts`, `ExploreTarget.post`.
   `ReaderComments` (`Views/Reader/ReaderComments.swift`) under the article (`ReaderComments.target(for:)`: the item's own thread, loaded at once, or its `hnCommentsUrl`,
-  loaded on "Show comments") and under a video's transcript: a heading with the count and "On <place>", rails per depth, the author line folds a comment and its replies,
+  loaded on "Show comments") and in a video's Comments tab (`heading: false`, the count goes to the tab through `onTotal`): a heading with the count and "On <place>", rails per depth, the author line folds a comment and its replies,
   more rows load in place, X signed out shows the sign-in note. Settings › Integrations › Signed-in sites: X and Reddit, Sign In… / Sign Out.
 
 ### Topics from X and Bluesky — 2026-10-29

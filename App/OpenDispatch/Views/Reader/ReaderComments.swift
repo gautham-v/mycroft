@@ -15,6 +15,10 @@ struct ReaderComments: View {
     var onDemand = false
     /// The comment count the item already knows, for the heading before they load.
     var count: Int?
+    /// The hairline and "Comments" heading; a video's Comments tab has its own.
+    var heading = true
+    /// Told the thread's total once it loads (the video's tab shows it).
+    var onTotal: (Int?) -> Void = { _ in }
 
     @Environment(AppModel.self) private var model
     @State private var phase: Phase = .idle
@@ -38,8 +42,10 @@ struct ReaderComments: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(Color.ofHairline).frame(height: 1)
-            heading
+            if heading {
+                Rectangle().fill(Color.ofHairline).frame(height: 1)
+                headingRow
+            }
             content
         }
         .task(id: "\(url)#\(model.accounts.changes)") {
@@ -47,7 +53,7 @@ struct ReaderComments: View {
         }
     }
 
-    private var heading: some View {
+    private var headingRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(place == .youtube ? "Comments" : onDemand ? "Discussion on \(place.name)" : "Comments")
                 .font(OFFont.ui(15, .semibold))
@@ -170,6 +176,7 @@ struct ReaderComments: View {
             guard !Task.isCancelled else { return }
             entries = thread.entries
             total = thread.total
+            onTotal(thread.total)
             folded = []
             phase = .loaded
         } catch DiscussionError.signInRequired {

@@ -179,8 +179,6 @@ struct AppSettings: Codable, Equatable, Sendable {
     var theater: Bool = true
     /// The captions under a video, following along as it plays.
     var videoTranscript: Bool = true
-    /// The transcript under a video is folded to its heading.
-    var videoTranscriptCollapsed: Bool = false
     /// Act on SponsorBlock segments in YouTube videos (Settings → Playback → SponsorBlock).
     var sponsorBlock: Bool = true
     /// What the player does per category, by SponsorBlock id, for the ones changed from their default.
@@ -240,7 +238,6 @@ struct AppSettings: Codable, Equatable, Sendable {
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
         videoTranscript = (try? c.decode(Bool.self, forKey: .videoTranscript)) ?? true
-        videoTranscriptCollapsed = (try? c.decode(Bool.self, forKey: .videoTranscriptCollapsed)) ?? false
         sponsorBlock = (try? c.decode(Bool.self, forKey: .sponsorBlock)) ?? true
         // Values this build doesn't know (or a category's disallowed mode) are dropped, so the default applies.
         let modes = (try? c.decode([String: String].self, forKey: .sponsorBlockModes)) ?? [:]
