@@ -1,12 +1,15 @@
 import Foundation
 
-/// Large news outlets whose articles read free, searched by name in Topics alongside the plain news search
-/// (`DefaultTopicSearch.outletNews`) so a topic isn't left to the few answers Bing's own ranking gives.
+/// The large news outlets, picked by reach whether or not they charge, searched by name in Topics and Explore alongside the
+/// plain news search (`BingNews.outletSites`) so results aren't left to the few answers Bing's own ranking gives. Whether one
+/// is paywalled (`TopicPaywalls`) only decides how its articles are marked, and that it isn't searched while the lists hide
+/// paywalled articles.
 public enum MajorOutlets {
     public static let domains: [String] = [
-        "apnews.com", "reuters.com", "theguardian.com", "npr.org", "cnbc.com", "axios.com", "politico.com", "cbsnews.com",
-        "nbcnews.com", "abcnews.go.com", "usatoday.com", "aljazeera.com", "theverge.com", "techcrunch.com", "arstechnica.com",
-        "engadget.com",
+        "nytimes.com", "wsj.com", "ft.com", "bloomberg.com", "washingtonpost.com", "economist.com", "theatlantic.com",
+        "theinformation.com", "apnews.com", "reuters.com", "theguardian.com", "npr.org", "cnbc.com", "axios.com", "politico.com",
+        "cbsnews.com", "nbcnews.com", "abcnews.go.com", "usatoday.com", "aljazeera.com", "theverge.com", "techcrunch.com",
+        "arstechnica.com", "engadget.com",
     ]
 }
 

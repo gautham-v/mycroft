@@ -32,8 +32,8 @@ public protocol ArticleSearching: Sendable {
 }
 
 /// News through Bing News' RSS (`BingNews`, shared with Topics): the query as typed, and again limited with `site:` to the large
-/// outlets Bing's own ten-odd answers seldom include (the sites the app is signed in to, `MajorOutlets`, and the known
-/// paywalled sites unless the lists hide those), all at the same time.
+/// outlets Bing's own ten-odd answers seldom include (the sites the app is signed in to and the `MajorOutlets`, the paywalled
+/// ones among them only while the lists don't hide those), all at the same time.
 ///
 /// Unlike a topic, which wants the newest, a search box wants the best match, so Bing's own relevance order is kept (no
 /// `qft=sortbydate`): it still answers with the last few days' stories, and date order only adds the most recent mentions.

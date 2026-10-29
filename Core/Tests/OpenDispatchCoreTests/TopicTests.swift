@@ -227,10 +227,12 @@ struct TopicProviderTests {
         #expect(limited.count == DefaultTopicSearch.outletSites().count)
         let all = DefaultTopicSearch.outletSites(signedIn: [], paywalled: true)
         #expect(all.allSatisfy { $0.count <= DefaultTopicSearch.sitesPerSearch })
-        #expect(all.flatMap { $0 } == MajorOutlets.domains + TopicPaywalls.domains)
+        #expect(all.flatMap { $0 } == MajorOutlets.domains)
+        // Niche paywalled sites aren't searched for being paywalled.
+        #expect(!all.flatMap { $0 }.contains("handelsblatt.com"))
         // While the lists hide paywalled sites they aren't searched, except one the app is signed in to.
         let hiding = DefaultTopicSearch.outletSites(signedIn: ["ft.com"], paywalled: false).flatMap { $0 }
-        #expect(hiding == ["ft.com"] + MajorOutlets.domains)
+        #expect(hiding.first == "ft.com" && hiding.contains("apnews.com") && !hiding.contains("nytimes.com") && !hiding.contains("wsj.com"))
         #expect(DefaultTopicSearch.newsURL("rust", sites: ["ft.com", "wsj.com"]).contains("q=rust%20%28site%3Aft.com%20OR%20site%3Awsj.com%29&"))
         // The same article from both searches is kept once.
         #expect(Set(found.items.map(\.guid)).count == found.items.count)

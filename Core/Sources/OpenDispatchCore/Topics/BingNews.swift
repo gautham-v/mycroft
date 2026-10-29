@@ -34,11 +34,13 @@ enum BingNews {
         return url
     }
 
-    /// The sites the outlet searches cover, in groups of `sitesPerSearch`: the ones the app is signed in to, the free major
-    /// outlets, then the known paywalled sites, which are left out while the lists hide them (`PaywallTreatment.hide`).
+    /// The sites the outlet searches cover, in groups of `sitesPerSearch`: the ones the app is signed in to, then the major
+    /// outlets, leaving out the paywalled ones while the lists hide them (`PaywallTreatment.hide`).
     static func outletSites(signedIn: Set<String> = SiteSignIns.sites, paywalled: Bool = PaywallTreatment.current != .hide) -> [[String]] {
         var sites = signedIn.sorted()
-        for domain in MajorOutlets.domains + (paywalled ? TopicPaywalls.domains : []) where !sites.contains(domain) { sites.append(domain) }
+        for domain in MajorOutlets.domains where !sites.contains(domain) && (paywalled || !TopicPaywalls.isPaywalled("https://\(domain)/")) {
+            sites.append(domain)
+        }
         return stride(from: 0, to: sites.count, by: sitesPerSearch).map { Array(sites[$0..<min($0 + sitesPerSearch, sites.count)]) }
     }
 

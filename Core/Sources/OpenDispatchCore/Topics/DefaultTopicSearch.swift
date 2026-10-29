@@ -3,8 +3,8 @@ import Foundation
 /// A topic's searches, with no key anywhere:
 ///
 /// - news: Bing News' RSS (`BingNews`), newest first. Bing answers about ten articles, mostly syndicated copies and small
-///   outlets, so the same search is also run limited to large outlets (`outletNews`): the sites the app is signed in to, the
-///   free major outlets, and the known paywalled sites unless the lists hide those.
+///   outlets, so the same search is also run limited to large outlets (`outletNews`): the sites the app is signed in to and
+///   the `MajorOutlets`, the paywalled ones among them only while the lists don't hide those.
 /// - Hacker News through Algolia's API.
 /// - Reddit's search page through the hidden web view (`DiscussionWeb`), newest first, with scores; when the web view can't
 ///   (the app is in the background) its JSON, falling back to its RSS when the JSON is refused, which it often is outside a
@@ -223,8 +223,7 @@ public struct DefaultTopicSearch: TopicSearching {
     /// Sites per outlet search: Bing drops `site:` terms past a query of about this many.
     static let sitesPerSearch = BingNews.sitesPerSearch
 
-    /// The sites the outlet searches cover, in groups of `sitesPerSearch`: the ones the app is signed in to, the free major
-    /// outlets, then the known paywalled sites, which are left out while the lists hide them (`PaywallTreatment.hide`).
+    /// The sites the outlet searches cover (`BingNews.outletSites`).
     static func outletSites(signedIn: Set<String> = SiteSignIns.sites, paywalled: Bool = PaywallTreatment.current != .hide) -> [[String]] {
         BingNews.outletSites(signedIn: signedIn, paywalled: paywalled)
     }
