@@ -1148,22 +1148,32 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
 ### Topics (App: model, Mac/iPad UI, sheet) — 2026-10-28
 - `TopicStore` (owned by `AppModel.topicStore`) observes `observeTopics()` and `observeUnreadCounts()`: `topics`, `ids` (changes only when a topic is added or removed), `unread`,
   `refreshing`, `topic(matching:)` (Explore's Following state). A topic is a source, so it is selected with `navigate(sourceID:)`; `AppModel.activeSource` falls back to the topic
-  store because `sources` leaves topics out, and the sync handler keeps a selected topic. `topicFilter` (`setTopicFilter`) is the chip; it resets when the list moves on and
-  `currentQuery` sends it only for a topic's list.
+  store because `sources` leaves topics out, and the sync handler keeps a selected topic. `topicFilter` (`setTopicFilter`) is the title menu's Show choice; it resets when the list moves on and
+  `currentQuery` sends it only for a topic's list. `topicStore.filterCounts` follows `observeTopicFilterCounts` of the open topic (`watchFilterCounts(of:)`, called from `setNav`).
+  `listHeading` is the title with the filter after it ("Firefox · Videos").
 - `AppModel`: `createTopic(_:notify:select:)` (stores, selects, searches in the background, then turns notify on so the existing matches don't alert), `updateTopic(id:options:notify:)`
   (searches again when the keyword or places changed; a changed keyword restarts notify), `deleteTopic(id:)`, `followTopic(query:)` (Explore's Follow, unselected),
   `refreshTopic(id:)`, `markAllRead(topic:)`, `beginNewTopic(_:)` / `beginEditTopic(_:)` (set `topicEditor`, which RootView presents as `TopicEditorView` on every platform). Notify
   is the existing `setSourceNotify`.
-- Views: `Views/Topics/TopicEditorView.swift` (the sheet), `TopicListBar.swift` (status, bell, Edit and `TopicChips` under the list header; Mac and iPad), `Views/Sidebar/SidebarTopics.swift`
+- Views: `Views/Topics/TopicEditorView.swift` (the sheet), `TopicListMenu.swift` (`TopicListMenuItems`: the Show / Notify on New Matches / Edit Topic… / Mark All as Read part of the list's title menu,
+  shared by the Mac and iPad title button and the iPhone's press-and-hold title; `topicNotifyAlert` shows a failed Notify change), `StoryRowView.swift` (below), `Views/Sidebar/SidebarTopics.swift`
   (the "Topics" group between the view rows and the sources), `ExploreTopicButton` (Follow / Following; on the Mac's results header, reusable on the iPhone). Settings › Notifications lists topics with the sources. Rows name a topic's
   item by its origin (`ItemRowView.showsTopic` adds the keyword outside the topic's list); the reader, speech, now-playing and highlights use `FeedItem.originName`.
+
+- List (second pass): a topic's list has no bar, chips or bell, and looks like a source's: nothing but the header over the rows, so the first row is never covered. A news story with
+  other outlets or a Hacker News thread behind it (`FeedItem.story`) is a `StoryRowView` instead of an `ItemRowView`: the meta line is `StoryOutletStack` (up to 3 overlapping favicons, `SourceBadge`),
+  the first three outlets' names, an accent "+N" that expands `StoryOutletList` in place (each outlet's favicon, its own headline and its name; a click opens that article through
+  `AppModel.openOutlet`), then "· 16h" (the newest coverage, `storyAt`); then the headline and thumbnail like any row, and under it `DiscussionChip` ("▲ 10 points · 4 comments on Hacker News", opens
+  the thread's page as a pasted link would, `AppModel.openDiscussion`). The row is not a Button (its parts are): `onTapGesture` opens the lead, which is what j/k, selection and the read dot use.
+  Opening an outlet or the thread also reads the lead. ⌘ and ⌥ apply to the outlets and the chip as to a row (`ItemListView.openMode`). A Hacker News or Reddit row of a topic ends its meta line with
+  "· ▲ 15 · 💬 4" (SF Symbols `arrowtriangle.up.fill` and `bubble.left`, `DiscussionStats`) when it has the numbers. The Topic sheet's Search in has News sites, Hacker News, Reddit ("Opens without
+  comments."), YouTube & podcasts and Your subscriptions.
 
 ### Topics (App: iPhone) — 2026-10-28
 - Drawer (`PhoneDrawer`): a "Topics" section after the view rows and before Folders, always shown (its + is the way to a first topic besides Explore's Follow; empty, it holds a one-line hint).
   `DrawerTopicRow` shows the "number" symbol, the keyword and the unread count (a spinner while it searches). Holding a row gives Edit Topic…, Notify on New Matches (checked),
   Mark All as Read and Remove Topic… (alert: "Removing a topic also removes its items."). The drawer's search also matches topics. The + and Edit Topic close the drawer, then the sheet opens.
-- Topic page: the home list with the keyword as its title row, `PhoneTopicStatusRow` under it ("Topic · Updated 3h ago", Couldn't update, a spinner) and the chips (`PhoneTopicChipsHeader`)
-  as a pinned section header over the rows. The home list has no navigation bar, so the toolbar actions are a glass pill in the bottom bubbles beside search (`PhoneTopicBubbles`:
-  the bell, and a menu with Edit Topic…, Mark All as Read, Remove Topic…).
+- Topic page: the home list with the keyword as its title row (with the filter after it, "Firefox · Videos"). The status row, the chips and the bell/menu bubble of the first version are
+  gone; pressing and holding the title gives `TopicListMenuItems` (Show, Notify on New Matches, Edit Topic…, Mark All as Read) and Hide Read Items. Remove Topic… is in the drawer row's menu.
 - Explore (`ExplorePhoneView`): a row at the top of the results, "Follow as a topic" with `ExploreTopicButton` (Following opens the topic).
 - Not run on the simulator beyond launch (no way to tap from the command line here); build-checked for iOS and macOS.

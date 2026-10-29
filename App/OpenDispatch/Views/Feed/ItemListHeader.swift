@@ -56,9 +56,16 @@ struct DesktopListHeader: View {
 struct ListTitleMenu: View {
     @Environment(AppModel.self) private var model
     @State private var hovered = false
+    /// A Notify on New Matches change from a topic's section failed.
+    @State private var notifyError: String?
 
     var body: some View {
         Menu {
+            // A topic's own part first: Show, Notify on New Matches, Edit Topic…, Mark All as Read.
+            if let topic = model.activeTopic {
+                TopicListMenuItems(topic: topic, error: $notifyError)
+                Divider()
+            }
             ForEach(SidebarViewItem.ordered.filter { !model.isSidebarViewHidden($0) }) { item in
                 switch item {
                 case .explore:
@@ -87,15 +94,17 @@ struct ListTitleMenu: View {
             }
             if !model.showsHighlights && !model.showsHistory {
                 Divider()
-                Button("Mark All as Read") { model.markAllRead() }
-                    .disabled(model.items.isEmpty)
+                if !model.isTopicSelected {
+                    Button("Mark All as Read") { model.markAllRead() }
+                        .disabled(model.items.isEmpty)
+                }
                 Toggle("Hide Read Items", isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() }))
             }
             Divider()
             Button(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") { model.toggleSidebar() }
         } label: {
             HStack(spacing: 5) {
-                Text(model.listTitle)
+                Text(model.listHeading)
                     .font(OFFont.listHeaderTitle)
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
@@ -114,7 +123,8 @@ struct ListTitleMenu: View {
         .menuIndicator(.hidden)
         .onHover { hovered = $0 }
         .padding(.leading, -6)
-        .accessibilityLabel("\(model.listTitle), switch view")
+        .topicNotifyAlert($notifyError)
+        .accessibilityLabel("\(model.listHeading), switch view")
     }
 
     /// Same test as the sidebar's rows.
@@ -189,7 +199,7 @@ struct PhoneTitleRow: View {
     static let id = "phone-title"
 
     var body: some View {
-        Text(title ?? model.listTitle)
+        Text(title ?? model.listHeading)
             .font(OFFont.ui(32, .semibold))
             .tracking(-0.7)
             .foregroundStyle(.ofInk)
@@ -226,11 +236,6 @@ private struct PhoneBottomBar: View {
                         HStack {
                             if isHome { menuButton }
                             Spacer(minLength: 0)
-                            // A topic's bell and menu, spaced wider than the container's merge distance (16) so the pill stays apart from search.
-                            if isHome, model.isTopicSelected {
-                                PhoneTopicBubbles()
-                                    .padding(.trailing, 20)
-                            }
                             searchButton
                         }
                         if isHome, model.phonePageIndex != nil { PhonePageDots() }

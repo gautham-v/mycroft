@@ -10,7 +10,9 @@ import SwiftUI
 ///
 /// iPhone rows put the headline first (17 semibold, a post's text 17 regular, up to three lines) and the
 /// badge with "Source · 3h" under it, beside an 80pt square thumbnail; a YouTube video with a thumbnail
-/// instead leads with it full width at 16:9. No snippet, and no HN points or comments.
+/// instead leads with it full width at 16:9. No snippet. A topic's Hacker News or Reddit row adds its points and
+/// comments to the meta line ("Hacker News · 1d · ▲ 15 · 💬 4", drawn with SF Symbols; `DiscussionStats`). A news story with other
+/// outlets or a discussion behind it is a `StoryRowView` instead.
 ///
 /// The row draws its own rounded background (selected / the other pane's item / hovered) and leaves
 /// the inset hairline to `ItemListView`, which knows the neighbours. Equatable so a hover or selection
@@ -47,20 +49,7 @@ struct ItemRowView: View, Equatable {
                 articleRow
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
-        .padding(.vertical, isPhone ? Metrics.phoneRowPaddingV : Metrics.rowPaddingV)
-        .background(
-            RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-                .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
-        )
-        .overlay {
-            if isSecondary && !isSelected {
-                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-                    .strokeBorder(Color.ofHairline, lineWidth: 1)
-            }
-        }
-        .contentShape(Rectangle())
+        .itemRowChrome(isSelected: isSelected, isSecondary: isSecondary, isHovered: isHovered, isPhone: isPhone)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
@@ -165,7 +154,9 @@ struct ItemRowView: View, Equatable {
 
     private func metaText(name: String, handle: String?) -> Text {
         let line = name + (handle.map { " @\($0)" } ?? "") + " · " + (timeText ?? RelativeTime.format(item.item.publishedAt))
-        return Text(verbatim: line).font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
+        let base = Text(verbatim: line)
+        let text = DiscussionStats.text(item: item.item, isTopicItem: item.source.isTopic).map { Text("\(base)\(Text(verbatim: " \u{00B7} "))\($0)") } ?? base
+        return text.font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
     }
 
     /// Where the item is from, as its meta line names it: the source, or for a topic's item the origin (Hacker News, a
@@ -185,11 +176,33 @@ struct ItemRowView: View, Equatable {
         if item.source.kind == .youtube { parts.append("Video") }
         if item.source.kind == .podcast { parts.append("Podcast episode") }
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
+        if let stats = DiscussionStats.spoken(item: item.item, isTopicItem: item.source.isTopic) { parts.append(stats) }
         if item.isSaved { parts.append("Saved") }
         if isRead { parts.append(item.source.kind == .youtube ? "Watched" : "Read") }
         if let progress { parts.append("\(Int(progress * 100))% played") }
         if isOpenInTab { parts.append("Open in a tab") }
         return parts.joined(separator: ", ")
+    }
+}
+
+extension View {
+    /// A list row's frame: full width, the row padding and the rounded background (selected / the other pane's item /
+    /// hovered) that `ItemRowView` and `StoryRowView` share.
+    func itemRowChrome(isSelected: Bool, isSecondary: Bool, isHovered: Bool, isPhone: Bool) -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
+            .padding(.vertical, isPhone ? Metrics.phoneRowPaddingV : Metrics.rowPaddingV)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                    .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
+            )
+            .overlay {
+                if isSecondary && !isSelected {
+                    RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                        .strokeBorder(Color.ofHairline, lineWidth: 1)
+                }
+            }
+            .contentShape(Rectangle())
     }
 }
 

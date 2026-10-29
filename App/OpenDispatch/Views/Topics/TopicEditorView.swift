@@ -148,7 +148,14 @@ struct TopicEditorView: View {
             Section("Search in") {
                 Toggle("News sites", isOn: $news)
                 Toggle("Hacker News", isOn: $hackerNews)
-                Toggle("Reddit", isOn: $reddit)
+                Toggle(isOn: $reddit) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Reddit")
+                        Text("Opens without comments.")
+                            .font(OFFont.ui(12))
+                            .foregroundStyle(.ofMuted)
+                    }
+                }
                 Toggle("YouTube & podcasts", isOn: $media)
                 Toggle("Your subscriptions", isOn: $subscriptions)
             }

@@ -32,9 +32,14 @@ final class TopicStore {
     private(set) var unread: [Int64: Int] = [:]
     /// Topics being searched now, for a spinner.
     private(set) var refreshing: Set<Int64> = []
+    /// How many rows each filter of the open topic lists (a story is one row), for its title menu. Empty until the
+    /// first count arrives and while no topic is open.
+    private(set) var filterCounts: [TopicContentFilter: Int] = [:]
 
     @ObservationIgnored private let database: AppDatabase
     @ObservationIgnored private var observations: [Task<Void, Never>] = []
+    @ObservationIgnored private var countsTopic: Int64?
+    @ObservationIgnored private var countsObservation: Task<Void, Never>?
 
     init(database: AppDatabase) {
         self.database = database
@@ -54,6 +59,26 @@ final class TopicStore {
                 }
             },
         ]
+    }
+
+    /// Follows the filter counts of the open topic (nil: none is open). Called as the list moves.
+    func watchFilterCounts(of id: Int64?) {
+        guard id != countsTopic else { return }
+        countsTopic = id
+        countsObservation?.cancel()
+        countsObservation = nil
+        filterCounts = [:]
+        guard let id else { return }
+        countsObservation = Task { [weak self, database] in
+            do {
+                for try await counts in database.observeTopicFilterCounts(topicId: id) {
+                    guard let self, self.countsTopic == id else { return }
+                    self.filterCounts = counts
+                }
+            } catch {
+                // The menu shows the filters without counts.
+            }
+        }
     }
 
     private func apply(_ topics: [Source]) {

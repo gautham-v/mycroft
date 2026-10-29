@@ -46,6 +46,8 @@ struct ItemListView: View {
     var isPhoneHome = false
     /// A Send to from the row menu failed: the message, shown in an alert.
     @State private var sendError: String?
+    /// A Notify on New Matches change from a topic's title menu failed (iPhone; the Mac's title menu has its own).
+    @State private var topicNotifyError: String?
 
     /// Rows within this many of the end trigger the next page (≈ the web's 600px rootMargin).
     private static let prefetchRows = 8
@@ -77,6 +79,7 @@ struct ItemListView: View {
             } message: {
                 Text(sendError ?? "")
             }
+            .topicNotifyAlert($topicNotifyError)
     }
 
     // MARK: Layout
@@ -97,16 +100,9 @@ struct ItemListView: View {
     /// than a safe-area inset: List clips its rows to the safe area on macOS.
     private var desktopColumn: some View {
         list
-            .topContentInset(Self.headerHeight + (model.isTopicSelected ? Self.topicBarHeight : 0))
+            .topContentInset(Self.headerHeight)
             .overlay(alignment: .top) {
-                VStack(spacing: 0) {
-                    DesktopListHeader(searchFocus: $searchFocused)
-                    // A topic's own bar (its state, notifications, Edit and the chips) under the header.
-                    if model.isTopicSelected {
-                        TopicListBar()
-                            .padding(.top, Self.topicBarOverlap)
-                    }
-                }
+                DesktopListHeader(searchFocus: $searchFocused)
             }
             .background(Color.ofSurface)
     }
@@ -119,18 +115,6 @@ struct ItemListView: View {
         Metrics.desktopHeaderHeight
         #endif
     }
-
-    /// A topic's bar sits right under the header: on the Mac it takes the header's clear gap.
-    private static var topicBarOverlap: CGFloat {
-        #if os(macOS)
-        -Metrics.listHeaderGap
-        #else
-        0
-        #endif
-    }
-
-    /// The room the topic's bar takes in the list's top inset (below the header's own gap).
-    private static var topicBarHeight: CGFloat { TopicListBar.height + 6 + topicBarOverlap }
 
     #if os(iOS)
     /// iPhone: the list with its title as the first row and the glass bubbles along the bottom (see
@@ -179,25 +163,19 @@ struct ItemListView: View {
                     // Press and hold the title for the list's read actions (the Mac has them in the title menu).
                     PhoneTitleRow()
                         .contextMenu {
-                            Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
-                                .disabled(items.isEmpty)
+                            if let topic = model.activeTopic {
+                                TopicListMenuItems(topic: topic, error: $topicNotifyError)
+                            } else {
+                                Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
+                                    .disabled(items.isEmpty)
+                            }
                             Toggle(isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() })) {
                                 Label("Hide Read Items", systemImage: "eye.slash")
                             }
                         }
                         .tint(Color.ofInk)
                 }
-                if isPhone, model.isTopicSelected {
-                    PhoneTopicStatusRow()
-                    // The chips stay pinned at the top while the rows scroll under them.
-                    Section {
-                        listRows(items, prefetchFrom: prefetchFrom)
-                    } header: {
-                        PhoneTopicChipsHeader()
-                    }
-                } else {
-                    listRows(items, prefetchFrom: prefetchFrom)
-                }
+                listRows(items, prefetchFrom: prefetchFrom)
                 #else
                 listRows(items, prefetchFrom: prefetchFrom)
                 #endif
@@ -256,24 +234,18 @@ struct ItemListView: View {
     private func row(_ item: FeedItem, previousID: Int64?) -> some View {
         RowMarks(item: item, previousID: previousID) { marks in
             HoverTracking(hover: hover, id: item.id, previousID: previousID) { hovered, previousHovered in
-                Button(action: { open(item) }) {
-                    ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
-                                isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
-                                isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id)
-                        .equatable()
-                }
-                .buttonStyle(.plain)
-                .overlay(alignment: .top) {
-                    // Inset hairline above the row, hidden around the selected, secondary or hovered row.
-                    if marks.divider && !hovered && !previousHovered {
-                        Rectangle()
-                            .fill(Color.ofHairline)
-                            .frame(height: 1)
-                            .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
-                            .allowsHitTesting(false)
+                rowContent(item, marks: marks, hovered: hovered)
+                    .overlay(alignment: .top) {
+                        // Inset hairline above the row, hidden around the selected, secondary or hovered row.
+                        if marks.divider && !hovered && !previousHovered {
+                            Rectangle()
+                                .fill(Color.ofHairline)
+                                .frame(height: 1)
+                                .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
+                                .allowsHitTesting(false)
+                        }
                     }
-                }
-                .padding(.horizontal, 8)
+                    .padding(.horizontal, 8)
             }
         }
         .contextMenu { RowMenu(item: item, isPhone: isPhone, sendError: $sendError) }
@@ -283,23 +255,73 @@ struct ItemListView: View {
         .id(item.id)
     }
 
+    /// The row itself: a button, or for a topic's news story (other outlets or a discussion behind it) a `StoryRowView`,
+    /// whose outlets and discussion chip are buttons of their own.
+    @ViewBuilder private func rowContent(_ item: FeedItem, marks: RowMarkState, hovered: Bool) -> some View {
+        if item.story != nil {
+            StoryRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary, isOpenInTab: marks.openInTab,
+                         isHovered: hovered, isPhone: isPhone, isRead: marks.read,
+                         actions: StoryRowActions(
+                            openLead: { open(item) },
+                            openOutlet: { outlet in openOutlet(outlet, of: item) },
+                            openDiscussion: { openDiscussion(of: item) }))
+                .equatable()
+        } else {
+            Button(action: { open(item) }) {
+                ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
+                            isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
+                            isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id)
+                    .equatable()
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// How a click opens: in the focused pane, or with ⌘ in a new tab and ⌥ in the other pane (macOS).
+    private enum OpenMode { case focused, newTab, split }
+
+    private static var openMode: OpenMode {
+        #if os(macOS)
+        let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command) { return .newTab }
+        if flags.contains(.option) { return .split }
+        #endif
+        return .focused
+    }
+
+    private func show(_ item: FeedItem, _ mode: OpenMode) {
+        switch mode {
+        case .focused: model.open(item)
+        case .newTab: model.openInNewTab(item)
+        case .split: model.openInSplit(item)
+        }
+    }
+
     /// Row click: ⌘ opens a new tab, ⌥ opens the other pane (macOS), otherwise the focused pane.
     private func open(_ item: FeedItem) {
         #if os(iOS)
         if PhoneDrawerTouch.blocksRowTap { return }
         #endif
-        #if os(macOS)
-        let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if flags.contains(.command) {
-            model.openInNewTab(item)
-        } else if flags.contains(.option) {
-            model.openInSplit(item)
-        } else {
-            model.open(item)
-        }
-        #else
-        model.open(item)
+        show(item, Self.openMode)
+    }
+
+    /// A click on one outlet of a story's expanded list: that article opens like a row would, and the lead is read.
+    private func openOutlet(_ outlet: TopicOutlet, of lead: FeedItem) {
+        #if os(iOS)
+        if PhoneDrawerTouch.blocksRowTap { return }
         #endif
+        let mode = Self.openMode
+        model.openOutlet(outlet, of: lead) { show($0, mode) }
+    }
+
+    /// A click on a story's Hacker News chip: the thread opens in the reader.
+    private func openDiscussion(of lead: FeedItem) {
+        #if os(iOS)
+        if PhoneDrawerTouch.blocksRowTap { return }
+        #endif
+        guard let discussion = lead.story?.discussion else { return }
+        let mode = Self.openMode
+        model.openDiscussion(discussion, of: lead) { show($0, mode) }
     }
 }
 

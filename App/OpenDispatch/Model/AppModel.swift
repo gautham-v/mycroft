@@ -366,6 +366,11 @@ final class AppModel {
         showsHighlights ? "Highlights" : showsHistory ? "History" : showsExplore ? "Explore" : activeSource?.title ?? activeFolder?.title ?? selectedView.title
     }
 
+    /// The list's title with a topic's active filter after it ("Firefox · Videos"): what the title menu's button reads.
+    var listHeading: String {
+        isTopicSelected && topicFilter != .all ? "\(listTitle) \u{00B7} \(topicFilter.title)" : listTitle
+    }
+
     /// Search field placeholder: "Search" in All, else "Search <title>".
     var searchPlaceholder: String { listTitle == "All" ? "Search" : "Search \(listTitle)" }
 
@@ -511,6 +516,7 @@ final class AppModel {
         selectedView = view
         if source != selectedSourceID { topicFilter = .all }
         selectedSourceID = source
+        topicStore.watchFilterCounts(of: source.flatMap { topicStore.ids.contains($0) ? $0 : nil })
         selectedFolderID = folder
         setActiveItem(nil)
         resetSearchState()
@@ -1129,13 +1135,40 @@ final class AppModel {
         await loadItems(reset: true)
     }
 
+    /// Opens one outlet's article of a story row (the "+N" list), as a list click would: `show` receives the article. Opening it
+    /// also reads the story's lead, since the story counts as read once its lead is. Without the article stored (a retention
+    /// sweep between) it opens in the browser.
+    func openOutlet(_ outlet: TopicOutlet, of lead: FeedItem, show: @escaping @MainActor (FeedItem) -> Void) {
+        Task {
+            guard let item = try? await database.feedItem(id: outlet.id) else {
+                if let url = URL(string: outlet.url) { ReaderWebSupport.openExternally(url) }
+                return
+            }
+            history.setRead(lead, true)
+            show(item)
+        }
+    }
+
+    /// Opens a story's Hacker News thread in the reader, as a pasted link would be (the thread's page, not the story it links
+    /// to), and reads the story's lead. The browser opens it if the page can't be stored.
+    func openDiscussion(_ discussion: TopicDiscussion, of lead: FeedItem, show: @escaping @MainActor (FeedItem) -> Void) {
+        Task {
+            history.setRead(lead, true)
+            guard let item = try? await services.openLink(discussion.url) else {
+                if let url = URL(string: discussion.url) { ReaderWebSupport.openExternally(url) }
+                return
+            }
+            show(item)
+        }
+    }
+
     /// Mark All as Read for a topic that may not be the open list (the sidebar's menu).
     func markAllRead(topic: Source) {
         let query = ItemQuery(sourceId: topic.id)
         Task { try? await database.markAllRead(query) }
     }
 
-    /// A chip under a topic's header.
+    /// A filter of the title menu's Show section.
     func setTopicFilter(_ filter: TopicContentFilter) {
         guard isTopicSelected, filter != topicFilter else { return }
         topicFilter = filter
