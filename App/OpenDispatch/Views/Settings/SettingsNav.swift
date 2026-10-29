@@ -139,11 +139,12 @@ struct SettingsSidebar: View {
     private var syncRow: some View {
         Button { select(.data) } label: {
             HStack(spacing: 10) {
-                Image("AppLogo")
+                model.appIcon.choice.image
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
                     .frame(width: 30, height: 30)
+                    .clipShape(RoundedRectangle(cornerRadius: 6.7, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("OpenDispatch")

@@ -53,7 +53,7 @@ App/                                 XcodeGen project (App/project.yml) → App/
     ├── Model/                       FOUNDATION  AppModel, AppSettings (+ThemeSetting/ReaderFontSetting/TextSizeSetting),
     │                                            PhoneTab, SettingsTab, BackgroundRefresh
     ├── Design/                      FOUNDATION  Tokens (colors + Metrics), Typography (OFFont), Icons (OFIcon, FeedMark)
-    ├── Resources/                   FOUNDATION  Assets.xcassets (AppIcon, AppLogo, AccentColor), reader.css
+    ├── Resources/                   FOUNDATION  Assets.xcassets (AppIcon, AlternateIcons, IconPreviews, AccentColor), reader.css
     └── Views/
         ├── RootView.swift           FOUNDATION  split view (macOS/iPad) and tab bar (iPhone); sheets
         ├── Shared/SourceBadge.swift FOUNDATION  favicon + monogram badge (done, reuse it)

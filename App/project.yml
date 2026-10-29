@@ -87,6 +87,8 @@ targets:
         PRODUCT_NAME: OpenDispatch
         PRODUCT_BUNDLE_IDENTIFIER: com.gauthamv.openfeed
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Settings → Appearance → App Icon: every other app icon set (Assets.xcassets/AlternateIcons) is an iOS alternate icon.
+        "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS[sdk=iphone*]": YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO

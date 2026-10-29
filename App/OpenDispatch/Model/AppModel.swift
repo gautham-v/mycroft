@@ -110,6 +110,8 @@ final class AppModel {
     let topicStore: TopicStore
     /// The sites signed in to in the app (X, Reddit), for Explore's posts and the reader's replies.
     let accounts: WebAccountStore
+    /// The app icon chosen in Settings → Appearance.
+    let appIcon = AppIconStore()
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
@@ -367,6 +369,7 @@ final class AppModel {
     func start() async {
         guard !started else { return }
         started = true
+        appIcon.showInDock()
         // Read first and alongside the rest: a restored X post waits on it for its replies.
         let signIns = Task { await accounts.refresh() }
         // Topics stored by an older build, or before their rules last changed, match today's rules before anything lists them.
