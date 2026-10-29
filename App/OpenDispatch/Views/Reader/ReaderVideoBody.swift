@@ -61,6 +61,8 @@ struct ReaderVideoBody: View {
         return (full, min(full, max(Metrics.theaterPinnedMin, viewportHeight * Metrics.theaterPinnedShare)))
     }
     private var bandPlayerHeight: CGFloat? { bandHeights.map { bandSmall ? $0.pinned : $0.full } }
+    /// How much taller the band was before its last snap (negative when it grew).
+    private var bandSnap: CGFloat { bandHeights.map { bandSmall ? $0.full - $0.pinned : $0.pinned - $0.full } ?? 0 }
 
     private var showsComments: Bool { model.settings.showComments && item.item.videoId != nil }
     private var showsTranscript: Bool {
@@ -98,7 +100,7 @@ struct ReaderVideoBody: View {
             guard bandHeights != nil else { return }
             let scrolled = headerTop - top
             let small = bandSmall ? scrolled >= 1 : scrolled > Metrics.theaterSnapScroll
-            if small != bandSmall { withAnimation(.smooth(duration: 0.3)) { bandSmall = small } }
+            if small != bandSmall { bandSmall = small }
         }
         .environment(\.readerNarrow, narrow)
         .task(id: model.settings.videoTranscript) {
@@ -238,7 +240,16 @@ struct ReaderVideoBody: View {
                 ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                     thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
                                     resumeAt: resumeAt, controller: playback)
-                    .frame(maxWidth: bandPlayerHeight.map { $0 * 16 / 9 } ?? Metrics.theaterMaxWidth)
+                    // The snap eases the player's height frame by frame, so the page under it is laid out again each
+                    // frame and moves with it, rather than each view sliding to its new place on its own.
+                    .keyframeAnimator(initialValue: CGFloat(0), trigger: bandSmall) { player, lag in
+                        player.frame(maxWidth: bandPlayerHeight.map { ($0 + lag) * 16 / 9 } ?? Metrics.theaterMaxWidth)
+                    } keyframes: { _ in
+                        KeyframeTrack {
+                            MoveKeyframe(bandSnap)
+                            CubicKeyframe(0, duration: 0.3)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, wide ? 16 : 0)
                     .background(Color.black)
