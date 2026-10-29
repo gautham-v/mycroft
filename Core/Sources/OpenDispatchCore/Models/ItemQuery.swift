@@ -39,7 +39,7 @@ public struct ItemQuery: Sendable, Hashable {
     public var since: Date?
     /// Hide Read Items: leave out items read before this time. nil lists read items too.
     public var hideReadBefore: Date?
-    /// A topic's chips: which kind of item the list shows (the app sets it only for a topic's list).
+    /// A topic's Show filter: which kind of item the list shows (the app sets it only for a topic's list).
     public var topicFilter: TopicContentFilter
 
     public static let defaultLimit = 50

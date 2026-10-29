@@ -202,8 +202,11 @@ public struct FeedItem: Sendable, Hashable, Identifiable {
     public var isSaved: Bool { item.isSaved }
     /// Where the item came from: its source's title, or for a topic's item its author (a publisher, channel, show, "Hacker News").
     public var originName: String { source.originName(of: item) }
-    /// Where the row sorts: a story's lead by its newest article (`Item.storyAt`), anything else by its own time.
-    public var cursor: ItemCursor { ItemCursor(publishedAt: item.storyAt ?? item.publishedAt, id: item.id) }
+    /// The keyset cursor after this row. A topic's list sorts a story's lead by its newest article (`Item.storyAt`); every other
+    /// list sorts by the item's own time, so `inTopic` must say which list the row was listed in.
+    public func cursor(inTopic: Bool) -> ItemCursor {
+        ItemCursor(publishedAt: inTopic ? item.storyAt ?? item.publishedAt : item.publishedAt, id: item.id)
+    }
 }
 
 extension FeedItem: FetchableRecord {

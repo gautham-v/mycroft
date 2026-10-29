@@ -122,7 +122,7 @@ public enum Queries {
             .fetchAll(db)
         var page = Array(rows.prefix(limit))
         if let topic { page = try attachStories(db, to: page, topicId: topic.id) }
-        let next = rows.count > limit ? page.last?.cursor : nil
+        let next = rows.count > limit ? page.last?.cursor(inTopic: topic != nil) : nil
         return ItemPage(items: page, nextCursor: next)
     }
 
@@ -268,15 +268,19 @@ public enum Queries {
     @discardableResult
     public static func pruneOldItems(_ db: Database, before cutoff: Date = Retention.cutoff()) throws -> Int {
         let holders = databaseQuestionMarks(count: OpenedLinks.feedURLs.count)
-        try db.execute(sql: """
-            DELETE FROM items WHERE is_saved = 0
+        let doomed = """
+            is_saved = 0
               AND (CASE WHEN source_id IN (SELECT id FROM sources WHERE feed_url IN (\(holders))) THEN created_at ELSE published_at END) < ?
               AND NOT EXISTS (
                 SELECT 1 FROM highlights h JOIN sources s ON s.feed_url = h.source_feed_url
                 WHERE s.id = items.source_id AND h.item_guid = items.guid)
-            """, arguments: StatementArguments(OpenedLinks.feedURLs) + [cutoff])
+            """
+        let arguments = StatementArguments(OpenedLinks.feedURLs) + [cutoff]
+        // A read story whose lead is pruned must stay read: its next article takes over the lead's read mark.
+        let readLeads = try readStoryLeads(db, where: doomed, arguments: arguments)
+        try db.execute(sql: "DELETE FROM items WHERE \(doomed)", arguments: arguments)
         let removed = db.changesCount
-        try repairStories(db)
+        try repairStories(db, readLeads: readLeads)
         try pruneReadMarks(db)
         return removed
     }

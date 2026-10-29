@@ -548,6 +548,89 @@ struct TopicStoryTests {
         #expect(try allItems(db, t).allSatisfy { $0.storyId == nil && $0.storyAt == nil })
     }
 
+    @Test func aReadStayReadWhenItsLeadIsPruned() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try Fixture.items(db, sourceId: t.id, [
+            article("khou", Headline.khou, "KHOU", hoursAgo: 30), article("yahoo2", Headline.yahooMemes, "Yahoo", hoursAgo: 26),
+            article("yahoo1", Headline.yahooVideo, "Yahoo", hoursAgo: 25), article("pcworld", Headline.pcWorld, "PCWorld", hoursAgo: 8)])
+        try await group(db, t)
+        #expect(try await db.unreadCounts()[t.id] == 2)
+        let story = try #require(try await rows(db, t).first { $0.item.guid == "khou" })
+        try await db.recordOpen(HistoryEntry(item: story), isMedia: false)
+        #expect(try await db.unreadCounts()[t.id] == 1)
+
+        // The lead is pruned: the story's next article is the lead now, and the story is still read.
+        #expect(try await db.pruneOldItems(before: storyBase.addingTimeInterval(-28 * 3600)) == 1)
+        let list = try await rows(db, t)
+        #expect(list.map(\.item.guid) == ["pcworld", "yahoo2"])
+        #expect(try await db.unreadCounts()[t.id] == 1)
+        let history = try await db.history()
+        #expect(history.contains { $0.itemGuid == "yahoo2" && $0.readAt != nil })
+        // The stale rule path does the same: removing a read lead by a stricter keyword rule keeps the story read.
+        try await db.writer.write { d in
+            let source = try #require(try Source.fetchOne(d, key: t.id))
+            try d.execute(sql: "UPDATE items SET title = 'Nothing about it' WHERE guid = 'yahoo2'")
+            #expect(try Queries.removeStaleTopicItems(d, topic: source, languages: nil) == 1)
+        }
+        #expect(try await rows(db, t).map(\.item.guid) == ["pcworld", "yahoo1"])
+        #expect(try await db.unreadCounts()[t.id] == 1)
+        #expect(try await db.history().contains { $0.itemGuid == "yahoo1" && $0.readAt != nil })
+    }
+
+    @Test func aStoryUnreadStaysUnreadWhenItsLeadIsPruned() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try Fixture.items(db, sourceId: t.id, [
+            article("khou", Headline.khou, "KHOU", hoursAgo: 30), article("yahoo2", Headline.yahooMemes, "Yahoo", hoursAgo: 26)])
+        try await group(db, t)
+        _ = try await db.pruneOldItems(before: storyBase.addingTimeInterval(-28 * 3600))
+        #expect(try await db.unreadCounts()[t.id] == 1)
+    }
+
+    @Test func aStoryTimeFollowsItsNewestArticleWhenThatIsRemoved() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try Fixture.items(db, sourceId: t.id, [
+            article("khou", Headline.khou, "KHOU", hoursAgo: 30), article("yahoo2", Headline.yahooMemes, "Yahoo", hoursAgo: 26),
+            article("yahoo1", Headline.yahooVideo, "Yahoo", hoursAgo: 2)])
+        try await group(db, t)
+        #expect(try await rows(db, t)[0].item.storyAt == storyBase.addingTimeInterval(-2 * 3600))
+        // The newest member goes (not the lead, so nothing is orphaned).
+        try await db.writer.write { d in
+            try d.execute(sql: "DELETE FROM items WHERE guid = 'yahoo1'")
+            try Queries.repairStories(d)
+        }
+        #expect(try await rows(db, t)[0].item.storyAt == storyBase.addingTimeInterval(-26 * 3600))
+        try await db.writer.write { d in
+            try d.execute(sql: "DELETE FROM items WHERE guid = 'yahoo2'")
+            try Queries.repairStories(d)
+        }
+        #expect(try await rows(db, t)[0].item.storyAt == nil)
+    }
+
+    @Test func savedPagesByTheItemsOwnTimeNotItsStoryTime() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try Fixture.items(db, sourceId: t.id, [
+            article("khou", Headline.khou, "KHOU", hoursAgo: 40), article("yahoo2", Headline.yahooMemes, "Yahoo", hoursAgo: 2),
+            article("pcworld", Headline.pcWorld, "PCWorld", hoursAgo: 20), article("lone", "Firefox gets a quiet new settings page", "Ghacks", hoursAgo: 30)])
+        try await group(db, t)
+        for item in try allItems(db, t) { _ = try await db.setSaved(itemId: item.id, saved: true) }
+        let lead = try #require(try allItems(db, t).first { $0.guid == "khou" })
+        #expect(lead.storyAt != nil)
+        var paged: [String] = []
+        var q = ItemQuery(view: .saved, limit: 1)
+        while true {
+            let page = try await db.items(q)
+            paged += page.items.map(\.item.guid)
+            guard let next = page.nextCursor else { break }
+            q = q.after(next)
+        }
+        // Saved lists every saved item by its own time, story members included.
+        #expect(paged == ["yahoo2", "pcworld", "lone", "khou"])
+    }
+
     @Test func theMigrationAddsTheStoryColumnsToExistingItems() throws {
         let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
         try AppDatabase.migrator.migrate(queue, upTo: "v8-topics")
@@ -599,6 +682,41 @@ struct TopicRefreshRuleTests {
         _ = try await db.updateTopic(id: t.id, options: TopicOptions(keyword: "Firefox", places: TopicPlaces(hackerNews: false)))
         _ = try await svc.refreshSource(id: t.id)
         #expect(search.statsRequests.count == before + 1)
+    }
+
+    @Test func aHackerNewsStoryLinkingToAnArticleIsItsDiscussionNotADuplicate() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        let search = ScriptedSearch([
+            [recent("khou", Headline.khou, "KHOU", hoursAgo: 5), recent("yahoo2", Headline.yahooMemes, "Yahoo", hoursAgo: 4)],
+            // Later: a thread linking to the stored article, a title that shares nothing with it.
+            [recentThread(5, "Mozilla ships something", url: "https://khou.example.com/story", points: 10, comments: 4, hoursAgo: 1)],
+            // The same thread again must not be stored twice.
+            [recentThread(5, "Mozilla ships something", url: "https://khou.example.com/story", points: 11, comments: 4, hoursAgo: 1)],
+            // And in one batch with a new article: the article stays a row of the story, the thread is its discussion.
+            [recentThread(6, "Firefox 159 other", url: "https://pcworld.example.com/story", points: 50, comments: 9, hoursAgo: 1),
+             recent("pcworld", Headline.pcWorld, "PCWorld", hoursAgo: 1)],
+        ])
+        let svc = service(db, search)
+        _ = try await svc.refreshSource(id: t.id)
+        _ = try await svc.refreshSource(id: t.id)
+        var list = try await rows(db, t)
+        #expect(list.map(\.item.guid) == ["khou"])
+        #expect(list[0].story?.discussion?.points == 10 && list[0].story?.outlets.count == 2)
+        _ = try await svc.refreshSource(id: t.id)
+        #expect(try allItems(db, t).count == 3)
+        _ = try await svc.refreshSource(id: t.id)
+        list = try await rows(db, t)
+        #expect(list.map(\.item.guid) == ["pcworld", "khou"])
+        #expect(list[0].story?.discussion?.points == 50 && list[0].story?.outlets.count == 1)
+    }
+
+    @Test func topicItemsAreDedupedByLinkWithinTheirKind() {
+        let a = recent("a", "Firefox one", "Verge", hoursAgo: 1, url: "https://x.example.com/p")
+        let b = recent("b", "Firefox one again", "Wired", hoursAgo: 1, url: "https://www.x.example.com/p/")
+        let h = recentThread(1, "Firefox one", url: "https://x.example.com/p", points: 3, comments: 1, hoursAgo: 1)
+        let h2 = recentThread(2, "Firefox one", url: "https://x.example.com/p", points: 9, comments: 1, hoursAgo: 1)
+        #expect(DefaultRefreshService.dedupeTopicItems([a, b, h, h2], stored: []).map(\.guid) == ["a", "hn:2"])
     }
 
     @Test func aRefreshRemovesStoredItemsTheRulesNoLongerAllow() async throws {

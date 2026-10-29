@@ -1137,9 +1137,13 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
 - Stories: a lead has `story_id` NULL and `story_at` (its newest article's time); other outlets' articles and the Hacker News thread have `story_id` = the lead's id. Only news articles
   (no video id, audio, Reddit or Hacker News guid) join: by `TopicStories` (title words minus the keyword, stop words and a rough stem; at least 3 shared and 50% of the shorter title, or 2 and 75%;
   published within 3 days). A headline that links two others pulls both in. A thread joins when its URL equals an article's (`FeedDedupe.linkKey`) or its title matches. The topic list shows
-  `story_id IS NULL` rows only and sorts and pages by `coalesce(story_at, published_at)` (`FeedItem.cursor` is that time). `FeedItem.story` (`TopicStory`: `outlets`, lead first, then newest
+  `story_id IS NULL` rows only and sorts and pages by `coalesce(story_at, published_at)` (`FeedItem.cursor(inTopic:)` is that time in a topic's list and the item's own `published_at` in every other list, Saved included, so the cursor always matches the query's ORDER BY). `FeedItem.story` (`TopicStory`: `outlets`, lead first, then newest
   first, each with name, headline, url, host, id; `discussion`: the thread with most points) is attached to a page by one extra query and only on a lead with something behind it.
-  Removing a lead (retention, cleanup) passes the story to its oldest remaining article (`Queries.repairStories`); a thread left alone is a row again.
+  Removing a lead (retention, cleanup) passes the story to its oldest remaining article (`Queries.repairStories`); a thread left alone is a row again. A read lead's mark is carried over:
+  the deleting paths first ask `Queries.readStoryLeads` which doomed leads are read and pass them to `repairStories(readLeads:)`, which marks the promoted lead read, so an opened story doesn't come back unread.
+  `repairStories` also renews every story's `story_at`, as removing a story's newest non-lead article moves it.
+- Dedupe: `DefaultRefreshService.dedupeTopicItems` dedupes by link among Hacker News stories and among everything else separately, so a Hacker News story may share its link with an article and
+  `groupTopicStories` attaches it to that story as its discussion (deduping them together dropped one of the two).
 - Read state: a story is read once its lead is read; `unreadCounts` counts rows (`story_id IS NULL`); Mark All as Read on a topic also reads the articles and threads behind each lead;
   `takeNewPostAlerts` skips `story_id` items, so a story notifies once and an outlet joining it never does.
 - Filters: `TopicContentFilter` is all / news / discussions / videos / episodes (`.articles` is now `.news`). Discussions lists Hacker News and Reddit rows of their own (a thread attached to a story is
@@ -1162,9 +1166,10 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
 
 - List (second pass): a topic's list has no bar, chips or bell, and looks like a source's: nothing but the header over the rows, so the first row is never covered. A news story with
   other outlets or a Hacker News thread behind it (`FeedItem.story`) is a `StoryRowView` instead of an `ItemRowView`: the meta line is `StoryOutletStack` (up to 3 overlapping favicons, `SourceBadge`),
-  the first three outlets' names, an accent "+N" that expands `StoryOutletList` in place (each outlet's favicon, its own headline and its name; a click opens that article through
+  the first three distinct outlets' names (two articles of one outlet show it once and "+N" counts outlets, not articles), an accent "+N" that expands `StoryOutletList` in place (each outlet's favicon, its own headline and its name; a click opens that article through
   `AppModel.openOutlet`), then "· 16h" (the newest coverage, `storyAt`); then the headline and thumbnail like any row, and under it `DiscussionChip` ("▲ 10 points · 4 comments on Hacker News", opens
-  the thread's page as a pasted link would, `AppModel.openDiscussion`). The row is not a Button (its parts are): `onTapGesture` opens the lead, which is what j/k, selection and the read dot use.
+  the thread's page as a pasted link would, `AppModel.openDiscussion`). The row is not a Button (its parts are): `onTapGesture` opens the lead, which is what j/k, selection and the read dot use. The row is one accessibility element, so "+N" is also a custom action of it.
+  Opening another outlet's article or the thread highlights the story's row (`AppModel.highlightedItemID` maps a story's outlet or thread id to its lead), and j/k go on from there.
   Opening an outlet or the thread also reads the lead. ⌘ and ⌥ apply to the outlets and the chip as to a row (`ItemListView.openMode`). A Hacker News or Reddit row of a topic ends its meta line with
   "· ▲ 15 · 💬 4" (SF Symbols `arrowtriangle.up.fill` and `bubble.left`, `DiscussionStats`) when it has the numbers. The Topic sheet's Search in has News sites, Hacker News, Reddit ("Opens without
   comments."), YouTube & podcasts and Your subscriptions.

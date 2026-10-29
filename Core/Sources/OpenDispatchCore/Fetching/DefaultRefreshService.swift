@@ -181,7 +181,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             let stats = options.places.hackerNews && !hackerNewsIDs.isEmpty ? await topicSearch.hackerNewsStats(ids: hackerNewsIDs) : [:]
             let cutoff = Retention.cutoff()
             let fresh = outcome.items.filter { $0.publishedAt >= cutoff }
-            let unique = FeedDedupe.dedupe(Array(fresh.prefix(Self.maxTopicItemsPerFetch)), stored: stored, linkOnly: true)
+            let unique = Self.dedupeTopicItems(Array(fresh.prefix(Self.maxTopicItemsPerFetch)), stored: stored)
             let languages = topicSearch.languages
             let rows = try await database.writer.write { db in
                 try Queries.removeStaleTopicItems(db, topic: src, languages: languages)
@@ -200,6 +200,17 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             }
             throw error
         }
+    }
+
+    /// A repeated link is one item, except that a Hacker News story may share its link with an article: the story is the
+    /// discussion of the article's story (`Queries.groupTopicStories`), so the two are deduped apart, each among its own kind.
+    static func dedupeTopicItems(_ items: [ParsedItem], stored: [StoredItemKey]) -> [ParsedItem] {
+        func isThread(_ guid: String) -> Bool { guid.hasPrefix("hn:") }
+        let threads = FeedDedupe.dedupe(items.filter { isThread($0.guid) }, stored: stored.filter { isThread($0.guid) }, linkOnly: true)
+        let others = FeedDedupe.dedupe(items.filter { !isThread($0.guid) }, stored: stored.filter { !isThread($0.guid) }, linkOnly: true)
+        let kept = Dictionary((threads + others).map { ($0.guid, $0) }, uniquingKeysWith: { _, last in last })
+        var emitted = Set<String>()
+        return items.compactMap { emitted.insert($0.guid).inserted ? kept[$0.guid] : nil }
     }
 
     /// sourceItems: scraped items for page sources (and the updated seen_urls), feed items otherwise, with

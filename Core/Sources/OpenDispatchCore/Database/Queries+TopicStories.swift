@@ -132,10 +132,24 @@ extension Queries {
             """)
     }
 
+    /// The ids of the read leads, among the items `condition` selects (SQL on `items`), that have articles or a thread behind them.
+    /// Call before deleting those items and pass the result to `repairStories`, so the story stays read.
+    static func readStoryLeads(_ db: Database, where condition: String, arguments: StatementArguments) throws -> Set<Int64> {
+        Set(try Int64.fetchAll(db, sql: """
+            SELECT id FROM items WHERE story_id IS NULL
+              AND EXISTS (SELECT 1 FROM items m WHERE m.story_id = items.id)
+              AND EXISTS (SELECT 1 FROM history h JOIN sources src ON src.id = items.source_id
+                          WHERE h.source_feed_url = src.feed_url AND h.item_guid = items.guid AND h.read_at IS NOT NULL)
+              AND \(condition)
+            """, arguments: arguments))
+    }
+
     /// After items were deleted: a story whose lead is gone passes to its oldest remaining article (and the others follow it),
-    /// and a Hacker News thread left with no article of its story is a row of its own again. Returns how many items changed.
+    /// and a Hacker News thread left with no article of its story is a row of its own again. A story whose old lead was read
+    /// (`readLeads`, from `readStoryLeads` before the delete) stays read: the new lead is marked read. The stories' times are
+    /// renewed too, as a deleted newest article moves them. Returns how many items changed.
     @discardableResult
-    static func repairStories(_ db: Database) throws -> Int {
+    static func repairStories(_ db: Database, readLeads: Set<Int64> = []) throws -> Int {
         let orphans = try Row.fetchAll(db, sql: """
             SELECT id, story_id, hn_comments_url FROM items
             WHERE story_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM items l WHERE l.id = items.story_id)
@@ -144,7 +158,7 @@ extension Queries {
         var changed = 0
         var byStory: [Int64: [Row]] = [:]
         for row in orphans { byStory[row["story_id"], default: []].append(row) }
-        for (_, rows) in byStory {
+        for (oldLead, rows) in byStory {
             let articles = rows.filter { ($0["hn_comments_url"] as String?) == nil }
             let threads = rows.filter { ($0["hn_comments_url"] as String?) != nil }
             let lead: Int64? = articles.first?["id"]
@@ -157,8 +171,11 @@ extension Queries {
                 try db.execute(sql: "UPDATE items SET story_id = ? WHERE id = ?", arguments: [lead, row["id"] as Int64])
                 changed += 1
             }
+            if let lead, readLeads.contains(oldLead), let item = try feedItem(db, id: lead) {
+                try setRead(db, HistoryEntry(item: item), read: true)
+            }
         }
-        if changed > 0 { try refreshStoryTimes(db) }
+        try refreshStoryTimes(db)
         return changed
     }
 

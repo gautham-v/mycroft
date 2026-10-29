@@ -521,16 +521,17 @@ struct TopicRefreshTests {
             if n == 1 { return outcome([parsed("news-1", "Vision Pro story", url: "https://news.example.com/story?utm_source=x")]) }
             return outcome([
                 parsed("news-1", "Vision Pro story, updated", url: "https://news.example.com/story?utm_source=x"),
-                // The same story as a Hacker News submission: the link is already here.
+                // The same story as a Hacker News submission: it shares the article's link and is stored as its discussion.
                 parsed("hn:5", "Vision Pro story", url: "https://www.news.example.com/story/", hnComments: "https://news.ycombinator.com/item?id=5", points: 200),
                 parsed("fresh", "Another Vision Pro story"),
             ])
         }
         let svc = service(db, search: search)
         #expect(try await svc.refreshSource(id: topic.id) == 1)
-        #expect(try await svc.refreshSource(id: topic.id) == 1)
+        #expect(try await svc.refreshSource(id: topic.id) == 2)
         let rows = try itemRows(db, sourceId: topic.id)
-        #expect(rows.map(\.guid) == ["fresh", "news-1"])
+        #expect(rows.map(\.guid) == ["fresh", "hn:5", "news-1"])
+        #expect(rows.first { $0.guid == "hn:5" }?.storyId == rows.first { $0.guid == "news-1" }?.id)
         #expect(rows.first { $0.guid == "news-1" }?.title == "Vision Pro story, updated")
     }
 

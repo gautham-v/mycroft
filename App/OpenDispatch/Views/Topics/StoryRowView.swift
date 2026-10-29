@@ -60,8 +60,13 @@ private struct StoryRowContent: View {
     /// The newest coverage, which is where the row sorts.
     private var newest: Date { item.item.storyAt ?? item.item.publishedAt }
     private var titleColor: Color { isRead ? .ofRead : .ofInk }
-    private var shownOutlets: [TopicOutlet] { Array(outlets.prefix(StoryOutletStack.limit)) }
-    private var extra: Int { max(0, outlets.count - StoryOutletStack.limit) }
+    /// One entry per outlet, in order: two articles from the same outlet show it once. The expanded list keeps every article.
+    private var distinctOutlets: [TopicOutlet] {
+        var seen = Set<String>()
+        return outlets.filter { seen.insert($0.name.lowercased()).inserted }
+    }
+    private var shownOutlets: [TopicOutlet] { Array(distinctOutlets.prefix(StoryOutletStack.limit)) }
+    private var extra: Int { max(0, distinctOutlets.count - StoryOutletStack.limit) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: isPhone ? 8 : 6) {
@@ -77,6 +82,12 @@ private struct StoryRowContent: View {
         .onTapGesture(perform: actions.openLead)
         .accessibilityElement(children: .contain)
     }
+
+    private func toggleExpanded() { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } }
+
+    /// The "+N" button's label. The meta line sits inside the row's one accessibility element, so VoiceOver reaches the button
+    /// as a custom action of the row.
+    private var expandLabel: Text { Text(verbatim: expanded ? "Hide outlets" : "Show \(extra) more outlets") }
 
     /// An outlet in the expanded list: the lead's own opens the lead.
     private func pick(_ outlet: TopicOutlet) {
@@ -97,6 +108,7 @@ private struct StoryRowContent: View {
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, actions.openLead)
+        .accessibilityActions { if extra > 0 { Button(action: toggleExpanded) { expandLabel } } }
     }
 
     private var phoneMain: some View {
@@ -112,6 +124,7 @@ private struct StoryRowContent: View {
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, actions.openLead)
+        .accessibilityActions { if extra > 0 { Button(action: toggleExpanded) { expandLabel } } }
     }
 
     private func title(_ font: Font, tracking: CGFloat, lines: Int? = nil) -> some View {
@@ -141,9 +154,7 @@ private struct StoryRowContent: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             if extra > 0 {
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
-                } label: {
+                Button(action: toggleExpanded) {
                     Text(verbatim: expanded ? "less" : "+\(extra)")
                         .font(metaFont)
                         .foregroundStyle(Color.ofAccent)
@@ -152,7 +163,7 @@ private struct StoryRowContent: View {
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
-                .accessibilityLabel(expanded ? "Hide outlets" : "Show \(extra) more outlets")
+                .accessibilityLabel(expandLabel)
             }
             Text(verbatim: "\u{00B7} " + RelativeTime.format(newest))
                 .font(metaFont)

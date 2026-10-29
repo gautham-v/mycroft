@@ -99,10 +99,14 @@ extension Queries {
             }
             return false
         }.map { $0["id"] as Int64 }
-        for chunk in stride(from: 0, to: stale.count, by: 500).map({ Array(stale[$0..<min($0 + 500, stale.count)]) }) {
-            try db.execute(sql: "DELETE FROM items WHERE id IN (\(databaseQuestionMarks(count: chunk.count)))", arguments: StatementArguments(chunk))
+        var readLeads = Set<Int64>()
+        let chunks = stride(from: 0, to: stale.count, by: 500).map { Array(stale[$0..<min($0 + 500, stale.count)]) }
+        for chunk in chunks {
+            let ids = "id IN (\(databaseQuestionMarks(count: chunk.count)))"
+            readLeads.formUnion(try readStoryLeads(db, where: ids, arguments: StatementArguments(chunk)))
+            try db.execute(sql: "DELETE FROM items WHERE \(ids)", arguments: StatementArguments(chunk))
         }
-        if !stale.isEmpty { try repairStories(db) }
+        if !stale.isEmpty { try repairStories(db, readLeads: readLeads) }
         return stale.count
     }
 
