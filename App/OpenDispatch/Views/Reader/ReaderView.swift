@@ -118,6 +118,8 @@ struct ReaderItemView: View {
     private var visibleHero: String? {
         guard let hero else { return nil }
         if let html = bodyHTML, ReaderText.contentHasHero(html, hero: hero) { return nil }
+        // A Reddit post's thumbnail is a small copy of the image its body already shows full size.
+        if DiscussionPlace.thread(of: item.item.url) == .reddit, bodyHTML?.contains("<img") == true { return nil }
         return hero
     }
 
