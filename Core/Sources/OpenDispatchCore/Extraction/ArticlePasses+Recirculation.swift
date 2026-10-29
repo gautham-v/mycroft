@@ -108,7 +108,7 @@ extension ArticlePasses {
     // The title of a box of links to other stories, wherever it sits: "Popular Reads" (ABC News), "Recommended
     // Stories" (Al Jazeera), "Popular Stories" (MacRumors), "Read next" (Business Insider), "Read more CNBC tech
     // news", "Read more" (Ghost sites' post grid), "Related topics".
-    private static let recircTitle = P("^(?:(?:most )?popular (?:reads?|stories|posts|articles|now)|most (?:read|viewed|shared|popular|emailed)|recommended (?:for you|stories|reads|articles|posts|reading)|read next|up next|you (?:may|might) also (?:like|enjoy|want to (?:read|see))|you may like|more (?:stories|articles|posts|news|reads|to read)(?: from [^.]{1,40})?|read more(?: [^.]{1,40})?|related (?:stories|articles|posts|coverage|content|reading|links|topics)|don['’]t miss|trending (?:now|stories|articles)|from around the web|sponsored (?:content|stories|links)|cool picks)\\s*:?$", caseInsensitive: true)
+    static let recircTitle = P("^(?:(?:most )?popular (?:reads?|stories|posts|articles|now)|most (?:read|viewed|shared|popular|emailed)|recommended (?:for you|stories|reads|articles|posts|reading)|read next|up next|you (?:may|might) also (?:like|enjoy|want to (?:read|see))|you may like|more (?:stories|articles|posts|news|reads|to read)(?: from [^.]{1,40})?|read more(?: [^.]{1,40})?|related (?:stories|articles|posts|coverage|content|reading|links|topics)|don['’]t miss|trending (?:now|stories|articles)|from around the web|sponsored (?:content|stories|links)|cool picks)\\s*:?$", caseInsensitive: true)
 
     /// A recirculation title with the teasers after it: the title and the cards go. A title left alone (the cards were
     /// already dropped, or prose follows) goes by itself, since it splits the story for nothing.
@@ -216,7 +216,7 @@ extension ArticlePasses {
 
     // MARK: Affiliate lists
 
-    private static let affiliateHost = P("^https?://(?:[\\w-]+\\.)*(?:amzn\\.to|amzn\\.com|geni\\.us|shop-links\\.co|prf\\.hn|howl\\.me|go\\.redirectingat\\.com|shareasale\\.com|linksynergy\\.com|awin1\\.com|anrdoezrs\\.net|jdoqocy\\.com|tkqlhce\\.com|kqzyfj\\.com|go\\.skimresources\\.com|click\\.linksynergy\\.com)/", caseInsensitive: true)
+    private static let affiliateHost = P("^https?://(?:[\\w-]+\\.)*(?:amzn\\.to|amzn\\.com|geni\\.us|shop-links\\.co|prf\\.hn|howl\\.me|go\\.redirectingat\\.com|shareasale\\.com|linksynergy\\.com|awin1\\.com|anrdoezrs\\.net|jdoqocy\\.com|tkqlhce\\.com|kqzyfj\\.com|go\\.skimresources\\.com|click\\.linksynergy\\.com|redirect\\.viglink\\.com)/", caseInsensitive: true)
     private static let amazonTag = P("^https?://(?:www\\.)?amazon\\.[a-z.]+/[^?]*\\?[^#]*\\btag=", caseInsensitive: true)
     static let maxTailAfterAffiliate = 200
 

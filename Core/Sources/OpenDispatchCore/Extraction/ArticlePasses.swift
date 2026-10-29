@@ -1116,6 +1116,7 @@ enum ArticlePasses {
         removeInterfaceBlocks(root, base: base)
         for img in DOM.select(root, "img") where isTinyImg(img) || playerCover.test(DOM.attr(img, "alt") ?? "") { DOM.remove(img) }
         for svg in DOM.select(root, "svg") where DOM.isConnected(svg) && isIconSvg(svg) { DOM.remove(svg) }
+        removePromoText(root, base: base)
         removeDividerImages(root)
         dedupeAdjacentImages(root)
         fullWidthImages(root)
@@ -1292,6 +1293,7 @@ enum ArticlePasses {
         unwrapZoomButtons(root)
         unwrapImageButtons(root)
         removeNotices(root, pageURL: pageURL)
+        removePromoModules(root)
         removeAccessChrome(root)
         removeInterface(root)
         removeRecirculation(root, pageURL: pageURL)
