@@ -266,8 +266,9 @@ public struct ArticleExtraction: Sendable {
     // MARK: Login walls
 
     private static let loginWall = ExtractionDOM.Pattern("\\b(log ?in|sign ?in|sign ?up)\\b.{0,40}\\b(sign ?up|continue|to (?:see|view|read))", caseInsensitive: true)
-    /// A bot check's page (DataDome on Reuters: "Please enable JS and disable any ad blocker").
-    private static let botWall = ExtractionDOM.Pattern("\\b(?:enable (?:js|javascript)\\b.{0,40}\\b(?:ad ?blocker|cookies)|verify(?:ing)? (?:that )?you are (?:a )?human|are you a robot|checking your browser|captcha)", caseInsensitive: true)
+    /// A bot check's page (DataDome on Reuters: "Please enable JS and disable any ad blocker"; The Sun's "Verifying your
+    /// device, please wait"; Cloudflare's "Just a moment...").
+    static let botWall = ExtractionDOM.Pattern("\\b(?:enable (?:js|javascript)\\b.{0,40}\\b(?:ad ?blocker|cookies)|verify(?:ing)? (?:that )?you are (?:a )?human|verif(?:y|ying) your (?:device|browser)|verification failed|just a moment\\.\\.\\.|are you a robot|checking your browser|captcha)", caseInsensitive: true)
 
     static let minProseParagraph = 120
 
