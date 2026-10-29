@@ -43,6 +43,7 @@ public struct ArticleExtraction: Sendable {
         let media = Passes.protectMedia(document)
         Passes.neutralizeReadabilityClasses(document)
         Passes.mergeSplitContainers(document)
+        Passes.keepArticleContent(document)
         let regionHTML = Self.headlineRegion(document).map(DOM.outerHTML)
         let title = DOM.first(document, "title").map { (try? $0.text()) ?? "" } ?? ""
         let pageHTML = (try? document.outerHtml()) ?? html

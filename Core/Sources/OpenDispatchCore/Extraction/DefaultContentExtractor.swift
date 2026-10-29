@@ -163,6 +163,11 @@ public struct DefaultContentExtractor: ContentExtractor {
         let pageURL = res.url?.absoluteString ?? url
         var out = try await extraction.extract(html: html, pageURL: pageURL)
         out.paywalled = PaywallDetection.isWalled(pageHTML: html, articleHTML: out.contentHtml, url: url)
+        // A story the page only starts and its scripts finish (`hasUnfilledPrivateContent`): the rendered copy is the story.
+        if ArticlePasses.hasUnfilledPrivateContent(html), let r = try? await extractRendered(url: url, timeout: Self.renderTimeout),
+           let full = r.contentHtml, ExtractionDOM.plainText(full).count > 2 * ExtractionDOM.plainText(out.contentHtml).count {
+            return ExtractResult(contentHtml: full, leadImage: out.leadImage ?? r.leadImage, rendered: true, paywalled: r.paywalled)
+        }
         return out
     }
 

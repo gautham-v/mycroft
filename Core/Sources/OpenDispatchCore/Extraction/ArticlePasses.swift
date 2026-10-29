@@ -676,7 +676,7 @@ enum ArticlePasses {
     // MARK: Images
 
     static let tinyImg: Double = 64
-    private static let authorHref = P("/(authors?|author-profile|people|staff|contributors?)/", caseInsensitive: true)
+    static let authorHref = P("/(authors?|author-profile|people|staff|contributors?)/", caseInsensitive: true)
     private static let avatarSrc = P("gravatar\\.com|/avatars?/|[?&]s=(?:[1-9]\\d?|1[0-2]\\d)(?:&|$)", caseInsensitive: true)
     private static let avatarClass = P("\\b(avatar|author)", caseInsensitive: true)
     /// Logos, avatars, a site's default share picture (NPR's facebook-default-wide) and a social card with the title
@@ -1097,9 +1097,7 @@ enum ArticlePasses {
             guard DOM.isConnected(el) else { continue }
             if DOM.rawText(el).trimmingCharacters(in: .whitespacesAndNewlines).count > 400 { continue }
             let hasAvatar = DOM.select(el, "img").contains(where: isTinyImg)
-            let hasAuthorLink = DOM.select(el, "a[href]").contains {
-                authorHref.test(DOM.attr($0, "href") ?? "") || DOM.attr($0, "rel") == "author"
-            }
+            let hasAuthorLink = hasAuthorCardLink(el)
             // A card with a heading is content with a small logo in it (Fox Sports' team rankings), not an author card.
             if hasAuthorLink || (hasAvatar && DOM.first(el, "h1, h2, h3, h4, h5, h6") == nil) { DOM.remove(el) }
         }
@@ -1157,7 +1155,7 @@ enum ArticlePasses {
     // MARK: mergeSplitContainers
 
     private static let contentToken = P("(?:^|[-_])(?:content|body|text|article|entry|story|post|prose|copy)(?:[-_]|$)", caseInsensitive: true)
-    private static let sideToken = P("comment|repl|related|sidebar|footer|header|nav|menu|teaser|card|excerpt|summary|preview|promo|widget|share|caption|meta|author|bio|tag", caseInsensitive: true)
+    static let sideToken = P("comment|repl|related|sidebar|footer|header|nav|menu|teaser|card|excerpt|summary|preview|promo|widget|share|caption|meta|author|bio|tag", caseInsensitive: true)
     private static let commentToken = P("^(?:[\\w-]*[-_])?(?:comments?|comment-?list|repl(?:y|ies)|disqus|discussions?|responses)(?:[-_][\\w-]*)?$", caseInsensitive: true)
     static let maxSplitDepth = 4
     static let maxTextBetween = 200
