@@ -69,7 +69,7 @@ public struct ArticleExtraction: Sendable {
             let text = clean ?? SiteVideo.description(document).map { ArticleSanitizer.sanitize($0) } ?? ""
             return ExtractResult(contentHtml: SiteAudio.marker(audio) + text, leadImage: lead)
         }
-        guard let found = clean else { return ExtractResult(contentHtml: nil, leadImage: lead) }
+        guard let found = clean else { return ExtractResult(contentHtml: Self.walledTeaser(document, pageHTML: html, pageURL: pageURL), leadImage: lead) }
         let withHero = Self.heroVideoFirst(found, heroes: heroes)
         return ExtractResult(contentHtml: withHero, leadImage: lead ?? Passes.firstImage(withHero))
     }
@@ -83,7 +83,8 @@ public struct ArticleExtraction: Sendable {
     static func finish(readabilityContent content: String, media: [String], base: String) -> String? {
         let out = ArticleSanitizer.sanitize(Passes.cleanArticle(Passes.restoreMedia(content, media), base: base))
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return out.isEmpty ? nil : out
+        // Wrappers with nothing in them (a page whose only "article" was a related-posts grid) are no article.
+        return out.isEmpty || !(DOM.withFragment(out) { Passes.hasMediaOrText($0) } ?? true) ? nil : out
     }
 
     // MARK: Feed copy

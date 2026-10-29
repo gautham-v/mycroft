@@ -1106,6 +1106,7 @@ enum ArticlePasses {
         }
         // After author cards: their profile links are what identifies them.
         removeBoilerplate(root)
+        removeRecirculationText(root, base: base)
         for img in DOM.select(root, "img") where isTinyImg(img) || playerCover.test(DOM.attr(img, "alt") ?? "") { DOM.remove(img) }
         for svg in DOM.select(root, "svg") where DOM.isConnected(svg) && isIconSvg(svg) { DOM.remove(svg) }
         removeDividerImages(root)
@@ -1273,6 +1274,7 @@ enum ArticlePasses {
         unwrapZoomButtons(root)
         unwrapImageButtons(root)
         removeInterface(root)
+        removeRecirculation(root, pageURL: pageURL)
         normalizeCodeBlocks(root)
         dropDarkVariants(root)
         removeAvatars(root)
