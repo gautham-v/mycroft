@@ -1090,6 +1090,7 @@ enum ArticlePasses {
 
     private static func cleanArticle(root: Element, base: String?) -> String {
         if let base { absolutize(root, base: base) }
+        unshieldCaptionLinks(root)
         removeScreenReaderText(root)
         removePlayerChrome(root)
         removeDeadMedia(root)
@@ -1107,6 +1108,9 @@ enum ArticlePasses {
         removeBoilerplate(root)
         for img in DOM.select(root, "img") where isTinyImg(img) || playerCover.test(DOM.attr(img, "alt") ?? "") { DOM.remove(img) }
         for svg in DOM.select(root, "svg") where DOM.isConnected(svg) && isIconSvg(svg) { DOM.remove(svg) }
+        removeDividerImages(root)
+        dedupeAdjacentImages(root)
+        fullWidthImages(root)
         tidyFigures(root)
         promoteBoldHeadings(root)
         for p in DOM.select(root, "p") where DOM.isConnected(p) && !hasMediaOrText(p) && DOM.first(p, "br") == nil { DOM.remove(p) }
@@ -1254,10 +1258,12 @@ enum ArticlePasses {
     /// Page-wide cleanup that must happen while the page's class names and structure are intact.
     static func prepare(_ root: Element, base: String, pageURL: String, videos: [ExtractionPayload.Video] = []) {
         resolveStreamedBoundaries(root)
+        promoteLazyImages(root)
         absolutize(root, base: base)
         normalizeEmbeds(root)
         removeScreenReaderText(root)
         removePlayerChrome(root)
+        unwrapImageButtons(root)
         removeInterface(root)
         normalizeCodeBlocks(root)
         dropDarkVariants(root)
@@ -1266,6 +1272,7 @@ enum ArticlePasses {
         captionBlocks(root)
         rebuildYouTube(root)
         unlinkHeadings(root)
+        upgradePictureFallbacks(root)
         collapsePictures(root)
         removeSamePageNav(root, pageURL: pageURL)
         markClientRenderedFigures(root, pageURL: pageURL)
