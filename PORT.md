@@ -1133,3 +1133,13 @@ History treat it like any source. Migration `v8-topics` rebuilds `sources` (new 
 - Views: `Views/Topics/TopicEditorView.swift` (the sheet), `TopicListBar.swift` (status, bell, Edit and `TopicChips` under the list header; Mac and iPad), `Views/Sidebar/SidebarTopics.swift`
   (the "Topics" group between the view rows and the sources), `ExploreTopicButton` (Follow / Following; on the Mac's results header, reusable on the iPhone). Rows name a topic's
   item by its origin (`ItemRowView.showsTopic` adds the keyword outside the topic's list); the reader, speech, now-playing and highlights use `FeedItem.originName`.
+
+### Topics (App: iPhone) — 2026-10-28
+- Drawer (`PhoneDrawer`): a "Topics" section after the view rows and before Folders, always shown (its + is the way to a first topic besides Explore's Follow; empty, it holds a one-line hint).
+  `DrawerTopicRow` shows the "number" symbol, the keyword and the unread count (a spinner while it searches). Holding a row gives Edit Topic…, Notify on New Matches (checked),
+  Mark All as Read and Remove Topic… (alert: "Removing a topic also removes its items."). The drawer's search also matches topics. The + and Edit Topic close the drawer, then the sheet opens.
+- Topic page: the home list with the keyword as its title row, `PhoneTopicStatusRow` under it ("Topic · Updated 3h ago", Couldn't update, a spinner) and the chips (`PhoneTopicChipsHeader`)
+  as a pinned section header over the rows. The home list has no navigation bar, so the toolbar actions are a glass pill in the bottom bubbles beside search (`PhoneTopicBubbles`:
+  the bell, and a menu with Edit Topic…, Mark All as Read, Remove Topic…).
+- Explore (`ExplorePhoneView`): a row at the top of the results, "Follow as a topic" with `ExploreTopicButton` (Following opens the topic).
+- Not run on the simulator beyond launch (no way to tap from the command line here); build-checked for iOS and macOS.

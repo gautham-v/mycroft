@@ -226,6 +226,11 @@ private struct PhoneBottomBar: View {
                         HStack {
                             if isHome { menuButton }
                             Spacer(minLength: 0)
+                            // A topic's bell and menu, spaced wider than the container's merge distance so the pill stays apart from search.
+                            if isHome, model.isTopicSelected {
+                                PhoneTopicBubbles()
+                                    .padding(.trailing, 14)
+                            }
                             searchButton
                         }
                         if isHome, model.phonePageIndex != nil { PhonePageDots() }

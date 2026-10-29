@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Explore on the iPhone, the drawer's first row: a page in the home column with the drawer's hamburger and
 /// a search field at the top. With nothing searched it lists recent searches and what was played last
-/// (History). A search (Return) shows filter chips (All, Videos, Episodes, Sources) over the results: in All,
+/// (History). A search (Return) shows filter chips (All, Videos, Episodes, Sources) over the results, which
+/// start with a row that follows the search as a topic (Follow, then Following, which opens the topic): in All,
 /// videos in a row to swipe through, then three episodes and three sources, each with See All; a chip shows
 /// one kind in full. A last row searches the web in the default browser. Typing a web address instead of
 /// words opens it directly. A result opens in the reader pushed onto the stack, like a History row, and
@@ -236,6 +237,7 @@ struct ExplorePhoneView: View {
 
     @ViewBuilder private var results: some View {
         let explore = model.explore
+        followRow(explore.query)
         switch filter {
         case .all: allSections(explore)
         case .videos: videoSection(explore, all: true)
@@ -245,6 +247,32 @@ struct ExplorePhoneView: View {
         ExploreWebRow(query: explore.query, isPhone: true)
             .padding(.horizontal, Self.side)
             .padding(.top, 18)
+    }
+
+    /// Follow / Following for the searched words as a topic, above the results.
+    private func followRow(_ query: String) -> some View {
+        HStack(spacing: 12) {
+            OFIcon.topic.image
+                .font(.system(size: 14))
+                .foregroundStyle(.ofBody)
+                .frame(width: 28, height: 28)
+                .background(Color.ofCardInset, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.topic(matching: query) == nil ? "Follow as a topic" : "Following as a topic")
+                    .font(OFFont.ui(15, .medium))
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                Text("New matches from news, forums, videos and podcasts")
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            ExploreTopicButton(query: query)
+        }
+        .padding(.horizontal, Self.side)
+        .padding(.top, 10)
     }
 
     /// All: videos, episodes and sources, each cut short with See All, and left out when it came back empty.

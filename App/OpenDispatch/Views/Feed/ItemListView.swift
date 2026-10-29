@@ -187,22 +187,20 @@ struct ItemListView: View {
                         }
                         .tint(Color.ofInk)
                 }
+                if isPhone, model.isTopicSelected {
+                    PhoneTopicStatusRow()
+                    // The chips stay pinned at the top while the rows scroll under them.
+                    Section {
+                        listRows(items, prefetchFrom: prefetchFrom)
+                    } header: {
+                        PhoneTopicChipsHeader()
+                    }
+                } else {
+                    listRows(items, prefetchFrom: prefetchFrom)
+                }
+                #else
+                listRows(items, prefetchFrom: prefetchFrom)
                 #endif
-                if items.isEmpty { ListStateRows() }
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let previous = index > 0 ? items[index - 1].id : nil
-                    row(item, previousID: previous)
-                        .onAppear {
-                            if index == 0 { topRow.id = item.id }
-                            if index >= prefetchFrom { Task { await model.loadMore() } }
-                        }
-                        .onDisappear {
-                            if topRow.id == item.id { topRow.id = nil }
-                        }
-                }
-                if model.nextCursor != nil {
-                    ListSentinel(page: items.count)
-                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -222,6 +220,25 @@ struct ItemListView: View {
                 scrollToTop(proxy, firstID: new)
             }
             .background { HighlightFollower(proxy: proxy) }
+        }
+    }
+
+    /// The list's states and rows, with the sentinel that pages in the next ones.
+    @ViewBuilder private func listRows(_ items: [FeedItem], prefetchFrom: Int) -> some View {
+        if items.isEmpty { ListStateRows() }
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            let previous = index > 0 ? items[index - 1].id : nil
+            row(item, previousID: previous)
+                .onAppear {
+                    if index == 0 { topRow.id = item.id }
+                    if index >= prefetchFrom { Task { await model.loadMore() } }
+                }
+                .onDisappear {
+                    if topRow.id == item.id { topRow.id = nil }
+                }
+        }
+        if model.nextCursor != nil {
+            ListSentinel(page: items.count)
         }
     }
 
