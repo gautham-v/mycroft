@@ -58,7 +58,7 @@ public struct DefaultTopicSearch: TopicSearching {
         case .reddit:
             return RedditPages.posts(inSearch: try await DiscussionWeb.shared.redditHTML(RedditPages.searchPath(query, range: "week", sort: "new")))
         case .x:
-            return DefaultDiscussions.xPosts(try await DiscussionWeb.shared.xPage(XPages.searchURL(query), scrolls: 1))
+            return DefaultDiscussions.xPosts(try await DiscussionWeb.shared.xPage(XPages.searchURL(query), scrolls: 1, background: true))
         default:
             return []
         }

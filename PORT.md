@@ -1212,7 +1212,11 @@ Explore searches posts, and the reader shows comments under a thread and under e
 - `DiscussionWeb` (main actor, WebKit): hidden views on the default data store with images, media and fonts blocked by a content rule list.
   Reddit: a page load passes the JavaScript challenge, then `fetch` runs inside the page in an isolated content world; a block (403/429, the block page, the
   small challenge page with its `"solution"` field) loads a page again once, then throws `blocked`. Post pages are cached three minutes (the reader asks for the
-  body and the comments separately). X: one page at a time; loads the URL, waits for posts (or the login wall: `signInRequired`), scrolls twice for a search and three
+  body and the comments separately). X: two views, each one page at a time: the reader's and Explore's, and Topics' (`xPage(_:scrolls:background:)`), so replies
+  never wait behind a topic refresh. A view already on x.com moves to the next page inside X's app (`history.pushState` and a `popstate`), which skips reloading X,
+  and takes the `TweetDetail` answer naming the post (a search: the first `SearchTimeline` since the move); a page that view already showed since its last load, or
+  one with no answer in 6 seconds, is loaded afresh (X would show a revisited page from memory without asking). Answers are polled every 100 ms, and a page X
+  answered is cached three minutes. Without an answer it waits for posts (or the login wall: `signInRequired`), scrolls twice for a search and three
   times for replies, and keeps each cell once (keyed by its post). `WebAccount` (x, reddit): `isSignedIn()` (the session cookie `auth_token` / `reddit_session`
   in the default store), `signOut()` (removes the site's data), `browserUserAgent` (Safari's).
 - Reader content: `DefaultContentExtractor` reads a Reddit post (`DiscussionContent`: its text, image, gallery or link) and a Hacker News item (Ask HN text, a link

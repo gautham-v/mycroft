@@ -86,9 +86,13 @@ extension WebAccount {
 /// cookies go along and its scripts can't interfere) and handed back as HTML for `RedditPages`. A blocked answer (Reddit's
 /// block page, a 403 or 429) loads a page again once before giving up.
 ///
-/// X: X draws everything in the browser, so the view opens the search or the post itself, waits for posts to appear,
-/// scrolls a few times (X keeps only the cells near the viewport) and hands back the timeline's cells for `XPages`. It
-/// needs the user signed in to X in the app (`WebAccount.x`); one page at a time.
+/// X: X draws everything in the browser, so the view opens the search or the post itself and keeps X's own answer to it
+/// (`TweetDetail`, `SearchTimeline`) for `XPages`; without one it waits for posts to appear, scrolls a few times (X keeps
+/// only the cells near the viewport) and hands back the timeline's cells. Once a view is on x.com it moves to the next page
+/// inside X's app (as following a link there does), which skips loading X again; a page X has already shown in that view
+/// is loaded afresh, since X would show it from memory without asking. A post's replies and Explore's search have a view
+/// of their own and Topics' searches another, so the reader never waits behind a topic refresh; each view reads one page
+/// at a time, and a page read in the last few minutes is reused. It needs the user signed in to X in the app (`WebAccount.x`).
 ///
 /// Images, media and fonts are never loaded. Everything here runs on the main actor; the views are made on first use.
 @MainActor
@@ -100,8 +104,13 @@ public final class DiscussionWeb: NSObject {
     /// Post pages fetched in the last few minutes: the reader asks for a post's body and its comments separately.
     private var redditPages: [String: (at: Date, html: String)] = [:]
     private static let pageLifetime: TimeInterval = 180
-    private var x: SiteView?
-    private var xQueue: Task<Void, Never>?
+    /// How long a page moved to inside X's app has to answer before it is loaded afresh.
+    private static let xInPageWait: TimeInterval = 6
+    /// X's views: the reader's and Explore's, and Topics'.
+    private let xFront = XLane()
+    private let xBack = XLane()
+    /// X pages read in the last few minutes (those X answered), by address.
+    private var xPages: [String: (at: Date, page: XPage)] = [:]
     private var rules: WKContentRuleList?
     private var rulesLoaded = false
 
@@ -115,7 +124,8 @@ public final class DiscussionWeb: NSObject {
             reddit = nil
             redditReady = false
         case .x:
-            x = nil
+            for lane in [xFront, xBack] { lane.view = nil }
+            xPages = [:]
         }
     }
 
@@ -143,7 +153,14 @@ public final class DiscussionWeb: NSObject {
     }
 
     private func redditView(warmingWith path: String, force: Bool) async throws -> SiteView {
-        let view = await siteView(.reddit)
+        let view: SiteView
+        if let existing = reddit, !existing.terminated {
+            view = existing
+        } else {
+            view = await newView(.reddit)
+            reddit = view
+            redditReady = false
+        }
         if redditReady && !force { return view }
         // A page load passes the challenge; the page asked for is as good as any.
         let page = path.hasPrefix("/svc/") ? "/" : path
@@ -193,16 +210,32 @@ public final class DiscussionWeb: NSObject {
         var cells: [String]
     }
 
+    /// One of X's hidden views and the pages waiting for it.
+    private final class XLane {
+        var view: SiteView?
+        var queue: Task<Void, Never>?
+        /// The pages X's app has shown in `view` since it last loaded x.com.
+        var shown: Set<String> = []
+    }
+
     /// An X page, after waiting for X's answer (or, without one, for posts to be drawn, scrolling `scrolls` times).
-    func xPage(_ url: String, scrolls: Int) async throws -> XPage {
+    /// `background` reads it in Topics' view.
+    func xPage(_ url: String, scrolls: Int, background: Bool = false) async throws -> XPage {
         try Self.requireForeground()
         guard await WebAccount.x.isSignedIn() else { throw DiscussionError.signInRequired(.x) }
-        let previous = xQueue
+        if let cached = xPages[url], Date().timeIntervalSince(cached.at) < Self.pageLifetime { return cached.page }
+        let lane = background ? xBack : xFront
+        let previous = lane.queue
         let task = Task { @MainActor () throws -> XPage in
             _ = await previous?.value
-            return try await self.readX(url, scrolls: scrolls)
+            let page = try await self.readX(url, scrolls: scrolls, in: lane)
+            if !page.answers.isEmpty {
+                self.xPages = self.xPages.filter { Date().timeIntervalSince($0.value.at) < Self.pageLifetime }
+                self.xPages[url] = (Date(), page)
+            }
+            return page
         }
-        xQueue = Task { _ = try? await task.value }
+        lane.queue = Task { _ = try? await task.value }
         return try await task.value
     }
 
@@ -211,7 +244,7 @@ public final class DiscussionWeb: NSObject {
     private static let xCapture = """
         (() => {
           const ops = /\\/(TweetDetail|SearchTimeline)\\b/;
-          const keep = (u, body) => { const m = ops.exec(u); if (m) (window.__odx = window.__odx || []).push({ op: m[1], body }); };
+          const keep = (u, body) => { const m = ops.exec(u); if (m) (window.__odx = window.__odx || []).push({ op: m[1], u, body }); };
           const open = XMLHttpRequest.prototype.open;
           XMLHttpRequest.prototype.open = function (method, u) {
             this.addEventListener("load", () => { try { keep(String(u), this.responseText); } catch (e) {} });
@@ -227,11 +260,37 @@ public final class DiscussionWeb: NSObject {
         })();
         """
 
-    private func readX(_ url: String, scrolls: Int) async throws -> XPage {
-        let view = await siteView(.x)
-        try await view.load(URL(string: url)!)
-        let op = XPages.statusID(url) != nil ? "TweetDetail" : "SearchTimeline"
-        let answers = "return (window.__odx || []).filter((a) => a.op === op).map((a) => a.body);"
+    private func readX(_ url: String, scrolls: Int, in lane: XLane) async throws -> XPage {
+        guard let target = URL(string: url), let parts = URLComponents(url: target, resolvingAgainstBaseURL: false) else {
+            throw DiscussionError.notFound
+        }
+        let started = Date()
+        let view = await xView(lane)
+        let id = XPages.statusID(url)
+        let op = id != nil ? "TweetDetail" : "SearchTimeline"
+        // A post's answer names the post; a search's is the only one since the page changed.
+        let answers = "return (window.__odx || []).filter((a) => a.op === op && a.u.includes(id)).map((a) => a.body);"
+        let arguments: [String: Any] = ["op": op, "id": id ?? ""]
+        var bodies: [String] = []
+        let path = parts.percentEncodedPath + (parts.percentEncodedQuery.map { "?" + $0 } ?? "")
+        if let current = view.webView.url, current.host == "x.com", !current.path.hasPrefix("/i/flow/"), lane.shown.insert(path).inserted {
+            _ = try? await view.call("""
+                window.__odx = [];
+                history.pushState({}, "", path);
+                dispatchEvent(new PopStateEvent("popstate", { state: {} }));
+                return true;
+                """, arguments: ["path": path], in: .page)
+            try? await view.waitUntil(timeout: Self.xInPageWait, every: 0.1) { view in
+                bodies = (try? await view.call(answers, arguments: arguments, in: .page) as? [String]) ?? []
+                return !bodies.isEmpty
+            }
+        }
+        if !bodies.isEmpty {
+            log.info("x \(url, privacy: .public) \(op, privacy: .public) answers \(bodies.count) in page, \(Date().timeIntervalSince(started), format: .fixed(precision: 2))s")
+            return XPage(answers: bodies.map { Data($0.utf8) }, cells: [])
+        }
+        try await view.load(target)
+        lane.shown = [path]
         var found: [String] = []
         var seen = Set<String>()
         let collect = """
@@ -246,9 +305,8 @@ public final class DiscussionWeb: NSObject {
             """
         var wall = false
         var empty = false
-        var bodies: [String] = []
-        try await view.waitUntil(timeout: 15) { view in
-            bodies = (try? await view.call(answers, arguments: ["op": op], in: .page) as? [String]) ?? []
+        try await view.waitUntil(timeout: 15, every: 0.1) { view in
+            bodies = (try? await view.call(answers, arguments: arguments, in: .page) as? [String]) ?? []
             if !bodies.isEmpty { return true }
             let r = try await view.call(collect, in: Self.world) as? [String: Any]
             wall = r?["wall"] as? Bool == true
@@ -257,7 +315,7 @@ public final class DiscussionWeb: NSObject {
         }
         if wall { throw DiscussionError.signInRequired(.x) }
         if !bodies.isEmpty {
-            log.info("x \(url, privacy: .public) \(op, privacy: .public) answers \(bodies.count)")
+            log.info("x \(url, privacy: .public) \(op, privacy: .public) answers \(bodies.count), \(Date().timeIntervalSince(started), format: .fixed(precision: 2))s")
             return XPage(answers: bodies.map { Data($0.utf8) }, cells: [])
         }
         // A post's page draws the post first and its replies a moment later.
@@ -304,9 +362,15 @@ public final class DiscussionWeb: NSObject {
 
     // MARK: Views
 
-    private func siteView(_ account: WebAccount) async -> SiteView {
-        let existing = account == .x ? x : reddit
-        if let view = existing, !view.terminated { return view }
+    private func xView(_ lane: XLane) async -> SiteView {
+        if let view = lane.view, !view.terminated { return view }
+        let view = await newView(.x)
+        lane.view = view
+        lane.shown = []
+        return view
+    }
+
+    private func newView(_ account: WebAccount) async -> SiteView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WebAccount.dataStore
         #if os(iOS)
@@ -317,14 +381,7 @@ public final class DiscussionWeb: NSObject {
         if account == .x {
             config.userContentController.addUserScript(WKUserScript(source: Self.xCapture, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        let view = SiteView(configuration: config, userAgent: account == .x ? WebAccount.browserUserAgent : nil)
-        switch account {
-        case .x: x = view
-        case .reddit:
-            reddit = view
-            redditReady = false
-        }
-        return view
+        return SiteView(configuration: config, userAgent: account == .x ? WebAccount.browserUserAgent : nil)
     }
 
     /// Blocks images, media and fonts in the hidden views; nil if WebKit won't compile the rules.
@@ -381,12 +438,12 @@ final class SiteView: NSObject, WKNavigationDelegate {
         if let error { cont.resume(throwing: error) } else { cont.resume() }
     }
 
-    /// Polls `ready` every 300 ms until it says so; throws after `timeout`.
-    func waitUntil(timeout: TimeInterval, _ ready: (SiteView) async throws -> Bool) async throws {
+    /// Polls `ready` every `interval` seconds until it says so; throws after `timeout`.
+    func waitUntil(timeout: TimeInterval, every interval: TimeInterval = 0.3, _ ready: (SiteView) async throws -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if (try? await ready(self)) == true { return }
-            try await Task.sleep(nanoseconds: 300_000_000)
+            try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
         }
         throw DiscussionError.unavailable
     }
