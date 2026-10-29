@@ -23,7 +23,7 @@ extension SettingsTab {
         case .reader: "textformat"
         case .playback: OFIcon.video.rawValue
         case .notifications: OFIcon.bell.rawValue
-        case .integrations: OFIcon.send.rawValue
+        case .integrations: "puzzlepiece.extension"
         case .data: "internaldrive"
         case .about: "info.circle"
         }
