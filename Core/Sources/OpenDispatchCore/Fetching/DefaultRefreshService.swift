@@ -162,21 +162,32 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
 
     /// A topic's refresh: search the places it follows, then store the matches like a source's items. Matches repeating a
     /// stored item's link under another guid (a news article that was a Hacker News story) are dropped, the cut-off keeps pruned
-    /// items from coming back, and article items without a picture get their page's. Errors are recorded only when every
-    /// place failed; a place that worked makes the refresh a success.
+    /// items from coming back, and article items without a picture get their page's. In the same transaction the topic's
+    /// stored items that its rules no longer allow are removed (a place turned off, a title without the keyword, another
+    /// language; saved and highlighted ones stay), the points and comments of its stored Hacker News stories are renewed, and
+    /// the news articles are grouped into stories (`Queries.groupTopicStories`), so a notification sees one post per story.
+    /// Errors are recorded only when every place failed; a place that worked makes the refresh a success.
     func refreshTopic(_ src: Source) async throws -> Int {
         do {
             guard let options = src.topicOptions else { throw QueryError.invalid("Topic has no options") }
-            let (stored, subscribed) = try await database.reader.read { db in
-                (try Queries.storedItemKeys(db, sourceId: src.id), try Queries.subscriptions(db))
+            let now = Date()
+            let (stored, subscribed, hackerNewsIDs) = try await database.reader.read { db in
+                (try Queries.storedItemKeys(db, sourceId: src.id), try Queries.subscriptions(db),
+                 try Queries.storedHackerNewsIDs(db, sourceId: src.id, since: Retention.cutoff(now: now)))
             }
-            let outcome = await topicSearch.search(options, subscriptions: TopicSubscriptions(sources: subscribed), now: Date())
+            let outcome = await topicSearch.search(options, subscriptions: TopicSubscriptions(sources: subscribed), now: now)
             if outcome.allFailed { throw TopicSearchError(outcome.errorMessage ?? "Nothing could be searched") }
+            // The numbers of stories stored earlier move after they were found; one request renews them all. A failure keeps the old ones.
+            let stats = options.places.hackerNews && !hackerNewsIDs.isEmpty ? await topicSearch.hackerNewsStats(ids: hackerNewsIDs) : [:]
             let cutoff = Retention.cutoff()
             let fresh = outcome.items.filter { $0.publishedAt >= cutoff }
             let unique = FeedDedupe.dedupe(Array(fresh.prefix(Self.maxTopicItemsPerFetch)), stored: stored, linkOnly: true)
+            let languages = topicSearch.languages
             let rows = try await database.writer.write { db in
+                try Queries.removeStaleTopicItems(db, topic: src, languages: languages)
+                try Queries.applyHackerNewsStats(db, sourceId: src.id, stats: stats)
                 let rows = try Queries.upsertItems(db, sourceId: src.id, items: unique)
+                try Queries.groupTopicStories(db, topic: src)
                 try Queries.markSourceFetched(db, sourceId: src.id, at: Date(), error: nil)
                 return rows
             }

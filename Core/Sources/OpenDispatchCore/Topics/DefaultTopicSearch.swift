@@ -4,13 +4,15 @@ import Foundation
 ///
 /// - news: Bing News' RSS (`/news/search?format=rss`), newest first. Its links go through an `apiclick` redirect that names the
 ///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`.
-/// - discussions: Hacker News through Algolia's API, and Reddit's search (JSON, falling back to its RSS when the JSON is refused,
-///   which it often is outside a browser; the RSS has no score).
+/// - Hacker News through Algolia's API.
+/// - Reddit's search (JSON, falling back to its RSS when the JSON is refused, which it often is outside a browser; the RSS has no
+///   score). A place of its own, off unless the topic asks for it.
 /// - media: YouTube videos from Explore's search (upload-date order, last month) and podcast episodes from the iTunes Search API.
 ///
-/// Every answer is filtered here the same way: it must be recent (the retention window), mention the keyword in its title or
-/// summary and none of the leave-out words, and (as the topic says) not come from a paywalled site and be notable. At most
-/// `perProviderCap` of the newest are kept per provider. Places run at the same time and one failing doesn't fail the others.
+/// Every answer is filtered here the same way: it must be recent (the retention window), have the keyword in its title and none
+/// of the leave-out words in its title or summary, be in a language the user reads (`TopicLanguages`), and (as the topic says)
+/// not come from a paywalled site and be notable. At most `perProviderCap` of the newest are kept per provider. Places run at
+/// the same time and one failing doesn't fail the others.
 public struct DefaultTopicSearch: TopicSearching {
     typealias Fetch = @Sendable (_ url: String, _ headers: [String: String]) async throws -> (Data, HTTPURLResponse)
 
@@ -22,15 +24,17 @@ public struct DefaultTopicSearch: TopicSearching {
 
     let fetch: Fetch
     let explore: any ExploreSearching
+    public let languages: TopicLanguages
 
-    public init(explore: any ExploreSearching = DefaultExploreSearch()) {
-        self.init(fetch: { url, headers in try await HTTP.fetch(url, timeout: Self.timeout, headers: headers) }, explore: explore)
+    public init(explore: any ExploreSearching = DefaultExploreSearch(), languages: TopicLanguages = .current) {
+        self.init(fetch: { url, headers in try await HTTP.fetch(url, timeout: Self.timeout, headers: headers) }, explore: explore, languages: languages)
     }
 
     /// Tests inject a fake network.
-    init(fetch: @escaping Fetch, explore: any ExploreSearching) {
+    init(fetch: @escaping Fetch, explore: any ExploreSearching, languages: TopicLanguages = .current) {
         self.fetch = fetch
         self.explore = explore
+        self.languages = languages
     }
 
     // MARK: TopicSearching
@@ -71,7 +75,8 @@ public struct DefaultTopicSearch: TopicSearching {
         let providers: [Provider]
         switch place {
         case .news: providers = [{ try await self.news(o, now) }]
-        case .discussions: providers = [{ try await self.hackerNews(o, now) }, { try await self.reddit(o, now) }]
+        case .hackerNews: providers = [{ try await self.hackerNews(o, now) }]
+        case .reddit: providers = [{ try await self.reddit(o, now) }]
         case .media: providers = [{ try await self.videos(o, now) }, { try await self.episodes(o, now) }]
         }
         var found: [ParsedItem] = []
@@ -87,7 +92,7 @@ public struct DefaultTopicSearch: TopicSearching {
                 switch result {
                 case .success(let candidates):
                     succeeded += 1
-                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now, checkPaywall: place == .news))
+                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now, checkPaywall: place == .news, languages: languages))
                 case .failure(let error):
                     errors.append(error)
                 }
@@ -119,16 +124,15 @@ public struct DefaultTopicSearch: TopicSearching {
         }
     }
 
-    /// Recent, on topic, wanted and notable as the topic asks; the newest `perProviderCap`.
+    /// Recent, on topic, in the user's language, wanted and notable as the topic asks; the newest `perProviderCap`. `languages` with
+    /// no language in it keeps every language.
     static func finish(_ candidates: [Candidate], _ o: TopicOptions, _ matcher: TopicMatcher, _ subs: TopicSubscriptions,
-                       _ now: Date, checkPaywall: Bool) -> [ParsedItem] {
+                       _ now: Date, checkPaywall: Bool, languages: TopicLanguages = TopicLanguages(preferred: [])) -> [ParsedItem] {
         let cutoff = Retention.cutoff(now: now)
         var seen = Set<String>()
         let kept = candidates.filter { c in
             let item = c.item
-            // The news site's or story's own host counts as a mention, except Hacker News' (every story of it would match "hacker news").
-            let host = c.host == "news.ycombinator.com" ? nil : c.host
-            guard item.publishedAt >= cutoff, matcher.matches(title: item.title, summary: item.summary, host: host) else { return false }
+            guard item.publishedAt >= cutoff, matcher.matchesTitle(item.title, summary: item.summary), !languages.rejects(item.title) else { return false }
             if checkPaywall, o.skipPaywalled,
                TopicPaywalls.isPaywalled(item.url) || c.name.map(TopicPaywalls.isPaywalled(publisher:)) == true { return false }
             if o.notableOnly, !c.isNotable(subs) { return false }
@@ -168,12 +172,15 @@ public struct DefaultTopicSearch: TopicSearching {
 
     // MARK: News
 
-    static func newsURL(_ keyword: String) -> String {
-        "https://www.bing.com/news/search?q=\(encode(phrase(keyword)))&format=rss&qft=sortbydate%3d%221%22"
+    /// `market` ("en-US") asks Bing for the user's language and region; without one Bing picks from the address.
+    static func newsURL(_ keyword: String, market: String? = nil) -> String {
+        var url = "https://www.bing.com/news/search?q=\(encode(phrase(keyword)))&format=rss&qft=sortbydate%3d%221%22"
+        if let market { url += "&mkt=\(encode(market))&setlang=\(encode(market))" }
+        return url
     }
 
     func news(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
-        let data = try await get(Self.newsURL(o.keyword), headers: ["Accept": HTTP.feedAccept])
+        let data = try await get(Self.newsURL(o.keyword, market: languages.market), headers: ["Accept": HTTP.feedAccept])
         return try Self.parseNews(data)
     }
 
@@ -244,6 +251,43 @@ public struct DefaultTopicSearch: TopicSearching {
                     hnComments: h.num_comments ?? 0, hnCommentsUrl: discussion),
                 score: h.points ?? 0, scoreBar: TopicNotability.hackerNewsPoints, host: URLHost.host(of: link))
         }
+    }
+
+    /// Algolia's current numbers for stories already stored (`ids` are Hacker News ids), in as many requests as it takes. A request
+    /// that fails leaves its stories out.
+    public func hackerNewsStats(ids: [String]) async -> [String: TopicHackerNewsStats] {
+        var out: [String: TopicHackerNewsStats] = [:]
+        for chunk in stride(from: 0, to: ids.count, by: Self.hackerNewsStatsBatch).map({ Array(ids[$0..<min($0 + Self.hackerNewsStatsBatch, ids.count)]) }) {
+            guard let data = try? await get(Self.hackerNewsStatsURL(ids: chunk), headers: ["Accept": "application/json"]),
+                  let found = try? Self.parseHackerNewsStats(data) else { continue }
+            out.merge(found) { _, new in new }
+        }
+        return out
+    }
+
+    /// Stories per request: the ids travel in the address, which Algolia caps well above this.
+    static let hackerNewsStatsBatch = 100
+
+    /// One search for several stories by id: `tags=(story_1,story_2)` is an OR.
+    static func hackerNewsStatsURL(ids: [String]) -> String {
+        let tags = "(" + ids.map { "story_\($0)" }.joined(separator: ",") + ")"
+        return "https://hn.algolia.com/api/v1/search?tags=\(encode(tags))&hitsPerPage=\(hackerNewsStatsBatch)&attributesToRetrieve=objectID,points,num_comments&attributesToHighlight=objectID"
+    }
+
+    private struct HNStatsResponse: Decodable {
+        struct Hit: Decodable {
+            var objectID: String
+            var points: Int?
+            var num_comments: Int?
+        }
+        var hits: [Hit]
+    }
+
+    /// Points and comments by story id from an Algolia answer.
+    static func parseHackerNewsStats(_ data: Data) throws -> [String: TopicHackerNewsStats] {
+        let hits = try JSONDecoder().decode(HNStatsResponse.self, from: data).hits
+        return Dictionary(hits.map { ($0.objectID, TopicHackerNewsStats(points: $0.points ?? 0, comments: $0.num_comments ?? 0)) },
+                          uniquingKeysWith: { first, _ in first })
     }
 
     // MARK: Reddit

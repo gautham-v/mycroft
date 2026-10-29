@@ -30,13 +30,21 @@ public struct Item: Sendable, Hashable, Identifiable {
     public var quoteAvatarUrl: String?
     public var isSaved: Bool
     public var createdAt: Date
+    /// A topic's news story: the id of the lead article this item is another outlet's coverage of, or the Hacker News thread
+    /// about it. nil for a lead (an article that opens a story, with or without others behind it) and for every item that
+    /// isn't part of a story (see `TopicStories`).
+    public var storyId: Int64?
+    /// On a story's lead: when its newest article (or the lead itself) was published, which is where the story sorts in the
+    /// topic's list. nil on anything else.
+    public var storyAt: Date?
 
     public init(
         id: Int64 = 0, sourceId: Int64, guid: String, url: String, title: String, summary: String? = nil,
         contentHtml: String? = nil, contentRendered: Bool = false, author: String? = nil, publishedAt: Date,
         thumbnailUrl: String? = nil, thumbnailChecked: Bool = false, videoId: String? = nil, durationSec: Int? = nil,
         audioUrl: String? = nil, hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil,
-        quoteAvatarUrl: String? = nil, isSaved: Bool = false, createdAt: Date = Date()
+        quoteAvatarUrl: String? = nil, isSaved: Bool = false, createdAt: Date = Date(), storyId: Int64? = nil,
+        storyAt: Date? = nil
     ) {
         self.id = id
         self.sourceId = sourceId
@@ -59,6 +67,8 @@ public struct Item: Sendable, Hashable, Identifiable {
         self.quoteAvatarUrl = quoteAvatarUrl
         self.isSaved = isSaved
         self.createdAt = createdAt
+        self.storyId = storyId
+        self.storyAt = storyAt
     }
 }
 
@@ -94,6 +104,8 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         public static let quoteAvatarUrl = Column("quote_avatar_url")
         public static let isSaved = Column("is_saved")
         public static let createdAt = Column("created_at")
+        public static let storyId = Column("story_id")
+        public static let storyAt = Column("story_at")
     }
 
     public init(row: Row) throws {
@@ -119,6 +131,8 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         quoteAvatarUrl = row["quote_avatar_url"]
         isSaved = row["is_saved"] ?? false
         createdAt = row["created_at"]
+        storyId = row["story_id"]
+        storyAt = row["story_at"]
     }
 
     public func encode(to container: inout PersistenceContainer) throws {
@@ -143,6 +157,8 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         container["quote_avatar_url"] = quoteAvatarUrl
         container["is_saved"] = isSaved
         container["created_at"] = createdAt
+        container["story_id"] = storyId
+        container["story_at"] = storyAt
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
@@ -158,6 +174,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
             Columns.contentRendered, Columns.author, Columns.publishedAt, Columns.thumbnailUrl,
             Columns.thumbnailChecked, Columns.videoId, Columns.durationSec, Columns.audioUrl, Columns.hnPoints,
             Columns.hnComments, Columns.hnCommentsUrl, Columns.quoteAvatarUrl, Columns.isSaved, Columns.createdAt,
+            Columns.storyId, Columns.storyAt,
             (Columns.contentHtml != nil).forKey("has_content"),
         ]
     }
@@ -170,18 +187,23 @@ public struct FeedItem: Sendable, Hashable, Identifiable {
     public var source: Source
     /// Full text has already been extracted and cached.
     public var hasContent: Bool
+    /// In a topic's list, a news story's lead with other outlets or a Hacker News thread behind it: the row stands for the
+    /// whole story. nil for every other row, and for a story read without its list (`AppDatabase.feedItem(id:)`).
+    public var story: TopicStory?
 
-    public init(item: Item, source: Source, hasContent: Bool? = nil) {
+    public init(item: Item, source: Source, hasContent: Bool? = nil, story: TopicStory? = nil) {
         self.item = item
         self.source = source
         self.hasContent = hasContent ?? (item.contentHtml != nil)
+        self.story = story
     }
 
     public var id: Int64 { item.id }
     public var isSaved: Bool { item.isSaved }
     /// Where the item came from: its source's title, or for a topic's item its author (a publisher, channel, show, "Hacker News").
     public var originName: String { source.originName(of: item) }
-    public var cursor: ItemCursor { ItemCursor(publishedAt: item.publishedAt, id: item.id) }
+    /// Where the row sorts: a story's lead by its newest article (`Item.storyAt`), anything else by its own time.
+    public var cursor: ItemCursor { ItemCursor(publishedAt: item.storyAt ?? item.publishedAt, id: item.id) }
 }
 
 extension FeedItem: FetchableRecord {

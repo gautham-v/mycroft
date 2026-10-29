@@ -19,7 +19,7 @@ public struct TopicSearchOutcome: Sendable, Hashable {
     /// Every searched place failed: the topic records an error. One that works makes it a success, with whatever it found.
     public var allFailed: Bool { !searched.isEmpty && searched.allSatisfy { failures[$0] != nil } }
 
-    /// The failure to record: the first failed place's, in the order News, Discussions, Media.
+    /// The failure to record: the first failed place's, in the order News, Hacker News, Reddit, Media.
     public var errorMessage: String? {
         TopicPlace.allCases.compactMap { failures[$0] }.first
     }
@@ -103,9 +103,26 @@ public enum TopicNotability {
 /// Searches the places outside the user's subscriptions for a topic. Behind a protocol so refresh tests fake it.
 public protocol TopicSearching: Sendable {
     /// Searches the places `options` turns on, concurrently. Never throws: a place that fails is in `failures`.
-    /// Matches are filtered by the keyword and leave-out words (`TopicMatcher`), paywalled sites when asked, and
+    /// Matches are filtered by the keyword in the title and the leave-out words (`TopicMatcher`), the user's languages, paywalled sites when asked, and
     /// non-notable ones when `notableOnly`.
     func search(_ options: TopicOptions, subscriptions: TopicSubscriptions, now: Date) async -> TopicSearchOutcome
+
+    /// The languages the search keeps; a refresh also removes stored items in any other.
+    var languages: TopicLanguages { get }
+
+    /// Points and comments now of Hacker News stories already stored, keyed by story id ("50276099", the guid without "hn:").
+    /// Stories that can't be read are left out; a failure is silent, the stored numbers stay.
+    func hackerNewsStats(ids: [String]) async -> [String: TopicHackerNewsStats]
+}
+
+/// A Hacker News story's current numbers.
+public struct TopicHackerNewsStats: Sendable, Hashable {
+    public var points: Int
+    public var comments: Int
+    public init(points: Int, comments: Int) {
+        self.points = points
+        self.comments = comments
+    }
 }
 
 /// A topic whose every searched place failed, thrown by a refresh so the topic records the reason as its last error.
@@ -116,6 +133,10 @@ public struct TopicSearchError: Error, LocalizedError, Equatable {
 }
 
 extension TopicSearching {
+    public var languages: TopicLanguages { .current }
+
+    public func hackerNewsStats(ids: [String]) async -> [String: TopicHackerNewsStats] { [:] }
+
     public func search(_ options: TopicOptions, subscriptions: TopicSubscriptions = .empty) async -> TopicSearchOutcome {
         await search(options, subscriptions: subscriptions, now: Date())
     }

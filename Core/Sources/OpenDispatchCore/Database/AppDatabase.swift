@@ -272,6 +272,17 @@ public final class AppDatabase: Sendable {
                 try db.execute(sql: "UPDATE sqlite_sequence SET seq = ? WHERE name = 'sources'", arguments: [seq])
             }
         }
+        // Topic stories: coverage of one story by several outlets is stored as one row per article and listed as one. A lead has
+        // story_id NULL and story_at (when its newest article was published); the other outlets' articles, and the Hacker News
+        // thread about the story, carry the lead's id. No foreign key: removing a lead hands its story to the next article
+        // (Queries.repairStories).
+        m.registerMigration("v9-topic-stories") { db in
+            try db.execute(sql: """
+                ALTER TABLE items ADD COLUMN story_id INTEGER;
+                ALTER TABLE items ADD COLUMN story_at DATETIME;
+                CREATE INDEX items_story_idx ON items(story_id) WHERE story_id IS NOT NULL;
+                """)
+        }
         return m
     }
 }

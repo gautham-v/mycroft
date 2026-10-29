@@ -53,8 +53,9 @@ extension Queries {
     }
 
     /// Change what a topic follows. The title follows the keyword; items, saved items, History and sync records are
-    /// kept (the identity is the reserved feed URL). Unsaved items that no longer match the keyword or leave-out words
-    /// are removed; the others stay until retention prunes them. Throws `notFound` for an unknown id and
+    /// kept (the identity is the reserved feed URL). When the keyword or the leave-out words changed, unsaved and unhighlighted
+    /// items that no longer match are removed; the others stay until a refresh applies the other rules
+    /// (`removeStaleTopicItems`) or retention prunes them. Throws `notFound` for an unknown id and
     /// `invalid` for a blank keyword or a source that isn't a topic.
     @discardableResult
     public static func updateTopic(_ db: Database, id: Int64, options: TopicOptions) throws -> Source {
@@ -69,21 +70,40 @@ extension Queries {
         // What matches is decided by the keyword and the leave-out words alone, so other edits (notify, places, Show)
         // can't turn a stored item into a non-match.
         guard before?.keyword != o.keyword || before?.excluded != o.excluded else { return s }
-        let matcher = TopicMatcher(o)
-        // Highlighted items stay, as in retention. The host counts like it did when the search stored the item.
+        try removeStaleTopicItems(db, topic: s, languages: nil, checkPlaces: false)
+        return s
+    }
+
+    /// Remove a topic's stored items that its current rules would not store: the keyword not in the title, a leave-out word in the
+    /// title or summary, a place now turned off (Reddit, say), a paywalled site when those are skipped, and with `languages` a
+    /// title in a language the user doesn't read. Saved and highlighted items stay. Stories left without their lead pass to
+    /// their next article. Returns how many items were removed.
+    @discardableResult
+    static func removeStaleTopicItems(_ db: Database, topic: Source, languages: TopicLanguages?, checkPlaces: Bool = true) throws -> Int {
+        guard let options = topic.topicOptions else { return 0 }
+        let matcher = TopicMatcher(options)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT id, title, summary, url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
+            SELECT id, guid, url, title, summary, author, video_id, audio_url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
               SELECT 1 FROM highlights h WHERE h.source_feed_url = ? AND h.item_guid = items.guid)
-            """, arguments: [id, s.feedUrl])
+            """, arguments: [topic.id, topic.feedUrl])
         let stale = rows.filter { row in
-            let url: String = row["url"]
-            let host = URLHost.host(of: url)
-            return !matcher.matches(title: row["title"], summary: row["summary"], host: host == "news.ycombinator.com" ? nil : host)
+            let title: String = row["title"]
+            let place = Topic.place(guid: row["guid"], videoId: row["video_id"], audioUrl: row["audio_url"])
+            if checkPlaces, !options.places.isSearched(place) { return true }
+            if !matcher.matchesTitle(title, summary: row["summary"]) { return true }
+            if let languages, languages.rejects(title) { return true }
+            if checkPlaces, place == .news, options.skipPaywalled {
+                let url: String = row["url"]
+                let author: String? = row["author"]
+                if TopicPaywalls.isPaywalled(url) || author.map(TopicPaywalls.isPaywalled(publisher:)) == true { return true }
+            }
+            return false
         }.map { $0["id"] as Int64 }
         for chunk in stride(from: 0, to: stale.count, by: 500).map({ Array(stale[$0..<min($0 + 500, stale.count)]) }) {
             try db.execute(sql: "DELETE FROM items WHERE id IN (\(databaseQuestionMarks(count: chunk.count)))", arguments: StatementArguments(chunk))
         }
-        return s
+        if !stale.isEmpty { try repairStories(db) }
+        return stale.count
     }
 
     /// Stop following a topic and delete its items (saved ones too, like removing a source). False when it isn't a topic here.
@@ -96,12 +116,13 @@ extension Queries {
     // MARK: Unread
 
     /// Unread items per source id, counting the source's own items only (for a topic that is what it stored, not the
-    /// subscription items its list adds). An item is read once History has a read mark for it. Sources with none
+    /// subscription items its list adds). An item is read once History has a read mark for it. A topic counts a news story once,
+    /// by its lead: the other outlets' articles and the Hacker News thread behind it don't add to the count. Sources with none
     /// unread have no entry.
     public static func unreadCounts(_ db: Database) throws -> [Int64: Int] {
         let rows = try Row.fetchAll(db, sql: """
             SELECT i.source_id AS id, COUNT(*) AS n FROM items i JOIN sources s ON s.id = i.source_id
-            WHERE NOT EXISTS (
+            WHERE i.story_id IS NULL AND NOT EXISTS (
               SELECT 1 FROM history h WHERE h.source_feed_url = s.feed_url AND h.item_guid = i.guid AND h.read_at IS NOT NULL)
             GROUP BY i.source_id
             """)
@@ -110,7 +131,21 @@ extension Queries {
 
     // MARK: Item filter
 
-    /// The WHERE condition behind a topic's chips; nil for `.all`.
+    /// How many rows each filter of a topic's list shows (a story is one row), for the title menu. Counts what the list lists,
+    /// the user's own matching items included when the topic shows them.
+    public static func topicFilterCounts(_ db: Database, topicId: Int64) throws -> [TopicContentFilter: Int] {
+        var out: [TopicContentFilter: Int] = [:]
+        for filter in TopicContentFilter.allCases {
+            let src = TableAlias<Source>()
+            var req = Item.joining(required: Item.source.aliased(src))
+            let topic = try topicScope(db, ItemQuery(sourceId: topicId))
+            for cond in conditions(ItemQuery(sourceId: topicId, topicFilter: filter), src: src, topic: topic) { req = req.filter(cond) }
+            out[filter] = try req.fetchCount(db)
+        }
+        return out
+    }
+
+    /// The WHERE condition behind a topic's filters; nil for `.all`.
     static func topicFilterCondition(_ filter: TopicContentFilter) -> SQLExpression? {
         let video = Item.Columns.videoId, audio = Item.Columns.audioUrl, comments = Item.Columns.hnCommentsUrl
         let reddit = SQL("(\(Item.Columns.url) LIKE '%reddit.com/%/comments/%')").sqlExpression
@@ -119,7 +154,7 @@ extension Queries {
         case .videos: return video != nil
         case .episodes: return video == nil && audio != nil
         case .discussions: return video == nil && audio == nil && (comments != nil || reddit)
-        case .articles: return video == nil && audio == nil && comments == nil && !reddit
+        case .news: return video == nil && audio == nil && comments == nil && !reddit
         }
     }
 }

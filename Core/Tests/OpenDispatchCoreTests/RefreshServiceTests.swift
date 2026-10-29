@@ -554,7 +554,7 @@ struct TopicRefreshTests {
         let mode = SharedValue<Int>(0)
         let search = FakeTopicSearch { _, _ in
             switch mode.value {
-            case 0: return TopicSearchOutcome(items: [], searched: TopicPlace.allCases, failures: [.news: "HTTP 503", .discussions: "Timed out", .media: "HTTP 500"])
+            case 0: return TopicSearchOutcome(items: [], searched: TopicPlace.allCases, failures: [.news: "HTTP 503", .hackerNews: "Timed out", .reddit: "Timed out", .media: "HTTP 500"])
             case 1: return TopicSearchOutcome(items: [], searched: TopicPlace.allCases, failures: [.news: "HTTP 503"])
             default: return TopicSearchOutcome(items: [], searched: [])
             }

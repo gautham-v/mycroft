@@ -11,7 +11,7 @@ struct TopicStoreTests {
 
     private func topic(_ db: AppDatabase, _ keyword: String = "vision pro", excluded: [String] = [], subscriptions: Bool = true) async throws -> Source {
         try await db.createTopic(TopicOptions(
-            keyword: keyword, excluded: excluded, places: TopicPlaces(news: true, discussions: true, media: true, subscriptions: subscriptions)))
+            keyword: keyword, excluded: excluded, places: TopicPlaces(news: true, hackerNews: true, media: true, subscriptions: subscriptions)))
     }
 
     @discardableResult
@@ -201,13 +201,13 @@ struct TopicStoreTests {
             try await db.items(ItemQuery(sourceId: t.id, topicFilter: f)).items.map(\.item.guid)
         }
         #expect(try await guids(.all) == ["article", "hn", "reddit", "video", "episode"])
-        #expect(try await guids(.articles) == ["article"])
+        #expect(try await guids(.news) == ["article"])
         #expect(try await guids(.discussions) == ["hn", "reddit"])
         #expect(try await guids(.videos) == ["video"])
         #expect(try await guids(.episodes) == ["episode"])
         // The same split the app can compute for one item.
         let page = try await db.items(ItemQuery(sourceId: t.id)).items
-        for f in [TopicContentFilter.articles, .discussions, .videos, .episodes] {
+        for f in [TopicContentFilter.news, .discussions, .videos, .episodes] {
             #expect(try await guids(f) == page.filter { TopicContentFilter.category(of: $0.item) == f }.map(\.item.guid))
         }
     }
@@ -275,20 +275,19 @@ struct TopicStoreTests {
         #expect(unread[blog.id] == 1)
     }
 
-    @Test func editingOtherOptionsKeepsItemsThatMatchedByHostAndHighlightsSurviveAKeywordChange() async throws {
+    @Test func editingOtherOptionsKeepsItemsAndHighlightsSurviveAKeywordChange() async throws {
         let db = try Fixture.db()
         let t = try await topic(db, "OpenAI")
-        let rows = try store(db, t, [
-            item("host", "Three new discoveries in mathematics", age: 100, url: "https://openai.com/index/math"),
-            item("hn", "Another discovery", age: 200, url: "https://news.ycombinator.com/item?id=1"),
-            item("title", "OpenAI ships a thing", age: 300),
+        try store(db, t, [
+            item("one", "OpenAI ships a thing", age: 100),
+            item("hn", "Another OpenAI discovery", age: 200, url: "https://news.ycombinator.com/item?id=1"),
+            item("two", "OpenAI ships another thing", age: 300),
         ])
-        _ = rows
         var options = try #require(t.topicOptions)
         options.notableOnly = true
         options.skipPaywalled = false
         _ = try await db.updateTopic(id: t.id, options: options)
-        #expect(try await db.items(ItemQuery(sourceId: t.id)).items.map(\.item.guid) == ["host", "hn", "title"])
+        #expect(try await db.items(ItemQuery(sourceId: t.id)).items.map(\.item.guid) == ["one", "hn", "two"])
 
         // A different keyword drops what no longer matches, but not a highlighted item.
         let highlighted = try #require(try await db.items(ItemQuery(sourceId: t.id)).items.first { $0.item.guid == "hn" })
@@ -402,13 +401,19 @@ struct TopicStoreTests {
         #expect(NewPostAlert(itemId: 1, title: "t", publishedAt: now, sourceId: 1, sourceTitle: "rust", itemAuthor: " ", isTopic: true).heading == "rust")
     }
 
-    @Test func matcherCountsAMentionInTheSitesHost() {
+    @Test func theKeywordHasToBeInTheTitleOfASearchResult() {
         let m = TopicMatcher(keyword: "OpenAI", excluded: ["rumor"])
-        #expect(!m.matches(title: "Three new discoveries in mathematics", summary: nil))
-        #expect(m.matches(title: "Three new discoveries in mathematics", summary: nil, host: "openai.com"))
-        // Leave-out words still apply to the text.
-        #expect(!m.matches(title: "A rumor about the lab", summary: nil, host: "openai.com"))
-        #expect(!TopicMatcher(keyword: "vision pro").matches(title: "x", summary: nil, host: "example.com"))
+        #expect(m.matchesTitle("OpenAI ships a thing", summary: nil))
+        // Not the summary, and not the site's host, as the user's own subscriptions' items are.
+        #expect(!m.matchesTitle("Three new discoveries in mathematics", summary: "<p>From OpenAI</p>"))
+        #expect(m.matches(title: "Three new discoveries in mathematics", summary: "<p>From OpenAI</p>"))
+        // Leave-out words are looked for in the title and the summary.
+        #expect(!m.matchesTitle("OpenAI rumor roundup", summary: nil))
+        #expect(!m.matchesTitle("OpenAI ships a thing", summary: "A <b>Rumor</b> says"))
+        #expect(!TopicMatcher(keyword: "").matchesTitle("x", summary: nil))
+        // All the words, in any order.
+        #expect(TopicMatcher(keyword: "vision pro").matchesTitle("Pro headsets: the Vision", summary: nil))
+        #expect(!TopicMatcher(keyword: "vision pro").matchesTitle("Vision only", summary: "Pro"))
     }
 }
 

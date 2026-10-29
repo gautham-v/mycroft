@@ -14,7 +14,8 @@ struct TopicEditorView: View {
     @State private var leaveOut: String
     @State private var notableOnly: Bool
     @State private var news: Bool
-    @State private var discussions: Bool
+    @State private var hackerNews: Bool
+    @State private var reddit: Bool
     @State private var media: Bool
     @State private var subscriptions: Bool
     @State private var skipPaywalled: Bool
@@ -39,7 +40,8 @@ struct TopicEditorView: View {
         _leaveOut = State(initialValue: options.excludedText)
         _notableOnly = State(initialValue: options.notableOnly)
         _news = State(initialValue: options.places.news)
-        _discussions = State(initialValue: options.places.discussions)
+        _hackerNews = State(initialValue: options.places.hackerNews)
+        _reddit = State(initialValue: options.places.reddit)
         _media = State(initialValue: options.places.media)
         _subscriptions = State(initialValue: options.places.subscriptions)
         _skipPaywalled = State(initialValue: options.skipPaywalled)
@@ -56,7 +58,7 @@ struct TopicEditorView: View {
     private var options: TopicOptions {
         TopicOptions(
             keyword: keyword, excluded: TopicOptions.excludedWords(from: leaveOut), notableOnly: notableOnly,
-            places: TopicPlaces(news: news, discussions: discussions, media: media, subscriptions: subscriptions),
+            places: TopicPlaces(news: news, hackerNews: hackerNews, reddit: reddit, media: media, subscriptions: subscriptions),
             skipPaywalled: skipPaywalled
         ).cleaned
     }
@@ -145,7 +147,8 @@ struct TopicEditorView: View {
             }
             Section("Search in") {
                 Toggle("News sites", isOn: $news)
-                Toggle("Hacker News & Reddit", isOn: $discussions)
+                Toggle("Hacker News", isOn: $hackerNews)
+                Toggle("Reddit", isOn: $reddit)
                 Toggle("YouTube & podcasts", isOn: $media)
                 Toggle("Your subscriptions", isOn: $subscriptions)
             }

@@ -39,7 +39,17 @@ extension AppDatabase {
         try await writer.write { db in try Queries.deleteTopic(db, id: id) }
     }
 
-    /// Unread items per source id (topics included), counting each source's own items.
+    /// How many rows each filter of the topic's list has (a story is one row).
+    public func topicFilterCounts(topicId: Int64) async throws -> [TopicContentFilter: Int] {
+        try await reader.read { db in try Queries.topicFilterCounts(db, topicId: topicId) }
+    }
+
+    /// The filter counts now and again after each change to the items (a refresh, a story grouping, a removal).
+    public func observeTopicFilterCounts(topicId: Int64) -> AsyncValueObservation<[TopicContentFilter: Int]> {
+        ValueObservation.tracking { db in try Queries.topicFilterCounts(db, topicId: topicId) }.values(in: reader)
+    }
+
+    /// Unread items per source id (topics included), counting each source's own items (a topic's story counts once).
     public func unreadCounts() async throws -> [Int64: Int] {
         try await reader.read { db in try Queries.unreadCounts(db) }
     }

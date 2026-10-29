@@ -44,6 +44,8 @@ public enum Queries {
         // Topic items stay out of the curated views: they list in their topic, Saved and History.
         if q.view != .saved, q.sourceId == nil { c.append(kind != SourceKind.topic.rawValue) }
         if let s = q.sourceId {
+            // A topic lists one row per story: the articles behind a lead and the Hacker News thread about it list with the lead.
+            if topic != nil { c.append(Item.Columns.storyId == nil) }
             if let options = topic?.topicOptions, options.places.subscriptions {
                 // The topic's own matches, plus what the user's subscriptions say about the keyword.
                 let match = SQL("""
@@ -87,10 +89,15 @@ public enum Queries {
                 """).sqlExpression)
         }
         if let cur = q.cursor {
-            c.append(Item.Columns.publishedAt < cur.publishedAt
-                || (Item.Columns.publishedAt == cur.publishedAt && Item.Columns.id < cur.id))
+            let sort = sortTime(topic: topic != nil)
+            c.append(sort < cur.publishedAt || (sort == cur.publishedAt && Item.Columns.id < cur.id))
         }
         return c
+    }
+
+    /// What the list sorts and pages by: the item's time, or in a topic's list a story's newest article (`Item.storyAt`) if it has one.
+    static func sortTime(topic: Bool) -> SQLExpression {
+        topic ? SQL("coalesce(\(Item.Columns.storyAt), \(Item.Columns.publishedAt))").sqlExpression : Item.Columns.publishedAt.sqlExpression
     }
 
     /// The topic a query's `sourceId` names, nil for any other source or none.
@@ -106,13 +113,15 @@ public enum Queries {
         var req = Item
             .select(Item.listSelection)
             .including(required: Item.source.aliased(src))
-        for cond in conditions(q, src: src, topic: try topicScope(db, q)) { req = req.filter(cond) }
+        let topic = try topicScope(db, q)
+        for cond in conditions(q, src: src, topic: topic) { req = req.filter(cond) }
         let rows = try req
-            .order(Item.Columns.publishedAt.desc, Item.Columns.id.desc)
+            .order(sortTime(topic: topic != nil).desc, Item.Columns.id.desc)
             .limit(limit + 1)
             .asRequest(of: FeedItem.self)
             .fetchAll(db)
-        let page = Array(rows.prefix(limit))
+        var page = Array(rows.prefix(limit))
+        if let topic { page = try attachStories(db, to: page, topicId: topic.id) }
         let next = rows.count > limit ? page.last?.cursor : nil
         return ItemPage(items: page, nextCursor: next)
     }
@@ -267,6 +276,7 @@ public enum Queries {
                 WHERE s.id = items.source_id AND h.item_guid = items.guid)
             """, arguments: StatementArguments(OpenedLinks.feedURLs) + [cutoff])
         let removed = db.changesCount
+        try repairStories(db)
         try pruneReadMarks(db)
         return removed
     }
@@ -372,7 +382,8 @@ public enum Queries {
 
     /// New posts to notify about, oldest first: items stored since the last call from sources with
     /// notifications on, stored after they were turned on and published within `NewPostAlert.maxAge`.
-    /// Saved items are skipped: those arrive from iCloud, already seen on another device.
+    /// Saved items are skipped: those arrive from iCloud, already seen on another device. A story of a topic counts once, for its
+    /// lead: another outlet's article and the Hacker News thread about the story are not new posts.
     /// Advances the watermark past every item stored so far, so each item is handed out once, even when
     /// a background and a foreground refresh both ask.
     public static func takeNewPostAlerts(_ db: Database, now: Date = Date()) throws -> [NewPostAlert] {
@@ -383,6 +394,7 @@ public enum Queries {
             FROM items i JOIN sources s ON s.id = i.source_id
             WHERE i.id > ? AND i.id <= ? AND s.notify_since IS NOT NULL
               AND i.created_at >= s.notify_since AND i.published_at >= ? AND i.is_saved = 0
+              AND i.story_id IS NULL
             ORDER BY i.published_at, i.id
             """, arguments: [through, maxID, now.addingTimeInterval(-NewPostAlert.maxAge)]).map {
             NewPostAlert(itemId: $0["id"], title: $0["title"], publishedAt: $0["published_at"],

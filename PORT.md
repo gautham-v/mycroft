@@ -1097,18 +1097,18 @@ subscriptions, so refresh, unread counts, Mark All as Read, Notify on New Matche
 History treat it like any source. Migration `v8-topics` rebuilds `sources` (new CHECK) and adds `topic_options` (JSON).
 - Identity: `feed_url` = `opendispatch:topic:<uuid>` (`Topic.newFeedURL()`, `Source.isTopic`), never derived from the keyword; `title` = the keyword as
   typed (it follows edits); `url` = `Topic.siteURL`; `group` = `SourceGroup.topics`. Options: `Source.topicOptions: TopicOptions` (keyword, `excluded`,
-  `notableOnly`, `places: TopicPlaces` (news, discussions, media, subscriptions), `skipPaywalled`); encoded with sorted keys; missing keys decode as defaults.
+  `notableOnly`, `places: TopicPlaces` (news, hackerNews, reddit, media, subscriptions), `skipPaywalled`); encoded with sorted keys; missing keys decode as defaults.
 - Lists: `Queries.sources` still returns topics (refresh and sync need them). `Queries.subscriptions` / `AppDatabase.sources()` / `sourcesAndFolders()` leave
   them out (sidebar tree, Settings, Sources tab, add-source duplicate check); `Queries.topics` / `AppDatabase.topics()` / `observeTopics()` list them.
   `SourceList` functions skip topics (`SourceList.topics` lists them). OPML export skips them. Unread counts: `Queries.unreadCounts` / `AppDatabase.unreadCounts()` /
   `observeUnreadCounts()` give `[sourceId: unread]` of each source's own items.
 - API: `AppDatabase.createTopic(_:)` (an existing topic with the same keyword is returned unchanged), `updateTopic(id:options:)` (title follows the keyword; when the keyword or the leave-out
-  words changed, unsaved, unhighlighted items that no longer match, counting the site host as a mention, are removed; other edits remove nothing), `deleteTopic(id:)`, `topic(keyword:)`. Notify: the existing `setSourceNotify`. `NewPostAlert` carries `itemAuthor`/`isTopic`;
+  words changed, unsaved, unhighlighted items whose title no longer has the keyword or whose title or summary has a leave-out word are removed; other edits remove nothing), `deleteTopic(id:)`, `topic(keyword:)`. Notify: the existing `setSourceNotify`. `NewPostAlert` carries `itemAuthor`/`isTopic`;
   `heading` is "<keyword> · <origin>" for a topic (a grouped "N new posts" notification uses the plain keyword). `HistoryEntry.originLabel` is the same label for History snapshots.
 - Items: a topic's items never appear in All / Articles / Posts / Video / Podcasts / folder views or searches; they list in `ItemQuery(sourceId: topic.id)`, Saved and
   History. With `places.subscriptions` on, that list also includes items of the user's own sources whose title or summary match (`opendispatch_topic_matches`, same rule as
   `TopicMatcher`; `TopicMatcherCache` keeps the last matcher so the SQL function doesn't rebuild it per row), keyset paging unchanged. A subscription item whose
-  link the topic already stored is listed once (as the topic's). Mark All as Read on a topic reads only the topic's own items, the ones its badge counts. `ItemQuery.topicFilter` (`TopicContentFilter`: all / articles / discussions / videos / episodes) drives the chips.
+  link the topic already stored is listed once (as the topic's). Mark All as Read on a topic reads only the topic's own items, the ones its badge counts. `ItemQuery.topicFilter` (`TopicContentFilter`: all / news / discussions / videos / episodes) drives the list's Show filter.
 - Reading: `Source.shown(for:)` (already used by `FeedItem` rows) rewrites a topic row's `kind` per item: a video id makes it `.youtube`, audio `.podcast`, else `.rss`, and
   `url` becomes the item's site. So `item.source.kind` / `.type`, History's `sourceKind`, transcripts and Copy as Markdown follow the item; use `source.isTopic` (not `kind == .topic`)
   and `item.originName` (the author: Hacker News, publisher, channel, show) for the origin. `Source.holdsStandaloneItems` marks sources whose items aren't entries of their own feed.
@@ -1122,6 +1122,28 @@ History treat it like any source. Migration `v8-topics` rebuilds `sources` (new 
   `last_error` only when every searched place failed (`TopicSearchOutcome.allFailed`).
 - Sync: the Source record gains `topicOptions` (hashed, so an edit propagates). An incoming Source with a topic feed URL is inserted as a topic with those options.
   `notify_since` stays per device. Adding the field to the Source record type needs the CloudKit Production schema to be deployed before a release carries topics.
+
+### Topics, second pass (Core) — 2026-10-29
+Matching got stricter and news coverage groups into stories. Migration `v9-topic-stories` adds `items.story_id` and `items.story_at` (no foreign key).
+- Places: `TopicPlaces` is `news`, `hackerNews`, `reddit` (default off), `media`, `subscriptions`; `TopicPlaces.defaults` replaces `.all`. A stored `discussions` key decodes as
+  `hackerNews`; Reddit is on only when stored. Encoding writes the new keys only. `TopicPlace` is `news, hackerNews, reddit, media` (a failure is per place).
+- Rules (`TopicMatcher.matchesTitle`): every keyword word in the title, for every place; the Hacker News link-host and body/summary rules are gone. Leave out words are checked in
+  title and summary. `matches(title:summary:)` (title or summary) is only for the user's own subscriptions, which the list adds. `TopicLanguages` (`.current` = `Locale.preferredLanguages`):
+  Bing News gets `mkt`/`setlang` of the user's market, and a searched title the `NLLanguageRecognizer` puts at 0.6+ on a language that isn't the user's (and 0.3 or less on theirs) is dropped;
+  titles under 12 letters aren't judged; a title mostly in a non-Latin script is judged without its Latin words. `TopicSearching.languages` exposes it to the refresh.
+- Refresh (`refreshTopic`), in one write transaction: `Queries.removeStaleTopicItems` (title rule, leave out, language, a place now off, paywalled when skipped; saved and highlighted stay), the renewed
+  Hacker News numbers (`TopicSearching.hackerNewsStats(ids:)`: one Algolia `tags=(story_1,story_2,…)` search per 100 stories still inside the retention window; a failure keeps the stored numbers),
+  the upsert, then `Queries.groupTopicStories`.
+- Stories: a lead has `story_id` NULL and `story_at` (its newest article's time); other outlets' articles and the Hacker News thread have `story_id` = the lead's id. Only news articles
+  (no video id, audio, Reddit or Hacker News guid) join: by `TopicStories` (title words minus the keyword, stop words and a rough stem; at least 3 shared and 50% of the shorter title, or 2 and 75%;
+  published within 3 days). A headline that links two others pulls both in. A thread joins when its URL equals an article's (`FeedDedupe.linkKey`) or its title matches. The topic list shows
+  `story_id IS NULL` rows only and sorts and pages by `coalesce(story_at, published_at)` (`FeedItem.cursor` is that time). `FeedItem.story` (`TopicStory`: `outlets`, lead first, then newest
+  first, each with name, headline, url, host, id; `discussion`: the thread with most points) is attached to a page by one extra query and only on a lead with something behind it.
+  Removing a lead (retention, cleanup) passes the story to its oldest remaining article (`Queries.repairStories`); a thread left alone is a row again.
+- Read state: a story is read once its lead is read; `unreadCounts` counts rows (`story_id IS NULL`); Mark All as Read on a topic also reads the articles and threads behind each lead;
+  `takeNewPostAlerts` skips `story_id` items, so a story notifies once and an outlet joining it never does.
+- Filters: `TopicContentFilter` is all / news / discussions / videos / episodes (`.articles` is now `.news`). Discussions lists Hacker News and Reddit rows of their own (a thread attached to a story is
+  listed with the story). `AppDatabase.topicFilterCounts(topicId:)` / `observeTopicFilterCounts(topicId:)` give the row count of each filter.
 
 ### Topics (App: model, Mac/iPad UI, sheet) — 2026-10-28
 - `TopicStore` (owned by `AppModel.topicStore`) observes `observeTopics()` and `observeUnreadCounts()`: `topics`, `ids` (changes only when a topic is added or removed), `unread`,

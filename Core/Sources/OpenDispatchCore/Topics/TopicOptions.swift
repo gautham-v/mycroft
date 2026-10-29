@@ -1,54 +1,72 @@
 import Foundation
 
-/// Where a Topic looks. `news`, `discussions` and `media` are searched on every refresh and their matches
+/// Where a Topic looks. `news`, `hackerNews`, `reddit` and `media` are searched on every refresh and their matches
 /// stored as the topic's items; `subscriptions` adds no stored items: the topic's list also shows matching
 /// items from the user's own subscribed sources (`Queries.items`).
 public struct TopicPlaces: Codable, Sendable, Hashable {
     /// Web news sites (Bing News).
     public var news: Bool
-    /// Hacker News and Reddit.
-    public var discussions: Bool
+    /// Hacker News stories.
+    public var hackerNews: Bool
+    /// Reddit posts. Off unless asked for: a post is little without its comments, and the reader doesn't show them.
+    public var reddit: Bool
     /// YouTube videos and podcast episodes.
     public var media: Bool
     /// Also list matching items from the sources the user follows.
     public var subscriptions: Bool
 
-    public static let all = TopicPlaces()
+    /// What a new topic searches: everything but Reddit.
+    public static let defaults = TopicPlaces()
 
-    public init(news: Bool = true, discussions: Bool = true, media: Bool = true, subscriptions: Bool = true) {
+    public init(news: Bool = true, hackerNews: Bool = true, reddit: Bool = false, media: Bool = true, subscriptions: Bool = true) {
         self.news = news
-        self.discussions = discussions
+        self.hackerNews = hackerNews
+        self.reddit = reddit
         self.media = media
         self.subscriptions = subscriptions
     }
 
     /// The places a refresh searches (`subscriptions` is not one of them).
     public var searched: [TopicPlace] {
-        TopicPlace.allCases.filter { place in
-            switch place {
-            case .news: news
-            case .discussions: discussions
-            case .media: media
-            }
+        TopicPlace.allCases.filter { isSearched($0) }
+    }
+
+    public func isSearched(_ place: TopicPlace) -> Bool {
+        switch place {
+        case .news: news
+        case .hackerNews: hackerNews
+        case .reddit: reddit
+        case .media: media
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case news, discussions, media, subscriptions }
+    private enum CodingKeys: String, CodingKey { case news, hackerNews, reddit, media, subscriptions, discussions }
 
-    /// Missing keys read as on, so a record written by an older or newer build still decodes.
+    /// Missing keys read as the defaults (Reddit off), so a record written by an older or newer build still decodes. The
+    /// earlier `discussions` switch (Hacker News and Reddit together) reads as Hacker News; Reddit stays off unless it is stored.
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         news = try c.decodeIfPresent(Bool.self, forKey: .news) ?? true
-        discussions = try c.decodeIfPresent(Bool.self, forKey: .discussions) ?? true
+        hackerNews = try c.decodeIfPresent(Bool.self, forKey: .hackerNews) ?? c.decodeIfPresent(Bool.self, forKey: .discussions) ?? true
+        reddit = try c.decodeIfPresent(Bool.self, forKey: .reddit) ?? false
         media = try c.decodeIfPresent(Bool.self, forKey: .media) ?? true
         subscriptions = try c.decodeIfPresent(Bool.self, forKey: .subscriptions) ?? true
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(news, forKey: .news)
+        try c.encode(hackerNews, forKey: .hackerNews)
+        try c.encode(reddit, forKey: .reddit)
+        try c.encode(media, forKey: .media)
+        try c.encode(subscriptions, forKey: .subscriptions)
     }
 }
 
 /// A place a refresh searches, and the unit a failure is counted in: a place fails when each of its
-/// providers (Hacker News and Reddit for discussions) did.
+/// providers (the YouTube and iTunes searches for media) did.
 public enum TopicPlace: String, Codable, Sendable, CaseIterable, Hashable {
-    case news, discussions, media
+    case news, hackerNews, reddit, media
 }
 
 /// What a Topic follows. Stored as JSON in `sources.topic_options` and synced as one field of the Source
@@ -57,7 +75,7 @@ public enum TopicPlace: String, Codable, Sendable, CaseIterable, Hashable {
 public struct TopicOptions: Codable, Sendable, Hashable {
     /// The search, as typed. A multi-word keyword is sent to providers as a quoted phrase.
     public var keyword: String
-    /// "Leave out": an item whose title or summary has one of these is dropped.
+    /// "Leave out": a match whose title or summary has one of these is dropped.
     public var excluded: [String]
     /// "Show: Notable only": store only notable matches (`TopicNotability`).
     public var notableOnly: Bool
@@ -65,7 +83,7 @@ public struct TopicOptions: Codable, Sendable, Hashable {
     /// Skip articles from sites behind a hard paywall (`TopicPaywalls`).
     public var skipPaywalled: Bool
 
-    public init(keyword: String, excluded: [String] = [], notableOnly: Bool = false, places: TopicPlaces = .all,
+    public init(keyword: String, excluded: [String] = [], notableOnly: Bool = false, places: TopicPlaces = .defaults,
                 skipPaywalled: Bool = true) {
         self.keyword = keyword
         self.excluded = excluded
@@ -81,7 +99,7 @@ public struct TopicOptions: Codable, Sendable, Hashable {
         keyword = try c.decode(String.self, forKey: .keyword)
         excluded = try c.decodeIfPresent([String].self, forKey: .excluded) ?? []
         notableOnly = try c.decodeIfPresent(Bool.self, forKey: .notableOnly) ?? false
-        places = try c.decodeIfPresent(TopicPlaces.self, forKey: .places) ?? .all
+        places = try c.decodeIfPresent(TopicPlaces.self, forKey: .places) ?? .defaults
         skipPaywalled = try c.decodeIfPresent(Bool.self, forKey: .skipPaywalled) ?? true
     }
 
@@ -121,37 +139,42 @@ public struct TopicOptions: Codable, Sendable, Hashable {
     }
 }
 
-/// The per-topic filter behind the chips under a topic's header (All / Articles / Discussions / Videos / Episodes).
+/// The per-topic filter in the list's title menu (All / News / Discussions / Videos / Episodes).
 public enum TopicContentFilter: String, Codable, Sendable, CaseIterable, Hashable, Identifiable {
-    case all, articles, discussions, videos, episodes
+    case all, news, discussions, videos, episodes
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
         case .all: "All"
-        case .articles: "Articles"
+        case .news: "News"
         case .discussions: "Discussions"
         case .videos: "Videos"
         case .episodes: "Episodes"
         }
     }
 
-    /// Which chip an item falls under (never `.all`). A discussion is a Hacker News story (it has a comments
-    /// page) or a Reddit post; a video has a video id; an episode has audio and no video.
+    /// Which filter an item falls under (never `.all`). A discussion is a Hacker News story (it has a comments
+    /// page) or a Reddit post; a video has a video id; an episode has audio and no video. A news story's own Hacker News
+    /// thread is a discussion too, but it is listed with the story, not as a row of its own.
     public static func category(of item: Item) -> TopicContentFilter {
         if item.videoId != nil { return .videos }
         if item.audioUrl != nil { return .episodes }
         if item.hnCommentsUrl != nil || Topic.isRedditPost(item.url) { return .discussions }
-        return .articles
+        return .news
     }
 }
 
-/// Whether a result mentions a topic: every word of the keyword, and none of the excluded words, in the
-/// title or the summary. Ignores case and diacritics. A word matches at the start of a word of the text
-/// ("agent" finds "agents", not "reagent"), and a word of three letters or fewer must also end there, so
-/// "AI" doesn't find "said". The same rule filters the providers' results and picks which of the user's
-/// own items a topic's list adds (`Queries.items`).
+/// Whether a result is about a topic. Two rules share the keyword's words and the leave-out words:
+///
+/// - `matchesTitle` (what a refresh stores, for every place it searches): every word of the keyword in the title, none of
+///   the leave-out words in the title or the summary.
+/// - `matches` (the user's own subscriptions, which the topic's list adds): every word in the title or the summary, none of
+///   the leave-out words in either.
+///
+/// Both ignore case and diacritics. A word matches at the start of a word of the text ("agent" finds "agents", not
+/// "reagent"), and a word of three letters or fewer must also end there, so "AI" doesn't find "said".
 public struct TopicMatcher: Sendable, Hashable {
     private let words: [String]
     private let excluded: [String]
@@ -176,25 +199,32 @@ public struct TopicMatcher: Sendable, Hashable {
         s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// `summary` may be HTML. `host` is the site a result links to: a story that names no keyword but lives on a site that does
-    /// (a Hacker News story at openai.com, for "OpenAI") counts as a match; the leave-out words are still looked for in the text only.
-    public func matches(title: String, summary: String?, host: String? = nil) -> Bool {
+    /// A search result is on topic: the keyword's words are all in its title, and none of the leave-out words is in the title
+    /// or the summary (which may be HTML). A match found only in the body or on the site's address doesn't count.
+    public func matchesTitle(_ title: String, summary: String?) -> Bool {
+        guard !words.isEmpty else { return false }
+        let t = Self.fold(title)
+        guard words.allSatisfy({ Self.contains(t, $0) }) else { return false }
+        if excluded.contains(where: { Self.contains(t, $0) }) { return false }
+        guard !excluded.isEmpty, let summary else { return true }
+        // Plain summaries (most of them) have no markup or entity to take out, which is the costly part.
+        let plain = summary.contains("<") || summary.contains("&") ? TextFormat.stripHTML(summary) : summary
+        return !excluded.contains(where: { Self.contains(Self.fold(plain), $0) })
+    }
+
+    /// The text (title and summary, which may be HTML) mentions every word of the keyword and none of the leave-out words.
+    public func matches(title: String, summary: String?) -> Bool {
         guard !words.isEmpty else { return false }
         let t = Self.fold(title)
         if excluded.contains(where: { Self.contains(t, $0) }) { return false }
         let titleHasAll = words.allSatisfy { Self.contains(t, $0) }
         // The summary is only stripped and folded when the title alone doesn't settle it.
         if titleHasAll && excluded.isEmpty { return true }
-        // Plain summaries (most of them) have no markup or entity to take out, which is the costly part.
         let plain = summary.map { $0.contains("<") || $0.contains("&") ? TextFormat.stripHTML($0) : $0 } ?? ""
         let s = Self.fold(plain)
         if excluded.contains(where: { Self.contains(s, $0) }) { return false }
         if titleHasAll { return true }
-        let both = t + "\n" + s
-        if words.allSatisfy({ Self.contains(both, $0) }) { return true }
-        guard let host, !host.isEmpty else { return false }
-        let h = Self.fold(host)
-        return words.allSatisfy { Self.contains(h, $0) }
+        return words.allSatisfy { Self.contains(t + "\n" + s, $0) }
     }
 
     /// `text` holds `term` starting at a word boundary (ending at one too when the term is short).

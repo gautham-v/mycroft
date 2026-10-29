@@ -448,7 +448,7 @@ struct SyncTests {
 struct SyncTopicTests {
     private let options = TopicOptions(
         keyword: "Vision Pro", excluded: ["rumor"], notableOnly: true,
-        places: TopicPlaces(news: false, discussions: true, media: true, subscriptions: false), skipPaywalled: false)
+        places: TopicPlaces(news: false, hackerNews: true, media: true, subscriptions: false), skipPaywalled: false)
 
     @Test func aTopicArrivesAsATopicWithItsOptions() async throws {
         let server = FakeServer()
