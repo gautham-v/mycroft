@@ -179,6 +179,8 @@ enum Metrics {
     static let theaterPinnedShare: CGFloat = 0.45
     static let theaterPinnedMin: CGFloat = 180
     static let theaterSnapScroll: CGFloat = 24
+    /// A theater player narrower than the reader sits on the page, rounded, with up to this much above and below it.
+    static let theaterInset: CGFloat = 12
     /// A Short's 9:16 player is as tall as the reader less `verticalVideoTitleRoom`, so the title shows
     /// under it, but never narrower than 300pt (533pt tall), the least that fits the player's control bar.
     static let verticalVideoTitleRoom: CGFloat = 120

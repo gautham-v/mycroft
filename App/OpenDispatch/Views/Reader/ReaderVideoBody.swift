@@ -1,8 +1,9 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title, the
-/// player as tall as the reader less room for the title row (at least 960pt wide, if the reader is that wide);
+/// YouTube item layout (VideoBody in reader.tsx). Theater: a band above the title with the player as tall as
+/// the reader less room for the title row (at least 960pt wide, if the reader is that wide), edge to edge when
+/// it fills the reader's width and otherwise on the page with rounded corners, no black beside it;
 /// scrolling down snaps the pinned band to under half the reader so the description and comments have room,
 /// and scrolling back to the top grows it again. Otherwise the player sits in the text column under the title and meta row.
 /// A Short skips the band: a 9:16 player centered in the column, above the title in theater, as tall
@@ -55,10 +56,13 @@ struct ReaderVideoBody: View {
     /// The band player's full and pinned heights; nil until the reader is measured.
     private var bandHeights: (full: CGFloat, pinned: CGFloat)? {
         guard band, width > 0 else { return nil }
-        let room = max(0, width - (wide ? 32 : 0))
-        let capped = min(room, Metrics.theaterMaxWidth) * 9 / 16
-        let full = max(capped, min(room * 9 / 16, viewportHeight - Metrics.theaterTitleRoom))
-        return (full, min(full, max(Metrics.theaterPinnedMin, viewportHeight * Metrics.theaterPinnedShare)))
+        let edgeToEdge = width * 9 / 16
+        let capped = min(width, Metrics.theaterMaxWidth) * 9 / 16
+        // A player narrower than the reader has `theaterInset` above and below it, inside the band.
+        let fit = viewportHeight - Metrics.theaterTitleRoom
+        let full = edgeToEdge <= fit ? edgeToEdge : max(capped, fit - 2 * Metrics.theaterInset)
+        let pinned = viewportHeight * Metrics.theaterPinnedShare - 2 * Metrics.theaterInset
+        return (full, min(full, max(Metrics.theaterPinnedMin, pinned)))
     }
     private var bandPlayerHeight: CGFloat? { bandHeights.map { bandSmall ? $0.pinned : $0.full } }
     /// How much taller the band was before its last snap (negative when it grew).
@@ -243,7 +247,14 @@ struct ReaderVideoBody: View {
                     // The snap eases the player's height frame by frame, so the page under it is laid out again each
                     // frame and moves with it, rather than each view sliding to its new place on its own.
                     .keyframeAnimator(initialValue: CGFloat(0), trigger: bandSmall) { player, lag in
-                        player.frame(maxWidth: bandPlayerHeight.map { ($0 + lag) * 16 / 9 } ?? Metrics.theaterMaxWidth)
+                        let playerWidth = bandPlayerHeight.map { ($0 + lag) * 16 / 9 }
+                        // The inset and corners fade out as the player nears the reader's width, so a snap to or from
+                        // edge to edge doesn't jump.
+                        let inset = playerWidth.map { min(Metrics.theaterInset, max(0, width - $0) / 2) } ?? 0
+                        player
+                            .clipShape(RoundedRectangle(cornerRadius: min(10, inset), style: .continuous))
+                            .frame(maxWidth: playerWidth ?? Metrics.theaterMaxWidth)
+                            .padding(.vertical, inset)
                     } keyframes: { _ in
                         KeyframeTrack {
                             MoveKeyframe(bandSnap)
@@ -251,8 +262,7 @@ struct ReaderVideoBody: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, wide ? 16 : 0)
-                    .background(Color.black)
+                    .background(Color.ofSurface)
             } else {
                 Color.clear.frame(height: 0)
             }
