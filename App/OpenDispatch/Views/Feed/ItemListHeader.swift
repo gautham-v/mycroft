@@ -20,6 +20,9 @@ struct DesktopListHeader: View {
                 .buttonStyle(FeedHoverIconButtonStyle())
                 .help("Show sidebar (⌘\\)")
                 .accessibilityLabel("Show sidebar")
+                #if os(macOS)
+                ReaderHistoryButtons()
+                #endif
             }
             if model.isSearchOpen {
                 FeedSearchField(focus: searchFocus)

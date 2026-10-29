@@ -17,6 +17,17 @@ struct ReaderTab: Identifiable, Equatable, Sendable {
     var isNew = false
     var isPinned = false
     var openingURL: String?
+    /// What the tab showed before (newest last) and, after going back, what it showed after: Back and Forward.
+    var back: [ReaderTabPage] = []
+    var forward: [ReaderTabPage] = []
+
+    var page: ReaderTabPage { ReaderTabPage(itemID: itemID, isNew: isNew) }
+}
+
+/// One thing a tab showed: an item, or the New Tab page (Explore).
+struct ReaderTabPage: Equatable, Sendable {
+    var itemID: Int64?
+    var isNew: Bool
 }
 
 /// A reader column (split view has two): its tabs and the one showing.
@@ -164,8 +175,13 @@ final class AppModel {
     var focusMode = false
     /// Reader panes: one, or two in split view, each with its own tabs. Session only.
     private(set) var panes: [ReaderPane] = [ReaderPane()] {
-        didSet { recordShownItems() }
+        didSet {
+            recordTabHistory(from: oldValue)
+            recordShownItems()
+        }
     }
+    /// Set while Back or Forward moves a tab, so the move isn't recorded as a new page.
+    @ObservationIgnored private var movingInHistory = false
     /// The pane the list, j/k and the item shortcuts act on.
     private(set) var focusedPane = 0
     /// The left pane's share of the reader's width in split view.
@@ -398,7 +414,10 @@ final class AppModel {
     var secondaryHighlightedItemID: Int64? { isSplit ? activeItem(inPane: 1 - focusedPane)?.id : nil }
 
     /// Items open in some tab, shown or not (the list marks the ones in background tabs).
-    var openItemIDs: Set<Int64> { Set(panes.flatMap { $0.tabs.compactMap(\.itemID) }) }
+    /// The items the tabs show, or show again on Back or Forward.
+    var openItemIDs: Set<Int64> {
+        Set(panes.flatMap { $0.tabs.flatMap { [$0.itemID] + ($0.back + $0.forward).map(\.itemID) }.compactMap { $0 } })
+    }
 
     var isSplit: Bool { panes.count > 1 }
 
@@ -654,6 +673,58 @@ final class AppModel {
 
     /// Records the items a pane's active tab newly shows as opened. The list's first item shown by default
     /// (no item picked) doesn't count.
+    // MARK: Back and Forward
+
+    private static let tabHistoryLimit = 50
+
+    /// A tab that went on to show something else (an item opened in it, Explore filling it) keeps what it showed for Back,
+    /// and loses what Forward had. A tab following the list's first item has nothing to go back to.
+    private func recordTabHistory(from old: [ReaderPane]) {
+        guard !movingInHistory else { return }
+        var before: [UUID: ReaderTabPage] = [:]
+        for pane in old { for tab in pane.tabs { before[tab.id] = tab.page } }
+        var changed = false
+        var next = panes
+        for p in next.indices {
+            for t in next[p].tabs.indices {
+                let tab = next[p].tabs[t]
+                guard let was = before[tab.id], was != tab.page, was.itemID != nil || was.isNew else { continue }
+                next[p].tabs[t].back.append(was)
+                if next[p].tabs[t].back.count > Self.tabHistoryLimit { next[p].tabs[t].back.removeFirst() }
+                next[p].tabs[t].forward = []
+                changed = true
+            }
+        }
+        if changed {
+            movingInHistory = true
+            panes = next
+            movingInHistory = false
+        }
+    }
+
+    var canGoBack: Bool { !panes[focusedPane].activeTab.back.isEmpty }
+    var canGoForward: Bool { !panes[focusedPane].activeTab.forward.isEmpty }
+
+    /// Back (⌘[): the focused pane's active tab shows what it showed before.
+    func goBack() { moveInHistory(back: true) }
+    /// Forward (⌘]): undoes a Back.
+    func goForward() { moveInHistory(back: false) }
+
+    private func moveInHistory(back: Bool) {
+        let p = focusedPane
+        var pane = panes[p]
+        var tab = pane.activeTab
+        guard let target = back ? tab.back.popLast() : tab.forward.popLast() else { return }
+        if back { tab.forward.append(tab.page) } else { tab.back.append(tab.page) }
+        tab.itemID = target.itemID
+        tab.isNew = target.isNew
+        tab.openingURL = nil
+        pane.tabs[pane.active] = tab
+        movingInHistory = true
+        panes[p] = pane
+        movingInHistory = false
+    }
+
     private func recordShownItems() {
         let shown = Set(panes.compactMap { $0.activeTab.isNew ? nil : $0.activeTab.itemID })
         let added = shown.subtracting(shownItemIDs)

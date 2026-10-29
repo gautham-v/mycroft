@@ -104,8 +104,8 @@ struct SidebarView: View {
 
     // MARK: Header and footer
 
-    /// No logo or wordmark (like the Claude desktop app): just the sidebar toggle. On macOS the window
-    /// title bar is hidden: the toggle follows the traffic lights on the top row.
+    /// No logo or wordmark (like the Claude desktop app): the sidebar toggle, then Back and Forward for the reader's tab. On
+    /// macOS the window title bar is hidden: they follow the traffic lights on the top row.
     private var header: some View {
         HStack(spacing: 0) {
             #if os(macOS)
@@ -113,6 +113,8 @@ struct SidebarView: View {
                 model.toggleSidebar()
             }
             .padding(.leading, Metrics.sidebarToggleX)
+            ReaderHistoryButtons()
+                .padding(.leading, 2)
             Spacer(minLength: 0)
             #else
             Spacer(minLength: 0)

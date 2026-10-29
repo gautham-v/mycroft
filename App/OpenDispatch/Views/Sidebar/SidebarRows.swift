@@ -183,6 +183,23 @@ struct SidebarIconButton: View {
     }
 }
 
+/// Back and Forward for the focused reader tab (⌘[ and ⌘]), beside the sidebar toggle; faint when there's nowhere to go.
+struct ReaderHistoryButtons: View {
+    var size: CGFloat = Metrics.desktopIconButton
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SidebarIconButton(icon: .back, label: "Back (\u{2318}[)", size: size, iconSize: 14) { model.goBack() }
+                .disabled(!model.canGoBack)
+                .opacity(model.canGoBack ? 1 : 0.35)
+            SidebarIconButton(icon: .chevron, label: "Forward (\u{2318}])", size: size, iconSize: 14) { model.goForward() }
+                .disabled(!model.canGoForward)
+                .opacity(model.canGoForward ? 1 : 0.35)
+        }
+    }
+}
+
 /// The small muted icon button shown on hover inside rows and headers (MoreIcon, ChevronIcon).
 struct SidebarMiniButtonLabel: View {
     let icon: OFIcon
