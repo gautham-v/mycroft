@@ -162,10 +162,12 @@ public enum TopicStories {
 
 extension Topic {
     /// What a stored item of a topic came from, by what the search stored it as: a Hacker News story (`hn:`), a Reddit post
-    /// (`reddit:`), a video or an episode (media), or else a news article.
+    /// (`reddit:`), a post on X (`x:`) or Bluesky (`bsky:`), a video or an episode (media), or else a news article.
     static func place(guid: String, videoId: String?, audioUrl: String?) -> TopicPlace {
         if guid.hasPrefix("hn:") { return .hackerNews }
         if guid.hasPrefix("reddit:") { return .reddit }
+        if guid.hasPrefix("x:") { return .x }
+        if guid.hasPrefix("bsky:") { return .bluesky }
         if videoId != nil || audioUrl != nil { return .media }
         return .news
     }

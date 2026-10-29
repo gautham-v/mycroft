@@ -90,7 +90,7 @@ extension Queries {
             let title: String = row["title"]
             let place = Topic.place(guid: row["guid"], videoId: row["video_id"], audioUrl: row["audio_url"])
             if checkPlaces, !options.places.isSearched(place) { return true }
-            if !matcher.matchesTitle(title, summary: row["summary"]) { return true }
+            if place.matchesText ? !matcher.matches(title: title, summary: row["summary"]) : !matcher.matchesTitle(title, summary: row["summary"]) { return true }
             if let languages, languages.rejects(title) { return true }
             if checkPlaces, place == .news, options.skipPaywalled {
                 let url: String = row["url"]
@@ -153,12 +153,14 @@ extension Queries {
     static func topicFilterCondition(_ filter: TopicContentFilter) -> SQLExpression? {
         let video = Item.Columns.videoId, audio = Item.Columns.audioUrl, comments = Item.Columns.hnCommentsUrl
         let reddit = SQL("(\(Item.Columns.url) LIKE '%reddit.com/%/comments/%')").sqlExpression
+        let social = SQL("(\(Item.Columns.url) LIKE 'https://x.com/%/status/%' OR \(Item.Columns.url) LIKE 'https://bsky.app/profile/%/post/%')").sqlExpression
         switch filter {
         case .all: return nil
         case .videos: return video != nil
         case .episodes: return video == nil && audio != nil
-        case .discussions: return video == nil && audio == nil && (comments != nil || reddit)
-        case .news: return video == nil && audio == nil && comments == nil && !reddit
+        case .discussions: return video == nil && audio == nil && !social && (comments != nil || reddit)
+        case .posts: return video == nil && audio == nil && social
+        case .news: return video == nil && audio == nil && comments == nil && !reddit && !social
         }
     }
 }

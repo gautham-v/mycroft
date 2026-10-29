@@ -1,15 +1,19 @@
 import Foundation
 
-/// Where a Topic looks. `news`, `hackerNews`, `reddit` and `media` are searched on every refresh and their matches
-/// stored as the topic's items; `subscriptions` adds no stored items: the topic's list also shows matching
+/// Where a Topic looks. `news`, `hackerNews`, `reddit`, `x`, `bluesky` and `media` are searched on every refresh and their
+/// matches stored as the topic's items (X only while the app is signed in to it); `subscriptions` adds no stored items: the topic's list also shows matching
 /// items from the user's own subscribed sources (`Queries.items`).
 public struct TopicPlaces: Codable, Sendable, Hashable {
     /// Web news sites (Bing News).
     public var news: Bool
     /// Hacker News stories.
     public var hackerNews: Bool
-    /// Reddit posts. Off unless asked for: a post is little without its comments, and the reader doesn't show them.
+    /// Reddit posts. Off unless asked for.
     public var reddit: Bool
+    /// Posts on X, searched only while the app is signed in to X.
+    public var x: Bool
+    /// Posts on Bluesky.
+    public var bluesky: Bool
     /// YouTube videos and podcast episodes.
     public var media: Bool
     /// Also list matching items from the sources the user follows.
@@ -18,10 +22,13 @@ public struct TopicPlaces: Codable, Sendable, Hashable {
     /// What a new topic searches: everything but Reddit.
     public static let defaults = TopicPlaces()
 
-    public init(news: Bool = true, hackerNews: Bool = true, reddit: Bool = false, media: Bool = true, subscriptions: Bool = true) {
+    public init(news: Bool = true, hackerNews: Bool = true, reddit: Bool = false, x: Bool = true, bluesky: Bool = true, media: Bool = true,
+                subscriptions: Bool = true) {
         self.news = news
         self.hackerNews = hackerNews
         self.reddit = reddit
+        self.x = x
+        self.bluesky = bluesky
         self.media = media
         self.subscriptions = subscriptions
     }
@@ -36,19 +43,24 @@ public struct TopicPlaces: Codable, Sendable, Hashable {
         case .news: news
         case .hackerNews: hackerNews
         case .reddit: reddit
+        case .x: x
+        case .bluesky: bluesky
         case .media: media
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case news, hackerNews, reddit, media, subscriptions, discussions }
+    private enum CodingKeys: String, CodingKey { case news, hackerNews, reddit, x, bluesky, media, subscriptions, discussions }
 
-    /// Missing keys read as the defaults (Reddit off), so a record written by an older or newer build still decodes. The
-    /// earlier `discussions` switch (Hacker News and Reddit together) reads as Hacker News; Reddit stays off unless it is stored.
+    /// Missing keys read as the defaults (Reddit off, the rest on), so a record written by an older or newer build still decodes
+    /// and a topic stored before X and Bluesky were places searches them. The earlier `discussions` switch (Hacker News and
+    /// Reddit together) reads as Hacker News; Reddit stays off unless it is stored.
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         news = try c.decodeIfPresent(Bool.self, forKey: .news) ?? true
         hackerNews = try c.decodeIfPresent(Bool.self, forKey: .hackerNews) ?? c.decodeIfPresent(Bool.self, forKey: .discussions) ?? true
         reddit = try c.decodeIfPresent(Bool.self, forKey: .reddit) ?? false
+        x = try c.decodeIfPresent(Bool.self, forKey: .x) ?? true
+        bluesky = try c.decodeIfPresent(Bool.self, forKey: .bluesky) ?? true
         media = try c.decodeIfPresent(Bool.self, forKey: .media) ?? true
         subscriptions = try c.decodeIfPresent(Bool.self, forKey: .subscriptions) ?? true
     }
@@ -58,6 +70,8 @@ public struct TopicPlaces: Codable, Sendable, Hashable {
         try c.encode(news, forKey: .news)
         try c.encode(hackerNews, forKey: .hackerNews)
         try c.encode(reddit, forKey: .reddit)
+        try c.encode(x, forKey: .x)
+        try c.encode(bluesky, forKey: .bluesky)
         try c.encode(media, forKey: .media)
         try c.encode(subscriptions, forKey: .subscriptions)
     }
@@ -66,7 +80,10 @@ public struct TopicPlaces: Codable, Sendable, Hashable {
 /// A place a refresh searches, and the unit a failure is counted in: a place fails when each of its
 /// providers (the YouTube and iTunes searches for media) did.
 public enum TopicPlace: String, Codable, Sendable, CaseIterable, Hashable {
-    case news, hackerNews, reddit, media
+    case news, hackerNews, reddit, x, bluesky, media
+
+    /// Posts whose keyword may be anywhere in their text (they have no headline), rather than in a title.
+    var matchesText: Bool { self == .x || self == .bluesky }
 }
 
 /// What a Topic follows. Stored as JSON in `sources.topic_options` and synced as one field of the Source
@@ -139,9 +156,9 @@ public struct TopicOptions: Codable, Sendable, Hashable {
     }
 }
 
-/// The per-topic filter in the list's title menu (All / News / Discussions / Videos / Episodes).
+/// The per-topic filter in the list's title menu (All / News / Discussions / Posts / Videos / Episodes).
 public enum TopicContentFilter: String, Codable, Sendable, CaseIterable, Hashable, Identifiable {
-    case all, news, discussions, videos, episodes
+    case all, news, discussions, posts, videos, episodes
 
     public var id: String { rawValue }
 
@@ -150,17 +167,19 @@ public enum TopicContentFilter: String, Codable, Sendable, CaseIterable, Hashabl
         case .all: "All"
         case .news: "News"
         case .discussions: "Discussions"
+        case .posts: "Posts"
         case .videos: "Videos"
         case .episodes: "Episodes"
         }
     }
 
     /// Which filter an item falls under (never `.all`). A discussion is a Hacker News story (it has a comments
-    /// page) or a Reddit post; a video has a video id; an episode has audio and no video. A news story's own Hacker News
+    /// page) or a Reddit post; a post is on X or Bluesky; a video has a video id; an episode has audio and no video. A news story's own Hacker News
     /// thread is a discussion too, but it is listed with the story, not as a row of its own.
     public static func category(of item: Item) -> TopicContentFilter {
         if item.videoId != nil { return .videos }
         if item.audioUrl != nil { return .episodes }
+        if Topic.isSocialPost(item.url) { return .posts }
         if item.hnCommentsUrl != nil || Topic.isRedditPost(item.url) { return .discussions }
         return .news
     }
@@ -261,6 +280,11 @@ public enum Topic {
 
     /// The address a topic's source gets as its site URL (shown nowhere; the column can't be empty).
     static let siteURL = "https://opendispatch.app"
+
+    /// A post on X or Bluesky.
+    static func isSocialPost(_ url: String) -> Bool {
+        DiscussionPlace.thread(of: url).map { $0 == .x || $0 == .bluesky } ?? false
+    }
 
     /// A Reddit post's permalink.
     static func isRedditPost(_ url: String) -> Bool {

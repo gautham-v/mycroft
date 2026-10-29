@@ -301,10 +301,13 @@ enum DiscussionStats {
     static func pointsText(_ points: Int) -> String { points == 1 ? "1 point" : "\(points) points" }
     static func commentsText(_ comments: Int) -> String { comments == 1 ? "1 comment" : "\(comments) comments" }
 
-    /// The points and comments of a Hacker News or Reddit row of a topic (whichever it has), as meta-line text; nil for any other row.
+    /// The points (likes on X and Bluesky) and comments of a discussion or post row of a topic (whichever it has), as meta-line
+    /// text; nil for any other row.
     static func text(item: Item, isTopicItem: Bool) -> Text? {
         guard isTopicItem, item.hnPoints != nil || item.hnComments != nil else { return nil }
-        let points = item.hnPoints.map { Text("\(Text(Image(systemName: "arrowtriangle.up.fill")).font(.system(size: 8)))\(Text(verbatim: " \($0)"))") }
+        // Posts on X and Bluesky count likes, not votes.
+        let likes = TopicContentFilter.category(of: item) == .posts
+        let points = item.hnPoints.map { Text("\(Text(Image(systemName: likes ? "heart" : "arrowtriangle.up.fill")).font(.system(size: likes ? 10 : 8)))\(Text(verbatim: " \($0)"))") }
         let comments = item.hnComments.map { Text("\(Text(Image(systemName: "bubble.left")).font(.system(size: 10)))\(Text(verbatim: " \($0)"))") }
         switch (points, comments) {
         case let (p?, c?): return Text("\(p)\(Text(verbatim: " \u{00B7} "))\(c)")
@@ -317,7 +320,9 @@ enum DiscussionStats {
     /// The same for VoiceOver.
     static func spoken(item: Item, isTopicItem: Bool) -> String? {
         guard isTopicItem, item.hnPoints != nil || item.hnComments != nil else { return nil }
-        return [item.hnPoints.map(pointsText), item.hnComments.map(commentsText)].compactMap { $0 }.joined(separator: ", ")
+        let likes = TopicContentFilter.category(of: item) == .posts
+        return [item.hnPoints.map { likes ? ($0 == 1 ? "1 like" : "\($0) likes") : pointsText($0) }, item.hnComments.map(commentsText)]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 }
 

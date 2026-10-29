@@ -5,8 +5,11 @@ import Foundation
 /// - news: Bing News' RSS (`/news/search?format=rss`), newest first. Its links go through an `apiclick` redirect that names the
 ///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`.
 /// - Hacker News through Algolia's API.
-/// - Reddit's search (JSON, falling back to its RSS when the JSON is refused, which it often is outside a browser; the RSS has no
-///   score). A place of its own, off unless the topic asks for it.
+/// - Reddit's search page through the hidden web view (`DiscussionWeb`), newest first, with scores; when the web view can't
+///   (the app is in the background) its JSON, falling back to its RSS when the JSON is refused, which it often is outside a
+///   browser (the RSS has no score).
+/// - X's search through the hidden web view, only while the app is signed in to X, at most every `xInterval` per keyword, and
+///   Bluesky's `searchPosts`. Their posts have no headline, so the keyword may be anywhere in the text.
 /// - media: YouTube videos from Explore's search (upload-date order, last month) and podcast episodes from the iTunes Search API.
 ///
 /// Every answer is filtered here the same way: it must be recent (the retention window), have the keyword in its title and none
@@ -22,20 +25,49 @@ public struct DefaultTopicSearch: TopicSearching {
     /// Reddit asks for a descriptive User-Agent and refuses generic ones.
     static let redditUserAgent = "macOS:com.gauthamv.opendispatch:1.0 (RSS reader; +https://github.com/gautham-v/opendispatch)"
 
+    /// Posts from the places read through the hidden web view, by query: Reddit's newest and X's top posts.
+    typealias WebSearch = @Sendable (_ place: DiscussionPlace, _ query: String) async throws -> [DiscussionPost]
+
+    /// X is read as the signed-in user, so a keyword is searched there at most this often.
+    static let xInterval: TimeInterval = 30 * 60
+
     let fetch: Fetch
     let explore: any ExploreSearching
+    let web: WebSearch?
+    let signedInToX: @Sendable () async -> Bool
     public let languages: TopicLanguages
 
     public init(explore: any ExploreSearching = DefaultExploreSearch(), languages: TopicLanguages = .current) {
-        self.init(fetch: { url, headers in try await HTTP.fetch(url, timeout: Self.timeout, headers: headers) }, explore: explore, languages: languages)
+        self.init(fetch: { url, headers in try await HTTP.fetch(url, timeout: Self.timeout, headers: headers) }, explore: explore,
+                  web: Self.liveWeb, signedInToX: Self.liveSignedInToX, languages: languages)
     }
 
-    /// Tests inject a fake network.
-    init(fetch: @escaping Fetch, explore: any ExploreSearching, languages: TopicLanguages = .current) {
+    /// Tests inject a fake network; with no `web`, Reddit is read through its JSON or RSS and X isn't searched.
+    init(fetch: @escaping Fetch, explore: any ExploreSearching, web: WebSearch? = nil,
+         signedInToX: @escaping @Sendable () async -> Bool = { false }, languages: TopicLanguages = .current) {
         self.fetch = fetch
         self.explore = explore
+        self.web = web
+        self.signedInToX = signedInToX
         self.languages = languages
     }
+
+    #if canImport(WebKit)
+    private static let liveWeb: WebSearch? = { place, query in
+        switch place {
+        case .reddit:
+            return RedditPages.posts(inSearch: try await DiscussionWeb.shared.redditHTML(RedditPages.searchPath(query, range: "week", sort: "new")))
+        case .x:
+            return XPages.searchResults(inCells: try await DiscussionWeb.shared.xCells(XPages.searchURL(query), scrolls: 1))
+        default:
+            return []
+        }
+    }
+    private static let liveSignedInToX: @Sendable () async -> Bool = { await WebAccount.x.isSignedIn() }
+    #else
+    private static let liveWeb: WebSearch? = nil
+    private static let liveSignedInToX: @Sendable () async -> Bool = { false }
+    #endif
 
     // MARK: TopicSearching
 
@@ -46,7 +78,12 @@ public struct DefaultTopicSearch: TopicSearching {
 
     public func search(_ options: TopicOptions, subscriptions: TopicSubscriptions, now: Date = Date()) async -> TopicSearchOutcome {
         let o = options.cleaned
-        let places = o.places.searched
+        var places = o.places.searched
+        // X shows nothing to a visitor: signed out, it isn't a place this refresh searches (nor one that failed).
+        if places.contains(.x) {
+            let signedIn = web != nil ? await signedInToX() : false
+            if !signedIn { places.removeAll { $0 == .x } }
+        }
         guard !o.keyword.isEmpty, !places.isEmpty else { return TopicSearchOutcome(searched: places) }
         let matcher = TopicMatcher(o)
         var results: [TopicPlace: PlaceResult] = [:]
@@ -77,6 +114,8 @@ public struct DefaultTopicSearch: TopicSearching {
         case .news: providers = [{ try await self.news(o, now) }]
         case .hackerNews: providers = [{ try await self.hackerNews(o, now) }]
         case .reddit: providers = [{ try await self.reddit(o, now) }]
+        case .x: providers = [{ try await self.x(o, now) }]
+        case .bluesky: providers = [{ try await self.bluesky(o, now) }]
         case .media: providers = [{ try await self.videos(o, now) }, { try await self.episodes(o, now) }]
         }
         var found: [ParsedItem] = []
@@ -92,7 +131,8 @@ public struct DefaultTopicSearch: TopicSearching {
                 switch result {
                 case .success(let candidates):
                     succeeded += 1
-                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now, checkPaywall: place == .news, languages: languages))
+                    found.append(contentsOf: Self.finish(candidates, o, matcher, subs, now, checkPaywall: place == .news,
+                                                         inText: place.matchesText, languages: languages))
                 case .failure(let error):
                     errors.append(error)
                 }
@@ -125,14 +165,15 @@ public struct DefaultTopicSearch: TopicSearching {
     }
 
     /// Recent, on topic, in the user's language, wanted and notable as the topic asks; the newest `perProviderCap`. `languages` with
-    /// no language in it keeps every language.
+    /// no language in it keeps every language. `inText` finds the keyword in the summary too (posts, whose title is their first line).
     static func finish(_ candidates: [Candidate], _ o: TopicOptions, _ matcher: TopicMatcher, _ subs: TopicSubscriptions,
-                       _ now: Date, checkPaywall: Bool, languages: TopicLanguages = TopicLanguages(preferred: [])) -> [ParsedItem] {
+                       _ now: Date, checkPaywall: Bool, inText: Bool = false, languages: TopicLanguages = TopicLanguages(preferred: [])) -> [ParsedItem] {
         let cutoff = Retention.cutoff(now: now)
         var seen = Set<String>()
         let kept = candidates.filter { c in
             let item = c.item
-            guard item.publishedAt >= cutoff, matcher.matchesTitle(item.title, summary: item.summary), !languages.rejects(item.title) else { return false }
+            let onTopic = inText ? matcher.matches(title: item.title, summary: item.summary) : matcher.matchesTitle(item.title, summary: item.summary)
+            guard item.publishedAt >= cutoff, onTopic, !languages.rejects(item.title) else { return false }
             if checkPaywall, o.skipPaywalled,
                TopicPaywalls.isPaywalled(item.url) || c.name.map(TopicPaywalls.isPaywalled(publisher:)) == true { return false }
             if o.notableOnly, !c.isNotable(subs) { return false }
@@ -300,6 +341,9 @@ public struct DefaultTopicSearch: TopicSearching {
     }
 
     func reddit(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
+        if let web, let posts = try? await web(.reddit, o.keyword) {
+            return Self.candidates(posts: posts, place: .reddit, now: now)
+        }
         let headers = ["User-Agent": Self.redditUserAgent, "Accept": "application/json"]
         // Reddit refuses the JSON to many clients (a 403 page); its RSS is open but carries no score.
         if let data = try? await get(Self.redditURL(o.keyword, json: true), headers: headers), let found = try? Self.parseRedditJSON(data) {
@@ -372,6 +416,52 @@ public struct DefaultTopicSearch: TopicSearching {
         if let r = text.range(of: " submitted by ") { text = String(text[..<r.lowerBound]) }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : String(text.prefix(600))
+    }
+
+    // MARK: X and Bluesky
+
+    /// When each keyword was last searched on X.
+    private static let xSearches = XSearchTimes()
+
+    func x(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
+        guard let web else { return [] }
+        guard await Self.xSearches.claim(o.keyword.lowercased(), now: now, interval: Self.xInterval) else { return [] }
+        return Self.candidates(posts: try await web(.x, o.keyword), place: .x, now: now)
+    }
+
+    func bluesky(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
+        let data = try await get(BlueskyThreads.searchURL(o.keyword, now: now), headers: ["Accept": "application/json"])
+        return Self.candidates(posts: try BlueskyThreads.posts(inSearch: data), place: .bluesky, now: now)
+    }
+
+    private static let redditID = ExtractionDOM.Pattern(#"/comments/([A-Za-z0-9]+)"#)
+
+    /// Explore's posts as a topic's: stored like an opened post (`OpenedLinks.item(post:)`), with a guid naming the place and
+    /// the notable bar of its score. A post without a date is left out (it can't be held to the retention window).
+    static func candidates(posts: [DiscussionPost], place: TopicPlace, now: Date) -> [Candidate] {
+        posts.compactMap { post in
+            guard post.published != nil else { return nil }
+            let guid: String
+            let bar: Int
+            switch place {
+            case .x:
+                guard let id = XPages.statusID(post.url) else { return nil }
+                guid = "x:\(id)"
+                bar = TopicNotability.xLikes
+            case .bluesky:
+                guid = "bsky:\(post.url)"
+                bar = TopicNotability.blueskyLikes
+            case .reddit:
+                guard let id = redditID.firstMatch(post.url)?[1] ?? nil else { return nil }
+                guid = "reddit:\(id)"
+                bar = TopicNotability.redditScore
+            default:
+                return nil
+            }
+            var item = OpenedLinks.item(post: post, now: now)
+            item.guid = guid
+            return Candidate(item: item, score: post.score, scoreBar: bar, name: post.author)
+        }
     }
 
     // MARK: Media
@@ -479,5 +569,17 @@ enum TopicXML {
             if !value.isEmpty, current?[path] == nil { current?[path] = value }
             text = ""
         }
+    }
+}
+
+/// When each keyword was last searched on X, so a topic refreshed often doesn't search X each time.
+actor XSearchTimes {
+    private var last: [String: Date] = [:]
+
+    /// True (and the time noted) when `key` wasn't searched within `interval`.
+    func claim(_ key: String, now: Date, interval: TimeInterval) -> Bool {
+        if let at = last[key], now.timeIntervalSince(at) < interval { return false }
+        last[key] = now
+        return true
     }
 }

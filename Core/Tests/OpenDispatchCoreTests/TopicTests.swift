@@ -47,7 +47,8 @@ enum TopicFixtures {
         }
 
         convenience init(news: Data? = TopicFixtures.bing, hn: Data? = TopicFixtures.hn, reddit: Data? = TopicFixtures.redditRSS,
-                         youtube: Data? = TopicFixtures.youtube, itunes: Data? = TopicFixtures.itunes, redditJSONStatus: Int = 403) {
+                         youtube: Data? = TopicFixtures.youtube, itunes: Data? = TopicFixtures.itunes,
+                         bluesky: Data? = DiscussionFixtures.data("bluesky-search.json"), redditJSONStatus: Int = 403) {
             var routes: [Route] = []
             if let news { routes.append(Route(fragment: "bing.com/news", status: 200, body: news)) }
             if let hn { routes.append(Route(fragment: "hn.algolia.com", status: 200, body: hn)) }
@@ -55,6 +56,7 @@ enum TopicFixtures {
             if let reddit { routes.append(Route(fragment: "reddit.com/search.rss", status: 200, body: reddit)) }
             if let youtube { routes.append(Route(fragment: "youtube.com/youtubei", status: 200, body: youtube)) }
             if let itunes { routes.append(Route(fragment: "itunes.apple.com", status: 200, body: itunes)) }
+            if let bluesky { routes.append(Route(fragment: "api.bsky.app", status: 200, body: bluesky)) }
             self.init(routes)
         }
 
@@ -84,7 +86,7 @@ struct TopicOptionsTests {
     @Test func optionsRoundTripAsDeterministicJSON() throws {
         let o = TopicOptions(
             keyword: "Vision Pro", excluded: ["rumor", "case"], notableOnly: true,
-            places: TopicPlaces(news: false, hackerNews: true, media: false, subscriptions: true), skipPaywalled: false)
+            places: TopicPlaces(news: false, hackerNews: true, x: false, bluesky: false, media: false, subscriptions: true), skipPaywalled: false)
         let json = o.json
         #expect(TopicOptions(json: json) == o)
         // Sorted keys, so two devices produce the same text for the same options.
@@ -107,8 +109,8 @@ struct TopicOptionsTests {
         #expect(o.excluded == ["Rumor", "case"])
         #expect(TopicOptions.excludedWords(from: " a, b ,, c ") == ["a", "b", "c"])
         #expect(o.excludedText == "Rumor, case")
-        #expect(TopicPlaces(news: false, hackerNews: true, media: true, subscriptions: true).searched == [.hackerNews, .media])
-        #expect(TopicPlaces(news: false, hackerNews: false, media: false, subscriptions: true).searched.isEmpty)
+        #expect(TopicPlaces(news: false, hackerNews: true, media: true, subscriptions: true).searched == [.hackerNews, .x, .bluesky, .media])
+        #expect(TopicPlaces(news: false, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: true).searched.isEmpty)
     }
 
     @Test func matcherIgnoresCaseAndDiacritics() {
@@ -207,7 +209,7 @@ struct TopicProviderTests {
     @Test func newsRequestIsAQuotedPhraseSortedByDate() async throws {
         let net = TopicFixtures.Network()
         _ = await net.search().search(
-            TopicOptions(keyword: "iPhone Duo", places: TopicPlaces(news: true, hackerNews: false, media: false, subscriptions: false)),
+            TopicOptions(keyword: "iPhone Duo", places: TopicPlaces(news: true, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: false)),
             subscriptions: .empty, now: now)
         let url = try #require(net.requests(containing: "bing.com").first?.url)
         #expect(url == "https://www.bing.com/news/search?q=%22iPhone%20Duo%22&format=rss&qft=sortbydate%3d%221%22&mkt=en-US&setlang=en-US")
@@ -218,7 +220,7 @@ struct TopicProviderTests {
 
     @Test func newsKeepsOnTopicArticlesAndSkipsPaywalledSites() async throws {
         let net = TopicFixtures.Network()
-        let places = TopicPlaces(news: true, hackerNews: false, media: false, subscriptions: false)
+        let places = TopicPlaces(news: true, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: false)
         let kept = await net.search().search(TopicOptions(keyword: "iPhone Duo", places: places), subscriptions: .empty, now: now)
         // CBS, IGN; the Investor's and Barron's items don't mention it; the New York Times one is paywalled.
         #expect(kept.items.map { $0.author } == ["CBS News", "IGN"])
@@ -285,7 +287,7 @@ struct TopicProviderTests {
 
     @Test func redditFallsBackToRSSWhenTheJSONIsRefused() async throws {
         let net = TopicFixtures.Network(redditJSONStatus: 403)
-        let places = TopicPlaces(news: false, hackerNews: false, reddit: true, media: false, subscriptions: false)
+        let places = TopicPlaces(news: false, hackerNews: false, reddit: true, x: false, bluesky: false, media: false, subscriptions: false)
         let out = await net.search().search(TopicOptions(keyword: "vision pro", places: places), subscriptions: .empty, now: now)
         let json = try #require(net.requests(containing: "reddit.com/search.json").first)
         #expect(json.url.hasPrefix("https://www.reddit.com/search.json?q=%22vision%20pro%22&sort=new&t=week"))
@@ -333,7 +335,7 @@ struct TopicProviderTests {
 
     @Test func recentVideoSearchAsksForUploadOrderInEnglish() async throws {
         let net = TopicFixtures.Network()
-        let places = TopicPlaces(news: false, hackerNews: false, media: true, subscriptions: false)
+        let places = TopicPlaces(news: false, hackerNews: false, x: false, bluesky: false, media: true, subscriptions: false)
         let out = await net.search().search(TopicOptions(keyword: "vision pro", places: places), subscriptions: .empty, now: now)
         let request = try #require(net.requests(containing: "youtubei").first)
         let sent = try #require(request.body)
@@ -367,7 +369,7 @@ struct TopicProviderTests {
 
     @Test func podcastSearchKeepsTheLastFortnight() async throws {
         let net = TopicFixtures.Network()
-        let places = TopicPlaces(news: false, hackerNews: false, media: true, subscriptions: false)
+        let places = TopicPlaces(news: false, hackerNews: false, x: false, bluesky: false, media: true, subscriptions: false)
         let out = await net.search().search(TopicOptions(keyword: "vision pro", places: places), subscriptions: .empty, now: now)
         let ask = try #require(net.requests(containing: "itunes.apple.com").first)
         #expect(ask.url.contains("limit=200"))
@@ -412,7 +414,7 @@ struct TopicProviderTests {
 
     @Test func notableOnlyKeepsHighPointsAndFollowedOrigins() async throws {
         let net = TopicFixtures.Network()
-        let discussions = TopicPlaces(news: false, hackerNews: true, reddit: true, media: false, subscriptions: false)
+        let discussions = TopicPlaces(news: false, hackerNews: true, reddit: true, x: false, bluesky: false, media: false, subscriptions: false)
         let everything = await net.search().search(TopicOptions(keyword: "openai", places: discussions), subscriptions: .empty, now: now)
         #expect(everything.items.filter { $0.guid.hasPrefix("hn:") }.count == 4)
         let notable = await net.search().search(TopicOptions(keyword: "openai", notableOnly: true, places: discussions), subscriptions: .empty, now: now)
@@ -437,7 +439,8 @@ struct TopicProviderTests {
         #expect(partial.failures[.news] == "HTTP 404")
         #expect(partial.failures.count == 1)
         #expect(!partial.allFailed)
-        #expect(partial.searched == [.news, .hackerNews, .media])
+        // X isn't searched: the app isn't signed in to it.
+        #expect(partial.searched == [.news, .hackerNews, .bluesky, .media])
         #expect(!partial.items.isEmpty)
 
         // Places fail on their own: Reddit down, Hacker News up. Media has two providers and fails only when both did.
@@ -445,15 +448,15 @@ struct TopicProviderTests {
             .init(fragment: "hn.algolia.com", status: 200, body: TopicFixtures.hn),
             .init(fragment: "reddit.com", status: 500, body: Data()),
         ])
-        let places = TopicPlaces(news: false, hackerNews: true, reddit: true, media: false, subscriptions: false)
+        let places = TopicPlaces(news: false, hackerNews: true, reddit: true, x: false, bluesky: false, media: false, subscriptions: false)
         let half = await redditDown.search().search(TopicOptions(keyword: "openai", places: places), subscriptions: .empty, now: now)
         #expect(Set(half.failures.keys) == [.reddit] && !half.allFailed)
         #expect(half.items.contains { $0.guid.hasPrefix("hn:") })
 
-        let nothing = TopicFixtures.Network([], failing: ["bing.com", "algolia", "reddit.com", "youtubei", "itunes"])
+        let nothing = TopicFixtures.Network([], failing: ["bing.com", "algolia", "reddit.com", "youtubei", "itunes", "bsky.app"])
         let none = await nothing.search().search(TopicOptions(keyword: "openai"), subscriptions: .empty, now: now)
         #expect(none.allFailed)
-        #expect(Set(none.failures.keys) == [.news, .hackerNews, .media])
+        #expect(Set(none.failures.keys) == [.news, .hackerNews, .bluesky, .media])
         #expect(none.errorMessage != nil)
         #expect(none.items.isEmpty)
     }
@@ -461,12 +464,12 @@ struct TopicProviderTests {
     @Test func placesThatAreOffAreNotAsked() async throws {
         let net = TopicFixtures.Network()
         let out = await net.search().search(
-            TopicOptions(keyword: "openai", places: TopicPlaces(news: false, hackerNews: true, media: false, subscriptions: true)),
+            TopicOptions(keyword: "openai", places: TopicPlaces(news: false, hackerNews: true, x: false, bluesky: false, media: false, subscriptions: true)),
             subscriptions: .empty, now: now)
         #expect(out.searched == [.hackerNews])
         #expect(net.requests(containing: "bing.com").isEmpty && net.requests(containing: "youtubei").isEmpty && net.requests(containing: "itunes").isEmpty)
         let none = await net.search().search(
-            TopicOptions(keyword: "openai", places: TopicPlaces(news: false, hackerNews: false, media: false, subscriptions: true)),
+            TopicOptions(keyword: "openai", places: TopicPlaces(news: false, hackerNews: false, x: false, bluesky: false, media: false, subscriptions: true)),
             subscriptions: .empty, now: now)
         #expect(none.items.isEmpty && none.searched.isEmpty && !none.allFailed)
     }

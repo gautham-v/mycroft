@@ -16,6 +16,8 @@ struct TopicEditorView: View {
     @State private var news: Bool
     @State private var hackerNews: Bool
     @State private var reddit: Bool
+    @State private var x: Bool
+    @State private var bluesky: Bool
     @State private var media: Bool
     @State private var subscriptions: Bool
     @State private var skipPaywalled: Bool
@@ -42,6 +44,8 @@ struct TopicEditorView: View {
         _news = State(initialValue: options.places.news)
         _hackerNews = State(initialValue: options.places.hackerNews)
         _reddit = State(initialValue: options.places.reddit)
+        _x = State(initialValue: options.places.x)
+        _bluesky = State(initialValue: options.places.bluesky)
         _media = State(initialValue: options.places.media)
         _subscriptions = State(initialValue: options.places.subscriptions)
         _skipPaywalled = State(initialValue: options.skipPaywalled)
@@ -58,7 +62,8 @@ struct TopicEditorView: View {
     private var options: TopicOptions {
         TopicOptions(
             keyword: keyword, excluded: TopicOptions.excludedWords(from: leaveOut), notableOnly: notableOnly,
-            places: TopicPlaces(news: news, hackerNews: hackerNews, reddit: reddit, media: media, subscriptions: subscriptions),
+            places: TopicPlaces(news: news, hackerNews: hackerNews, reddit: reddit, x: x, bluesky: bluesky, media: media,
+                                subscriptions: subscriptions),
             skipPaywalled: skipPaywalled
         ).cleaned
     }
@@ -143,19 +148,23 @@ struct TopicEditorView: View {
                 }
                 .pickerStyle(.segmented)
             } footer: {
-                Text("Notable: HN 100+, Reddit 200+, or from a source you follow.")
+                Text("Notable: HN 100+, Reddit 200+, X 1,000+ likes, Bluesky 100+, or from a source you follow.")
             }
             Section("Search in") {
                 Toggle("News sites", isOn: $news)
                 Toggle("Hacker News", isOn: $hackerNews)
-                Toggle(isOn: $reddit) {
+                Toggle("Reddit", isOn: $reddit)
+                Toggle(isOn: $x) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Reddit")
-                        Text("Opens without comments.")
+                        Text("X")
+                        Text(model.accounts.isSignedIn(.x)
+                             ? "As you, at most every 30 minutes."
+                             : "Only while signed in: Settings \u{203A} Integrations.")
                             .font(OFFont.ui(12))
                             .foregroundStyle(.ofMuted)
                     }
                 }
+                Toggle("Bluesky", isOn: $bluesky)
                 Toggle("YouTube & podcasts", isOn: $media)
                 Toggle("Your subscriptions", isOn: $subscriptions)
             }

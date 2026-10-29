@@ -19,7 +19,7 @@ public struct TopicSearchOutcome: Sendable, Hashable {
     /// Every searched place failed: the topic records an error. One that works makes it a success, with whatever it found.
     public var allFailed: Bool { !searched.isEmpty && searched.allSatisfy { failures[$0] != nil } }
 
-    /// The failure to record: the first failed place's, in the order News, Hacker News, Reddit, Media.
+    /// The failure to record: the first failed place's, in the order News, Hacker News, Reddit, X, Bluesky, Media.
     public var errorMessage: String? {
         TopicPlace.allCases.compactMap { failures[$0] }.first
     }
@@ -94,10 +94,13 @@ public struct TopicSubscriptions: Sendable, Hashable {
 }
 
 /// Which matches count as notable (the Show: Notable only switch): a Hacker News story with 100 points or
-/// more, a Reddit post with a score of 200 or more, or anything from a site, channel or show the user follows.
+/// more, a Reddit post with a score of 200 or more, a post on X with 1,000 likes or on Bluesky with 100, or anything from a
+/// site, channel or show the user follows.
 public enum TopicNotability {
     public static let hackerNewsPoints = 100
     public static let redditScore = 200
+    public static let xLikes = 1000
+    public static let blueskyLikes = 100
 }
 
 /// Searches the places outside the user's subscriptions for a topic. Behind a protocol so refresh tests fake it.

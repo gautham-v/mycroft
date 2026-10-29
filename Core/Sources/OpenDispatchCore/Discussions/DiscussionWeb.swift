@@ -2,6 +2,9 @@ import Foundation
 #if canImport(WebKit)
 import WebKit
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 /// The sites a signed-in session counts for. The app's web views share one persistent data store
 /// (`WKWebsiteDataStore.default()`), so signing in on the sign-in sheet signs the hidden views in too.
@@ -118,6 +121,7 @@ public final class DiscussionWeb: NSObject {
 
     /// The HTML at `path` on reddit.com; a POST of `form` (with Reddit's CSRF token added) when it is given.
     func redditHTML(_ path: String, form: [String: String]? = nil) async throws -> String {
+        try Self.requireForeground()
         let cached = form == nil && RedditPages.isThread(RedditPages.origin + path)
         if cached, let page = redditPages[path], Date().timeIntervalSince(page.at) < Self.pageLifetime { return page.html }
         for attempt in 0..<2 {
@@ -182,6 +186,7 @@ public final class DiscussionWeb: NSObject {
 
     /// The timeline cells of an X page, after waiting for posts and scrolling `scrolls` times.
     func xCells(_ url: String, scrolls: Int) async throws -> [String] {
+        try Self.requireForeground()
         guard await WebAccount.x.isSignedIn() else { throw DiscussionError.signInRequired(.x) }
         let previous = xQueue
         let task = Task { @MainActor () throws -> [String] in
@@ -239,6 +244,13 @@ public final class DiscussionWeb: NSObject {
     nonisolated static func statusKey(_ cell: String) -> String? {
         guard cell.contains("data-testid=\"tweet\"") else { return nil }
         return statusHref.firstMatch(cell)?[1] ?? nil
+    }
+
+    /// A web view's pages don't run while an iPhone app is in the background (a background refresh), so don't start one.
+    private static func requireForeground() throws {
+        #if os(iOS)
+        if UIApplication.shared.applicationState == .background { throw DiscussionError.unavailable }
+        #endif
     }
 
     // MARK: Views

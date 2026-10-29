@@ -257,3 +257,72 @@ struct DiscussionTests {
         #expect(r.title == "Game thread" && r.author == "r/nfl" && r.summary == nil)
     }
 }
+
+@Suite("Topics from posts")
+struct TopicPostTests {
+    private let now = ISO8601.date(from: "2026-10-29T03:00:00Z")!
+
+    private func search(_ net: TopicFixtures.Network, web: DefaultTopicSearch.WebSearch? = nil, signedIn: Bool = false) -> DefaultTopicSearch {
+        DefaultTopicSearch(fetch: { url, headers in try net.answer(url, headers: headers, body: nil) },
+                           explore: DefaultExploreSearch(fetch: { url, body in try net.answer(url, headers: [:], body: body) }),
+                           web: web, signedInToX: { signedIn }, languages: TopicLanguages(preferred: []))
+    }
+
+    private let only = TopicPlaces(news: false, hackerNews: false, reddit: false, x: true, bluesky: true, media: false, subscriptions: false)
+
+    @Test func blueskyPostsMatchTheirWholeText() async throws {
+        let net = TopicFixtures.Network([.init(fragment: "api.bsky.app", status: 200, body: DiscussionFixtures.data("bluesky-search.json"))])
+        let out = await search(net).search(TopicOptions(keyword: "love is blind", places: only), subscriptions: .empty, now: now)
+        #expect(out.searched == [.bluesky])
+        #expect(!out.items.isEmpty)
+        #expect(out.items.allSatisfy { $0.guid.hasPrefix("bsky:https://bsky.app/profile/") && $0.author?.contains("(@") == true })
+        // A post whose first line doesn't name the keyword is still on topic when its text does.
+        let post = DiscussionPost(place: .bluesky, url: "https://bsky.app/profile/a.b/post/c", text: "Episode 9 tonight\nlove is blind is chaos",
+                                  author: "A", handle: "a.b", published: now)
+        let candidates = DefaultTopicSearch.candidates(posts: [post], place: .bluesky, now: now)
+        let options = TopicOptions(keyword: "love is blind")
+        #expect(DefaultTopicSearch.finish(candidates, options, TopicMatcher(options), .empty, now, checkPaywall: false).isEmpty)
+        #expect(DefaultTopicSearch.finish(candidates, options, TopicMatcher(options), .empty, now, checkPaywall: false, inText: true).count == 1)
+        #expect(out.items.allSatisfy { Topic.place(guid: $0.guid, videoId: nil, audioUrl: nil) == .bluesky })
+        let item = Item(id: 1, sourceId: 1, guid: out.items[0].guid, url: out.items[0].url, title: out.items[0].title, publishedAt: now)
+        #expect(TopicContentFilter.category(of: item) == .posts)
+    }
+
+    @Test func xIsSearchedOnlySignedInAndNotEveryRefresh() async throws {
+        let cells = DiscussionFixtures.cells("x-search.json")
+        let asked = Counter()
+        let web: DefaultTopicSearch.WebSearch = { place, _ in
+            guard place == .x else { return [] }
+            asked.add()
+            return XPages.searchResults(inCells: cells)
+        }
+        let net = TopicFixtures.Network([])
+        let places = TopicPlaces(news: false, hackerNews: false, reddit: false, x: true, bluesky: false, media: false, subscriptions: false)
+
+        let signedOut = await search(net, web: web).search(TopicOptions(keyword: "love is blind", places: places), subscriptions: .empty, now: now)
+        #expect(signedOut.searched.isEmpty && asked.value == 0)
+
+        // The fixture's posts are from Oct 22 and 23, inside the window; the keyword is matched in the text.
+        let options = TopicOptions(keyword: "love is blind", places: places)
+        let first = await search(net, web: web, signedIn: true).search(options, subscriptions: .empty, now: now)
+        #expect(first.searched == [.x] && asked.value == 1)
+        #expect(Set(first.items.map(\.guid)).isSubset(of: ["x:2113747873405796631", "x:2113372956336476401"]))
+        let again = await search(net, web: web, signedIn: true).search(options, subscriptions: .empty, now: now.addingTimeInterval(60))
+        #expect(again.items.isEmpty && asked.value == 1)
+    }
+
+    @Test func storedPostsKeepTheirPlace() {
+        #expect(Topic.place(guid: "x:1", videoId: nil, audioUrl: nil) == .x)
+        #expect(Topic.place(guid: "bsky:https://bsky.app/profile/a/post/b", videoId: nil, audioUrl: nil) == .bluesky)
+        #expect(Topic.isSocialPost("https://x.com/a/status/1") && !Topic.isSocialPost("https://www.reddit.com/r/a/comments/1/"))
+        let decoded = TopicOptions(json: #"{"keyword":"x","places":{"news":true}}"#)
+        #expect(decoded?.places.x == true && decoded?.places.bluesky == true && decoded?.places.reddit == false)
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    var value: Int { lock.withLock { n } }
+    func add() { lock.withLock { n += 1 } }
+}

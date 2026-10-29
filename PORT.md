@@ -1220,3 +1220,18 @@ Explore searches posts, and the reader shows comments under a thread and under e
   `ReaderComments` (`Views/Reader/ReaderComments.swift`) under the article (`ReaderComments.target(for:)`: the item's own thread, loaded at once, or its `hnCommentsUrl`,
   loaded on "Show comments") and under a video's transcript: a heading with the count and "On <place>", rails per depth, the author line folds a comment and its replies,
   more rows load in place, X signed out shows the sign-in note. Settings › Integrations › Signed-in sites: X and Reddit, Sign In… / Sign Out.
+
+### Topics from X and Bluesky — 2026-10-29
+- Places: `TopicPlaces` gains `x` and `bluesky` (on by default, and a stored record without them reads them as on); `TopicPlace` gains `.x`, `.bluesky`
+  (`matchesText`: their posts have no headline, so `finish(inText:)` and `removeStaleTopicItems` use `TopicMatcher.matches(title:summary:)`, the keyword
+  anywhere in the post). Guids `x:<status id>` and `bsky:<post url>` (`Topic.place(guid:)`). Items are `OpenedLinks.item(post:)`: the first line as title,
+  the text as summary, "Name (@handle)" as author, likes and replies in `hnPoints`/`hnComments`. Notable: X 1,000 likes, Bluesky 100 (`TopicNotability`).
+- `DefaultTopicSearch`: Bluesky through `BlueskyThreads.searchURL` (top posts of the last 14 days). X through `DiscussionWeb.xCells` (one scroll) only when
+  `signedInToX()`; signed out, X isn't in `searched` (so it is neither a failure nor removes anything), and a keyword is searched on X at most every 30 minutes
+  (`XSearchTimes`). Reddit is read through the web view first (`RedditPages.searchPath(sort: "new")`, with scores), falling back to the JSON and RSS. The web
+  view throws `unavailable` while an iPhone app is in the background, so a background refresh uses the fallback and skips X.
+- Filter: `TopicContentFilter.posts` ("Posts") for X and Bluesky (`Topic.isSocialPost`); News and Discussions leave them out. A post row's stats show a heart
+  for likes. The Topic sheet has X (with whether the app is signed in) and Bluesky switches. Signing in to X refreshes the topics that search X.
+- Sign-in sheet: a pop-up the page opens ("Sign in with Google" or Apple) is a web view of its own made from WebKit's configuration, laid over the page
+  until it calls window.close() (Back closes it by hand); before, it was loaded into the page, which broke Google's sign-in.
+

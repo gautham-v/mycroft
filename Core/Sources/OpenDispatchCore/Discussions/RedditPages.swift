@@ -23,15 +23,15 @@ enum RedditPages {
         return origin + path + "/" + (slug.map { $0 + "/" } ?? "")
     }
 
-    /// The search for posts (not communities or comments) from the last `range` ("week", "all"), by relevance. A query of
-    /// several words is searched as a phrase unless it already has quotes.
-    static func searchPath(_ query: String, range: String) -> String {
+    /// The search for posts (not communities or comments) from the last `range` ("week", "month"), by relevance or `sort` ("new").
+    /// A query of several words is searched as a phrase unless it already has quotes.
+    static func searchPath(_ query: String, range: String, sort: String = "relevance") -> String {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let phrase = q.contains(" ") && !q.contains("\"") ? "\"\(q)\"" : q
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "&+=#;\"")
         let encoded = (phrase.addingPercentEncoding(withAllowedCharacters: allowed) ?? phrase)
-        return "/search/?q=\(encoded)&type=link&sort=relevance&t=\(range)"
+        return "/search/?q=\(encoded)&type=link&sort=\(sort)&t=\(range)"
     }
 
     // MARK: Search

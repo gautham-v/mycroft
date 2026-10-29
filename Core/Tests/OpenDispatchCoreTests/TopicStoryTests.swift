@@ -118,9 +118,9 @@ private func makeTopic(_ db: AppDatabase, _ keyword: String = "Firefox", places:
 @Suite("Topic rules")
 struct TopicRuleTests {
     @Test func redditIsItsOwnPlaceOffByDefault() throws {
-        #expect(TopicPlaces.defaults == TopicPlaces(news: true, hackerNews: true, reddit: false, media: true, subscriptions: true))
-        #expect(TopicPlaces().searched == [.news, .hackerNews, .media])
-        #expect(TopicPlaces(reddit: true).searched == [.news, .hackerNews, .reddit, .media])
+        #expect(TopicPlaces.defaults == TopicPlaces(news: true, hackerNews: true, reddit: false, x: true, bluesky: true, media: true, subscriptions: true))
+        #expect(TopicPlaces().searched == [.news, .hackerNews, .x, .bluesky, .media])
+        #expect(TopicPlaces(reddit: true).searched == [.news, .hackerNews, .reddit, .x, .bluesky, .media])
         #expect(TopicOptions(keyword: "x").places.reddit == false)
     }
 
@@ -142,7 +142,7 @@ struct TopicRuleTests {
 
     @Test func placesEncodeWithTheNewKeysOnlyAndRoundTrip() throws {
         let o = TopicOptions(keyword: "x", places: TopicPlaces(news: false, hackerNews: true, reddit: true, media: false, subscriptions: true))
-        #expect(o.json.contains(#""places":{"hackerNews":true,"media":false,"news":false,"reddit":true,"subscriptions":true}"#))
+        #expect(o.json.contains(#""places":{"bluesky":true,"hackerNews":true,"media":false,"news":false,"reddit":true,"subscriptions":true,"x":true}"#))
         #expect(!o.json.contains("discussions"))
         #expect(TopicOptions(json: o.json) == o)
     }
@@ -498,10 +498,10 @@ struct TopicStoryTests {
         try await group(db, t)
         let counts = try await db.topicFilterCounts(topicId: t.id)
         // News: the meme story and the PCWorld article; the thread attached to the meme story is that story's.
-        #expect(counts == [.all: 6, .news: 2, .discussions: 2, .videos: 2, .episodes: 0])
+        #expect(counts == [.all: 6, .news: 2, .discussions: 2, .posts: 0, .videos: 2, .episodes: 0])
         #expect(try await rows(db, t, .all).count == 6)
         for f in TopicContentFilter.allCases { #expect(try await rows(db, t, f).count == counts[f]) }
-        #expect(TopicContentFilter.allCases.map(\.title) == ["All", "News", "Discussions", "Videos", "Episodes"])
+        #expect(TopicContentFilter.allCases.map(\.title) == ["All", "News", "Discussions", "Posts", "Videos", "Episodes"])
     }
 
     @Test func unreadCountsAndMarkAllAsReadCountStoriesOnce() async throws {
@@ -832,7 +832,7 @@ struct TopicRefreshRuleTests {
         #expect(stories.map { $0.outlets.count }.sorted() == [2, 3, 3])
         #expect(Set(stories.flatMap { $0.outlets.map(\.name) }) == ["Yahoo", "KHOU", "BetaNews", "9to5Mac", "The Verge", "note", "PCWorld"])
         let counts = try await db.topicFilterCounts(topicId: t.id)
-        #expect(counts == [.all: 35, .news: 7, .discussions: 20, .videos: 5, .episodes: 3])
+        #expect(counts == [.all: 35, .news: 7, .discussions: 20, .posts: 0, .videos: 5, .episodes: 3])
         #expect(try await db.unreadCounts()[t.id] == 35)
 
     }

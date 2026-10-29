@@ -828,9 +828,16 @@ final class AppModel {
         try await services.discussions.more(more, in: url)
     }
 
-    /// The sign-in sheet closed: read the sign-ins again, and search X's posts for Explore's query if it is now signed in.
+    /// The sign-in sheet closed: read the sign-ins again, and once signed in to X, search X's posts for Explore's query and
+    /// refresh the topics that search X.
     func didCloseSignIn() async {
+        let wasSignedIn = accounts.isSignedIn(.x)
         await accounts.refresh()
+        if accounts.isSignedIn(.x), !wasSignedIn {
+            for topic in topics where topic.topicOptions?.places.x == true {
+                Task { await refreshTopic(id: topic.id) }
+            }
+        }
         if accounts.isSignedIn(.x), explore.posts[.x]?.value == nil, explore.posts[.x]?.isLoading != true { explore.retryPosts(.x) }
     }
 
