@@ -138,6 +138,13 @@ public enum OpenedLinks {
             publishedAt: post.published ?? now, thumbnailUrl: post.thumbnailUrl, hnPoints: post.score, hnComments: post.comments)
     }
 
+    /// The item for an Explore article: the headline, the outlet as the author, Bing's summary and the story's date. No
+    /// thumbnail: the reader takes the page's own lead image, which Bing's small crop would replace.
+    public static func item(article: ExploreArticle) -> ParsedItem {
+        ParsedItem(guid: article.url, url: article.url, title: article.title, summary: article.summary, author: article.outlet,
+                   publishedAt: article.published)
+    }
+
     /// The item for a link whose page couldn't be read: its address as the title, opened now.
     public static func fallbackItem(url: String, videoID: String?, now: Date = Date()) -> ParsedItem {
         let host = URLHost.host(of: url)

@@ -815,6 +815,18 @@ final class AppModel {
         return status(url: item.item.url, publisher: item.source.isTopic ? item.item.author : nil)
     }
 
+    /// The same mark for an Explore article, whose outlet is the publisher (an aggregator carries it under its own address).
+    func paywallStatus(of article: ExploreArticle) -> PaywallStatus {
+        guard settings.paywallTreatment != .show else { return .free }
+        return status(url: article.url, publisher: article.outlet)
+    }
+
+    /// Explore's articles as the section shows them: with Hide, the walled sites' left out (metered ones stay, marked).
+    func shownArticles(_ articles: [ExploreArticle]) -> [ExploreArticle] {
+        guard settings.paywallTreatment == .hide else { return articles }
+        return articles.filter { paywallStatus(of: $0) != .walled }
+    }
+
     private func status(url: String, publisher: String?) -> PaywallStatus {
         Paywalls.status(url: url, publisher: publisher, signedIn: accounts.signedInSites, book: settings.paywalls)
     }

@@ -4,9 +4,9 @@ import SwiftUI
 
 /// Explore on the iPhone, the drawer's first row: a page in the home column with the drawer's hamburger and
 /// a search field at the top. With nothing searched it lists recent searches and what was played last
-/// (History). A search (Return) shows filter chips (All, Videos, Posts, Episodes, Sources) over the results, which
+/// (History). A search (Return) shows filter chips (All, Videos, Articles, Posts, Episodes, Sources) over the results, which
 /// start with a row that follows the search as a topic (Follow, then Following, which opens the topic): in All,
-/// videos in a row to swipe through, then three posts (with their places to pick from), three episodes and three
+/// videos in a row to swipe through, then three articles, three posts (with their places to pick from), three episodes and three
 /// sources, each with See All; a chip shows
 /// one kind in full. A last row searches the web in the default browser. Typing a web address instead of
 /// words opens it directly. A result opens in the reader pushed onto the stack, like a History row, and
@@ -21,7 +21,7 @@ struct ExplorePhoneView: View {
     @State private var handledFocusRequest = 0
 
     private enum Filter: String, CaseIterable {
-        case all = "All", videos = "Videos", posts = "Posts", episodes = "Episodes", sources = "Sources"
+        case all = "All", videos = "Videos", articles = "Articles", posts = "Posts", episodes = "Episodes", sources = "Sources"
     }
 
     private static let side: CGFloat = 16
@@ -89,7 +89,7 @@ struct ExplorePhoneView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.ofMuted)
                         .accessibilityHidden(true)
-                    TextField("", text: $explore.draft, prompt: Text("Videos, posts, podcasts and sources").foregroundStyle(.ofFaint))
+                    TextField("", text: $explore.draft, prompt: Text("Videos, news, posts, podcasts and sources").foregroundStyle(.ofFaint))
                         .font(OFFont.ui(17))
                         .foregroundStyle(.ofInk)
                         .textInputAutocapitalization(.never)
@@ -97,7 +97,7 @@ struct ExplorePhoneView: View {
                         .submitLabel(.search)
                         .focused($focused)
                         .disabled(explore.isOpeningLink)
-                        .accessibilityLabel("Search videos, posts, podcasts and sources")
+                        .accessibilityLabel("Search videos, news, posts, podcasts and sources")
                         .onSubmit(submit)
                         .onChange(of: explore.draft) { explore.dismissOpenError() }
                     if explore.isOpeningLink {
@@ -242,6 +242,7 @@ struct ExplorePhoneView: View {
         switch filter {
         case .all: allSections(explore)
         case .videos: videoSection(explore, all: true)
+        case .articles: articleSection(explore, all: true)
         case .posts: postSection(explore, all: true)
         case .episodes: episodeSection(explore, all: true)
         case .sources: sourceSection(explore, all: true)
@@ -280,6 +281,7 @@ struct ExplorePhoneView: View {
     /// All: videos, episodes and sources, each cut short with See All, and left out when it came back empty.
     @ViewBuilder private func allSections(_ explore: ExploreStore) -> some View {
         videoSection(explore, all: false)
+        articleSection(explore, all: false)
         postSection(explore, all: false)
         episodeSection(explore, all: false)
         sourceSection(explore, all: false)
@@ -293,6 +295,7 @@ struct ExplorePhoneView: View {
     private func isEmpty(_ explore: ExploreStore) -> Bool {
         (explore.videos.value?.videos.isEmpty ?? false) && (explore.episodes.value?.isEmpty ?? false)
             && (explore.sourcesPhase.value?.isEmpty ?? false) && explore.postsAreEmpty
+            && (explore.articles.value.map { model.shownArticles($0).isEmpty } ?? false)
     }
 
     @ViewBuilder private func videoSection(_ explore: ExploreStore, all: Bool) -> some View {
@@ -328,6 +331,38 @@ struct ExplorePhoneView: View {
                     .padding(.horizontal, Self.side)
                 }
                 .scrollIndicators(.hidden)
+            }
+        }
+    }
+
+    /// News: three in All, every one under the Articles chip. The paywalled sites are marked or left out as the lists do.
+    @ViewBuilder private func articleSection(_ explore: ExploreStore, all: Bool) -> some View {
+        switch explore.articles {
+        case .idle:
+            EmptyView()
+        case .loading:
+            header("Articles")
+            ExploreSkeleton(style: .rows, isPhone: true).padding(.horizontal, Self.side)
+        case .failed(let message):
+            header("Articles")
+            ExploreFailure(what: "news", message: message, retry: explore.retryArticles).padding(.horizontal, Self.side)
+        case .loaded(let found):
+            let articles = model.shownArticles(found)
+            if articles.isEmpty {
+                if all {
+                    ExploreEmptyNote(text: "No articles for \u{201C}\(explore.query)\u{201D}")
+                        .padding(.horizontal, Self.side).padding(.top, 14)
+                }
+            } else {
+                if !all { header("Articles", seeAll: articles.count > 3 ? .articles : nil) }
+                VStack(spacing: 0) {
+                    ForEach(all ? articles : Array(articles.prefix(3))) { article in
+                        let target = ExploreTarget.article(article)
+                        ExploreArticleRow(article: article, isPhone: true, paywall: model.paywallStatus(of: article),
+                                          isOpening: explore.opening == target.id) { _ in open(target) }
+                    }
+                }
+                .padding(.horizontal, Self.side)
             }
         }
     }
