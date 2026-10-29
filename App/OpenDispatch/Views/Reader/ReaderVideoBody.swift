@@ -145,7 +145,7 @@ struct ReaderVideoBody: View {
                     .padding(.top, 28)
             }
 
-            if item.item.videoId != nil {
+            if model.settings.showComments, item.item.videoId != nil {
                 ReaderComments(url: item.item.url, place: .youtube)
                     .id(item.id)
                     .padding(.top, 28)

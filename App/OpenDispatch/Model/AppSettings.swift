@@ -129,6 +129,9 @@ struct AppSettings: Codable, Equatable, Sendable {
     var sendHighlightsToReadwise: Bool = true
     /// Leave read items out of the lists (not Saved or searches); they stay in History.
     var hideReadItems: Bool = false
+    /// The comments under a post, a video or an article's Hacker News discussion, and the reader's Discussion link.
+    /// Off, the reader builds none of them, so nothing is fetched.
+    var showComments: Bool = true
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -163,6 +166,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
         sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
         hideReadItems = (try? c.decode(Bool.self, forKey: .hideReadItems)) ?? false
+        showComments = (try? c.decode(Bool.self, forKey: .showComments)) ?? true
     }
 
     init() {}

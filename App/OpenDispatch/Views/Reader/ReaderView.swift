@@ -178,7 +178,7 @@ struct ReaderItemView: View {
                                     viewportHeight: viewportHeight)
                 } else {
                     article
-                    if let thread = ReaderComments.target(for: item) {
+                    if settings.showComments, let thread = ReaderComments.target(for: item) {
                         ReaderComments(url: thread.url, place: thread.place, onDemand: thread.onDemand, count: item.item.hnComments)
                             .id(item.id)
                             .readerColumn(wide: wide)
@@ -400,7 +400,7 @@ struct ReaderItemView: View {
                 if isPodcast, let dur = TextFormat.duration(item.item.durationSec) {
                     Text(dur).monospacedDigit()
                 }
-                if let comments = item.item.hnCommentsUrl, let url = URL(string: comments) {
+                if settings.showComments, let comments = item.item.hnCommentsUrl, let url = URL(string: comments) {
                     Button { openURL(url) } label: {
                         HStack(spacing: 4) {
                             OFIcon.comment.image.font(.system(size: 13))
