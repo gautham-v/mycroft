@@ -201,3 +201,14 @@ struct ExtractionPaywallTests {
         #expect(PaywallDetection.wallResponse(check) == nil)
     }
 }
+
+@Test func aWordCountOutsideJSONLDStillMeasuresTheStory() {
+    let words = String(repeating: "word ", count: 230)
+    let page = """
+    <html><head><script type="application/ld+json">{"@type":"NewsArticle","isAccessibleForFree":false,"hasPart":[{"@type":"WebPageElement","isAccessibleForFree":false}]}</script>
+    <script>window.data = {"wordCount":221,"theme":"default"}</script></head><body><p>\(words)</p></body></html>
+    """
+    #expect(PaywallDetection.declaredWords(page) == 221)
+    #expect(!PaywallDetection.isWalled(pageHTML: page, articleHTML: "<p>\(words)</p>", url: "https://www.businessinsider.com/a"))
+    #expect(PaywallDetection.isWalled(pageHTML: page, articleHTML: "<p>\(String(repeating: "word ", count: 80))</p>", url: "https://www.businessinsider.com/a"))
+}

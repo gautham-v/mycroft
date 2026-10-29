@@ -102,9 +102,12 @@ public enum PaywallDetection {
         return Double(body.split(whereSeparator: { $0.isWhitespace }).count) < Double(declared) * servedShare
     }
 
-    /// The largest `wordCount` any JSON-LD block of the page declares, 0 when none does.
-    private static func declaredWords(_ pageHTML: String) -> Int {
-        ldBlock.allMatches(pageHTML).compactMap { $0[1] }.flatMap { wordCount.allMatches($0) }
-            .compactMap { $0[1].flatMap { Int($0) } }.max() ?? 0
+    /// The largest `wordCount` any JSON-LD block of the page declares; without one, the largest in the page's other
+    /// data (Business Insider's analytics JSON has it, its JSON-LD doesn't: a whole 221-word story read as a teaser).
+    /// 0 when the page declares none.
+    static func declaredWords(_ pageHTML: String) -> Int {
+        func largest(_ texts: [String]) -> Int { texts.flatMap { wordCount.allMatches($0) }.compactMap { $0[1].flatMap { Int($0) } }.max() ?? 0 }
+        let ld = largest(ldBlock.allMatches(pageHTML).compactMap { $0[1] })
+        return ld > 0 ? ld : largest([pageHTML])
     }
 }
