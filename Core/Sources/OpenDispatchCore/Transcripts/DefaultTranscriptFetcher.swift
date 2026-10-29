@@ -32,8 +32,8 @@ public struct DefaultTranscriptFetcher: TranscriptFetching {
         case .podcast, .rss where item.audioUrl != nil:
             var item = item
             var feed: (url: String, data: Data)?
-            if source.isOpenedLinks {
-                // An opened episode lives under a holder source: its show's feed gives the entry's own guid and link.
+            if source.holdsStandaloneItems {
+                // An opened episode (or a topic's) lives under a holder source: its show's feed gives the entry's own guid and link.
                 guard let found = await openedEpisodeEntry(item) else { return nil }
                 feed = (found.feedURL, found.data)
                 item.guid = found.entry.guid
@@ -44,7 +44,7 @@ public struct DefaultTranscriptFetcher: TranscriptFetching {
                 return t
             }
             return try await podcastTranscript(for: item, source: source, feed: feed)
-        case .rss, .page:
+        case .rss, .page, .topic:
             return nil
         }
     }

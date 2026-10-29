@@ -95,6 +95,8 @@ final class AppModel {
     let history: HistoryStore
     /// Explore: the last search and its results, shared by the New Tab pages and the iPhone's Explore page.
     let explore: ExploreStore
+    /// Topics (followed keyword searches) and their unread counts.
+    let topicStore: TopicStore
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
     var database: AppDatabase { services.database }
 
@@ -117,6 +119,9 @@ final class AppModel {
     /// The iPhone's Explore page (drawer row) is showing instead of an item list. Any other navigation
     /// turns it off. (On the Mac and iPad Explore is the New Tab page, which is not a navigation state.)
     private(set) var showsExplore = false
+    /// Which kind of item a topic's list shows (the chips under its header). Back to All whenever the list
+    /// moves to something else.
+    private(set) var topicFilter: TopicContentFilter = .all
     /// Bumped when Explore is picked on the iPhone, so its page puts the cursor in the search field.
     private(set) var exploreFocusRequests = 0
     /// Hide Read Items: items read before this moment are left out of the list. Moved on when the list is
@@ -178,6 +183,8 @@ final class AppModel {
     // MARK: Presentation flags (sheets / dialogs)
 
     var isAddSourcePresented = false
+    /// The Topic sheet (New Topic…, Edit Topic…); nil when closed.
+    var topicEditor: TopicEditorRequest?
     /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
     var pendingAddSourceURL: String?
     /// Folder the Add source sheet puts what it adds into (the drawer's "Add Source to <Folder>…"); the
@@ -279,6 +286,7 @@ final class AppModel {
         self.services = services
         history = HistoryStore(database: services.database)
         explore = ExploreStore(services: services)
+        topicStore = TopicStore(database: services.database)
         let defaults = UserDefaults.standard
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
         collapsedFolders = Set(defaults.stringArray(forKey: Keys.collapsedFolders) ?? [])
@@ -333,7 +341,8 @@ final class AppModel {
     /// The ItemQuery for the current navigation and search.
     var currentQuery: ItemQuery {
         ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery,
-                  hideReadBefore: hidesReadItems ? hideReadCutoff : nil)
+                  hideReadBefore: hidesReadItems ? hideReadCutoff : nil,
+                  topicFilter: isTopicSelected ? topicFilter : .all)
     }
 
     /// Hide Read Items applies here: it's on, and the list isn't Saved (kept on purpose) or a search.
@@ -341,7 +350,13 @@ final class AppModel {
         settings.hideReadItems && !(selectedView == .saved && !isInSourceFeed) && searchQuery.isEmpty
     }
 
-    var activeSource: Source? { selectedSourceID.flatMap { id in sources.first { $0.id == id } } }
+    /// The selected source: a subscription, or a topic (which `sources` leaves out).
+    var activeSource: Source? { selectedSourceID.flatMap { id in sources.first { $0.id == id } ?? topicStore.topic(id: id) } }
+    /// The topics, in sidebar order.
+    var topics: [Source] { topicStore.topics }
+    /// The list is a topic's.
+    var isTopicSelected: Bool { selectedSourceID.map { topicStore.ids.contains($0) } ?? false }
+    var activeTopic: Source? { selectedSourceID.flatMap { topicStore.topic(id: $0) } }
     var activeFolder: Folder? { selectedFolderID.flatMap { id in folders.first { $0.id == id } } }
     /// A source or folder feed (not one of the views).
     var isInSourceFeed: Bool { selectedSourceID != nil || selectedFolderID != nil }
@@ -351,14 +366,27 @@ final class AppModel {
         showsHighlights ? "Highlights" : showsHistory ? "History" : showsExplore ? "Explore" : activeSource?.title ?? activeFolder?.title ?? selectedView.title
     }
 
+    /// The list's title with a topic's active filter after it ("Firefox · Videos"): what the title menu's button reads.
+    var listHeading: String {
+        isTopicSelected && topicFilter != .all ? "\(listTitle) \u{00B7} \(topicFilter.title)" : listTitle
+    }
+
     /// Search field placeholder: "Search" in All, else "Search <title>".
     var searchPlaceholder: String { listTitle == "All" ? "Search" : "Search \(listTitle)" }
 
     /// The item the reader shows: the opened one, else (tablet/desktop) the first in the list.
     var selectedItem: FeedItem? { activeItem(inPane: focusedPane) }
 
-    /// Id the list highlights (the opened item or the default first one).
-    var highlightedItemID: Int64? { selectedItem?.id }
+    /// Id the list highlights (the opened item or the default first one). A story's other outlets and its Hacker News thread are
+    /// not rows of their own, so opening one highlights the story's row (its lead), and j/k move on from there.
+    var highlightedItemID: Int64? {
+        guard let id = selectedItem?.id, !items.contains(where: { $0.id == id }) else { return selectedItem?.id }
+        let lead = items.first { row in
+            guard let story = row.story else { return false }
+            return story.discussion?.id == id || story.outlets.contains { $0.id == id }
+        }
+        return lead?.id ?? id
+    }
 
     /// The other pane's item in split view, which the list marks more lightly.
     var secondaryHighlightedItemID: Int64? { isSplit ? activeItem(inPane: 1 - focusedPane)?.id : nil }
@@ -494,7 +522,9 @@ final class AppModel {
         showsExplore = false
         if changed { hideReadCutoff = Date() }
         selectedView = view
+        if source != selectedSourceID { topicFilter = .all }
         selectedSourceID = source
+        topicStore.watchFilterCounts(of: source.flatMap { topicStore.ids.contains($0) ? $0 : nil })
         selectedFolderID = folder
         setActiveItem(nil)
         resetSearchState()
@@ -564,7 +594,7 @@ final class AppModel {
     /// j/k: select the next (1) or previous (-1) item; prefetches the next page near the end.
     func moveSelection(by step: Int) {
         guard !items.isEmpty, !showsHighlights, !showsHistory, !showsExplore else { return }
-        let from = selectedItem?.id
+        let from = highlightedItemID
         let i = items.firstIndex { $0.id == from } ?? -1
         let target = i < 0 ? 0 : min(max(i + step, 0), items.count - 1)
         if step > 0, nextCursor != nil, i + step >= items.count - 5 { Task { await loadMore() } }
@@ -961,15 +991,21 @@ final class AppModel {
 
     /// Notify on new posts from this source (on this device). Turning it on asks for permission first.
     func setSourceNotify(id: Int64, on: Bool) async throws {
-        if on, !(await PostNotifications.requestAuthorization()) {
+        if on { try await requireNotificationAccess() }
+        try await database.setSourceNotify(id: id, on: on)
+        await loadSources()
+        await topicStore.reload()
+    }
+
+    /// Asks for permission the first time; throws the message to show when notifications are off for the app.
+    private func requireNotificationAccess() async throws {
+        guard await PostNotifications.requestAuthorization() else {
             #if os(macOS)
             throw QueryError.invalid("Notifications are off for OpenDispatch. Turn them on in System Settings › Notifications.")
             #else
             throw QueryError.invalid("Notifications are off for OpenDispatch. Turn them on in Settings › Notifications.")
             #endif
         }
-        try await database.setSourceNotify(id: id, on: on)
-        await loadSources()
     }
 
     /// Hide from (or show again in) the sidebar tree. Items still appear in the views.
@@ -1033,6 +1069,120 @@ final class AppModel {
         await loadSources()
     }
 
+    // MARK: Topics
+
+    /// Opens the Topic sheet for a new topic (Feed ▸ New Topic…, the sidebar's +), starting from `options`.
+    func beginNewTopic(_ options: TopicOptions = TopicOptions(keyword: "")) {
+        topicEditor = .new(options)
+    }
+
+    func beginEditTopic(_ topic: Source) {
+        topicEditor = .edit(topic)
+    }
+
+    /// Follows a keyword: stores the topic, selects it (`select`) and searches it right away, in the
+    /// background, so its list fills in. Following one that exists returns it unchanged. `notify` turns
+    /// Notify on New Matches on once that first search is done, so the matches already out there don't all alert.
+    @discardableResult
+    func createTopic(_ options: TopicOptions, notify: Bool = false, select: Bool = true) async throws -> Source {
+        if notify { try await requireNotificationAccess() }
+        let topic = try await database.createTopic(options)
+        await topicStore.reload()
+        if select { navigate(sourceID: topic.id) }
+        Task { await self.refreshTopic(id: topic.id, enableNotify: notify && !topic.notifies) }
+        return topic
+    }
+
+    /// Explore's Follow: a topic for the query with the default options, left unselected.
+    func followTopic(query: String) async throws {
+        try await createTopic(TopicOptions(keyword: query), select: false)
+    }
+
+    /// The topic whose keyword is this Explore query, if followed.
+    func topic(matching query: String) -> Source? { topicStore.topic(matching: query) }
+
+    /// Saves the sheet's edit. A changed keyword or place searches again (the old matches that no longer
+    /// fit are already gone); a changed keyword also restarts Notify on New Matches, so the new keyword's
+    /// existing matches don't all alert.
+    func updateTopic(id: Int64, options: TopicOptions, notify: Bool) async throws {
+        if notify { try await requireNotificationAccess() }
+        let before = topicStore.topic(id: id)
+        let topic = try await database.updateTopic(id: id, options: options)
+        await topicStore.reload()
+        if notify != topic.notifies { try await database.setSourceNotify(id: id, on: notify) }
+        await topicStore.reload()
+        await loadItems(reset: true)
+        let changed = before?.topicOptions != topic.topicOptions
+        if changed {
+            let rearm = notify && before?.topicKeyword != topic.topicKeyword
+            Task { await self.refreshTopic(id: id, enableNotify: rearm, deliver: !rearm) }
+        }
+    }
+
+    func deleteTopic(id: Int64) async throws {
+        try await database.deleteTopic(id: id)
+        closeTabs { $0.source.id == id }
+        if selectedSourceID == id { goHome() }
+        await topicStore.reload()
+        await loadItems(reset: true)
+    }
+
+    /// Searches one topic now. It doesn't wait for or block a refresh of everything: a topic that was just made
+    /// or edited should fill in at once.
+    func refreshTopic(id: Int64, enableNotify: Bool = false, deliver: Bool = true) async {
+        topicStore.setRefreshing(id, true)
+        defer { topicStore.setRefreshing(id, false) }
+        _ = try? await services.refresh.refreshSource(id: id)
+        if deliver { await PostNotifications.deliver(database) }
+        if enableNotify {
+            // Off and on again: turning it on while it is on keeps the old start time.
+            _ = try? await database.setSourceNotify(id: id, on: false)
+            _ = try? await database.setSourceNotify(id: id, on: true)
+        }
+        await topicStore.reload()
+        await loadItems(reset: true)
+    }
+
+    /// Opens one outlet's article of a story row (the "+N" list), as a list click would: `show` receives the article. Opening it
+    /// also reads the story's lead, since the story counts as read once its lead is. Without the article stored (a retention
+    /// sweep between) it opens in the browser.
+    func openOutlet(_ outlet: TopicOutlet, of lead: FeedItem, show: @escaping @MainActor (FeedItem) -> Void) {
+        Task {
+            guard let item = try? await database.feedItem(id: outlet.id) else {
+                if let url = URL(string: outlet.url) { ReaderWebSupport.openExternally(url) }
+                return
+            }
+            history.setRead(lead, true)
+            show(item)
+        }
+    }
+
+    /// Opens a story's Hacker News thread in the reader, as a pasted link would be (the thread's page, not the story it links
+    /// to), and reads the story's lead. The browser opens it if the page can't be stored.
+    func openDiscussion(_ discussion: TopicDiscussion, of lead: FeedItem, show: @escaping @MainActor (FeedItem) -> Void) {
+        Task {
+            history.setRead(lead, true)
+            guard let item = try? await services.openLink(discussion.url) else {
+                if let url = URL(string: discussion.url) { ReaderWebSupport.openExternally(url) }
+                return
+            }
+            show(item)
+        }
+    }
+
+    /// Mark All as Read for a topic that may not be the open list (the sidebar's menu).
+    func markAllRead(topic: Source) {
+        let query = ItemQuery(sourceId: topic.id)
+        Task { try? await database.markAllRead(query) }
+    }
+
+    /// A filter of the title menu's Show section.
+    func setTopicFilter(_ filter: TopicContentFilter) {
+        guard isTopicSelected, filter != topicFilter else { return }
+        topicFilter = filter
+        Task { await loadItems(reset: true) }
+    }
+
     // MARK: iCloud sync
 
     private func startSync() async {
@@ -1086,7 +1236,8 @@ final class AppModel {
             if r.integrationsChanged { await loadIntegrations() }
             guard r.libraryChanged else { return }
             await loadSources()
-            if let id = selectedSourceID, !sources.contains(where: { $0.id == id }) { goHome() }
+            await topicStore.reload()
+            if let id = selectedSourceID, !sources.contains(where: { $0.id == id }), !topicStore.ids.contains(id) { goHome() }
             if let id = selectedFolderID, !folders.contains(where: { $0.id == id }) { goHome() }
             await loadItems(reset: true)
             // Sources added on another device have no items here yet. In a task of its own, since this

@@ -49,13 +49,15 @@ extension AppDatabase {
 
     // MARK: Sources & folders
 
-    /// Sources (position, title) and folders (position, id) in one read.
+    /// Subscriptions (position, title) and folders (position, id) in one read. Topics are not in the list: they
+    /// are not sources the user subscribes to (`topics()`).
     public func sourcesAndFolders() async throws -> (sources: [Source], folders: [Folder]) {
-        try await reader.read { db in (try Queries.sources(db), try Queries.folders(db)) }
+        try await reader.read { db in (try Queries.subscriptions(db), try Queries.folders(db)) }
     }
 
+    /// Subscriptions, without topics (`topics()`) and the opened-link holders.
     public func sources() async throws -> [Source] {
-        try await reader.read { db in try Queries.sources(db) }
+        try await reader.read { db in try Queries.subscriptions(db) }
     }
 
     public func source(id: Int64) async throws -> Source? {

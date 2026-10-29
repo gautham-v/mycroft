@@ -1090,3 +1090,95 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
 - `openExploreVideo(_:)`: stores under the pasted link's address (`OpenedLinks.videosFeedURL`), so the same video opened either way is one row.
   The watch page is still read (6 s) because the description is only there; when it can't be, the item is built from the hit (title, channel as
   author, length, `hqdefault` thumbnail; `OpenedLinks.item(video:)`) rather than the "YouTube video" fallback. An opened video is returned as is, without a request.
+
+### Topics (Core) — 2026-10-28
+A Topic is a followed keyword search. It is a row of `sources` (kind `topic`) whose items are what a refresh found outside the
+subscriptions, so refresh, unread counts, Mark All as Read, Notify on New Matches (`notify_since`, `takeNewPostAlerts`), 14-day retention, Saved and
+History treat it like any source. Migration `v8-topics` rebuilds `sources` (new CHECK) and adds `topic_options` (JSON).
+- Identity: `feed_url` = `opendispatch:topic:<uuid>` (`Topic.newFeedURL()`, `Source.isTopic`), never derived from the keyword; `title` = the keyword as
+  typed (it follows edits); `url` = `Topic.siteURL`; `group` = `SourceGroup.topics`. Options: `Source.topicOptions: TopicOptions` (keyword, `excluded`,
+  `notableOnly`, `places: TopicPlaces` (news, hackerNews, reddit, media, subscriptions), `skipPaywalled`); encoded with sorted keys; missing keys decode as defaults.
+- Lists: `Queries.sources` still returns topics (refresh and sync need them). `Queries.subscriptions` / `AppDatabase.sources()` / `sourcesAndFolders()` leave
+  them out (sidebar tree, Settings, Sources tab, add-source duplicate check); `Queries.topics` / `AppDatabase.topics()` / `observeTopics()` list them.
+  `SourceList` functions skip topics (`SourceList.topics` lists them). OPML export skips them. Unread counts: `Queries.unreadCounts` / `AppDatabase.unreadCounts()` /
+  `observeUnreadCounts()` give `[sourceId: unread]` of each source's own items.
+- API: `AppDatabase.createTopic(_:)` (an existing topic with the same keyword is returned unchanged), `updateTopic(id:options:)` (title follows the keyword; when the keyword or the leave-out
+  words changed, unsaved, unhighlighted items whose title no longer has the keyword or whose title or summary has a leave-out word are removed; other edits remove nothing), `deleteTopic(id:)`, `topic(keyword:)`. Notify: the existing `setSourceNotify`. `NewPostAlert` carries `itemAuthor`/`isTopic`;
+  `heading` is "<keyword> · <origin>" for a topic (a grouped "N new posts" notification uses the plain keyword). `HistoryEntry.originLabel` is the same label for History snapshots.
+- Items: a topic's items never appear in All / Articles / Posts / Video / Podcasts / folder views or searches; they list in `ItemQuery(sourceId: topic.id)`, Saved and
+  History. With `places.subscriptions` on, that list also includes items of the user's own sources whose title or summary match (`opendispatch_topic_matches`, same rule as
+  `TopicMatcher`; `TopicMatcherCache` keeps the last matcher so the SQL function doesn't rebuild it per row), keyset paging unchanged. A subscription item whose
+  link the topic already stored is listed once (as the topic's). Mark All as Read on a topic reads only the topic's own items, the ones its badge counts. `ItemQuery.topicFilter` (`TopicContentFilter`: all / news / discussions / videos / episodes) drives the list's Show filter.
+- Reading: `Source.shown(for:)` (already used by `FeedItem` rows) rewrites a topic row's `kind` per item: a video id makes it `.youtube`, audio `.podcast`, else `.rss`, and
+  `url` becomes the item's site. So `item.source.kind` / `.type`, History's `sourceKind`, transcripts and Copy as Markdown follow the item; use `source.isTopic` (not `kind == .topic`)
+  and `item.originName` (the author: Hacker News, publisher, channel, show) for the origin. `Source.holdsStandaloneItems` marks sources whose items aren't entries of their own feed.
+- Search (`Topics/`): `TopicSearching` / `DefaultTopicSearch` (injectable fetch and `ExploreSearching`), no keys. News: Bing News RSS (`qft=sortbydate`; article URL from the
+  `apiclick` link's `url`; publisher from `News:Source`; Google News links need JavaScript so it is not used). Discussions: Hacker News via Algolia (points, comments, discussion
+  URL) and Reddit (`search.json`, falling back to `search.rss`, which has no score: from a network that gets the 403, Reddit posts are
+  notable only through a followed source, since no open endpoint gives the score). Media: YouTube (innertube `params` = last month by upload date, English so "3 hours ago"
+  reads as a date) and the iTunes episode search (up to 200 hits, 4 per show), items identical to Explore's opened videos and episodes. Everything is filtered by recency,
+  `TopicMatcher` (all keyword words, none of the excluded; a word matches at word starts, short ones whole; the site host counts as a mention for news and Hacker News),
+  `TopicPaywalls` (host suffix or publisher name), notable when asked, and capped at 30 per provider. A place fails when each of its providers did; the topic records
+  `last_error` only when every searched place failed (`TopicSearchOutcome.allFailed`).
+- Sync: the Source record gains `topicOptions` (hashed, so an edit propagates). An incoming Source with a topic feed URL is inserted as a topic with those options.
+  `notify_since` stays per device. Adding the field to the Source record type needs the CloudKit Production schema to be deployed before a release carries topics.
+
+### Topics, second pass (Core) — 2026-10-29
+Matching got stricter and news coverage groups into stories. Migration `v9-topic-stories` adds `items.story_id` and `items.story_at` (no foreign key).
+- Places: `TopicPlaces` is `news`, `hackerNews`, `reddit` (default off), `media`, `subscriptions`; `TopicPlaces.defaults` replaces `.all`. A stored `discussions` key decodes as
+  `hackerNews`; Reddit is on only when stored. Encoding writes the new keys only. `TopicPlace` is `news, hackerNews, reddit, media` (a failure is per place).
+- Rules (`TopicMatcher.matchesTitle`): every keyword word in the title, for every place; the Hacker News link-host and body/summary rules are gone. Leave out words are checked in
+  title and summary. `matches(title:summary:)` (title or summary) is only for the user's own subscriptions, which the list adds. `TopicLanguages` (`.current` = `Locale.preferredLanguages`):
+  Bing News gets `mkt`/`setlang` of the user's market, and a searched title the `NLLanguageRecognizer` puts at 0.6+ on a language that isn't the user's (and 0.3 or less on theirs) is dropped;
+  titles under 12 letters aren't judged; a title mostly in a non-Latin script is judged without its Latin words. `TopicSearching.languages` exposes it to the refresh.
+- Refresh (`refreshTopic`), in one write transaction: `Queries.removeStaleTopicItems` (title rule, leave out, language, a place now off, paywalled when skipped; saved and highlighted stay), the renewed
+  Hacker News numbers (`TopicSearching.hackerNewsStats(ids:)`: one Algolia `tags=(story_1,story_2,…)` search per 100 stories still inside the retention window; a failure keeps the stored numbers),
+  the upsert, then `Queries.groupTopicStories`.
+- Stories: a lead has `story_id` NULL and `story_at` (its newest article's time); other outlets' articles and the Hacker News thread have `story_id` = the lead's id. Only news articles
+  (no video id, audio, Reddit or Hacker News guid) join: by `TopicStories` (title words minus the keyword, stop words and a rough stem; at least 3 shared and 50% of the shorter title, or 2 and 75%;
+  published within 3 days). A headline that links two others pulls both in. A thread joins when its URL equals an article's (`FeedDedupe.linkKey`) or its title matches. The topic list shows
+  `story_id IS NULL` rows only and sorts and pages by `coalesce(story_at, published_at)` (`FeedItem.cursor(inTopic:)` is that time in a topic's list and the item's own `published_at` in every other list, Saved included, so the cursor always matches the query's ORDER BY). `FeedItem.story` (`TopicStory`: `outlets`, lead first, then newest
+  first, each with name, headline, url, host, id; `discussion`: the thread with most points) is attached to a page by one extra query and only on a lead with something behind it.
+  Removing a lead (retention, cleanup) passes the story to its oldest remaining article (`Queries.repairStories`); a thread left alone is a row again. A read lead's mark is carried over:
+  the deleting paths first ask `Queries.readStoryLeads` which doomed leads are read and pass them to `repairStories(readLeads:)`, which marks the promoted lead read, so an opened story doesn't come back unread.
+  `repairStories` also renews every story's `story_at`, as removing a story's newest non-lead article moves it.
+- Dedupe: `DefaultRefreshService.dedupeTopicItems` dedupes by link among Hacker News stories and among everything else separately, so a Hacker News story may share its link with an article and
+  `groupTopicStories` attaches it to that story as its discussion (deduping them together dropped one of the two).
+- Read state: a story is read once its lead is read; `unreadCounts` counts rows (`story_id IS NULL`); Mark All as Read on a topic also reads the articles and threads behind each lead;
+  `takeNewPostAlerts` skips `story_id` items, so a story notifies once and an outlet joining it never does.
+- Filters: `TopicContentFilter` is all / news / discussions / videos / episodes (`.articles` is now `.news`). Discussions lists Hacker News and Reddit rows of their own (a thread attached to a story is
+  listed with the story). `AppDatabase.topicFilterCounts(topicId:)` / `observeTopicFilterCounts(topicId:)` give the row count of each filter.
+
+### Topics (App: model, Mac/iPad UI, sheet) — 2026-10-28
+- `TopicStore` (owned by `AppModel.topicStore`) observes `observeTopics()` and `observeUnreadCounts()`: `topics`, `ids` (changes only when a topic is added or removed), `unread`,
+  `refreshing`, `topic(matching:)` (Explore's Following state). A topic is a source, so it is selected with `navigate(sourceID:)`; `AppModel.activeSource` falls back to the topic
+  store because `sources` leaves topics out, and the sync handler keeps a selected topic. `topicFilter` (`setTopicFilter`) is the title menu's Show choice; it resets when the list moves on and
+  `currentQuery` sends it only for a topic's list. `topicStore.filterCounts` follows `observeTopicFilterCounts` of the open topic (`watchFilterCounts(of:)`, called from `setNav`).
+  `listHeading` is the title with the filter after it ("Firefox · Videos").
+- `AppModel`: `createTopic(_:notify:select:)` (stores, selects, searches in the background, then turns notify on so the existing matches don't alert), `updateTopic(id:options:notify:)`
+  (searches again when the keyword or places changed; a changed keyword restarts notify), `deleteTopic(id:)`, `followTopic(query:)` (Explore's Follow, unselected),
+  `refreshTopic(id:)`, `markAllRead(topic:)`, `beginNewTopic(_:)` / `beginEditTopic(_:)` (set `topicEditor`, which RootView presents as `TopicEditorView` on every platform). Notify
+  is the existing `setSourceNotify`.
+- Views: `Views/Topics/TopicEditorView.swift` (the sheet), `TopicListMenu.swift` (`TopicListMenuItems`: the Show / Notify on New Matches / Edit Topic… / Mark All as Read part of the list's title menu,
+  shared by the Mac and iPad title button and the iPhone's press-and-hold title; `topicNotifyAlert` shows a failed Notify change), `StoryRowView.swift` (below), `Views/Sidebar/SidebarTopics.swift`
+  (the "Topics" group between the view rows and the sources), `ExploreTopicButton` (Follow / Following; on the Mac's results header, reusable on the iPhone). Settings › Notifications lists topics with the sources. Rows name a topic's
+  item by its origin (`ItemRowView.showsTopic` adds the keyword outside the topic's list); the reader, speech, now-playing and highlights use `FeedItem.originName`.
+
+- List (second pass): a topic's list has no bar, chips or bell, and looks like a source's: nothing but the header over the rows, so the first row is never covered. A news story with
+  other outlets or a Hacker News thread behind it (`FeedItem.story`) is a `StoryRowView` instead of an `ItemRowView`: the meta line is `StoryOutletStack` (up to 3 overlapping favicons, `SourceBadge`),
+  the first three distinct outlets' names (two articles of one outlet show it once and "+N" counts outlets, not articles), an accent "+N" that expands `StoryOutletList` in place (each outlet's favicon, its own headline and its name; a click opens that article through
+  `AppModel.openOutlet`), then "· 16h" (the newest coverage, `storyAt`); then the headline and thumbnail like any row, and under it `DiscussionChip` ("▲ 10 points · 4 comments on Hacker News", opens
+  the thread's page as a pasted link would, `AppModel.openDiscussion`). The row is not a Button (its parts are): `onTapGesture` opens the lead, which is what j/k, selection and the read dot use. The row is one accessibility element, so "+N" is also a custom action of it.
+  Opening another outlet's article or the thread highlights the story's row (`AppModel.highlightedItemID` maps a story's outlet or thread id to its lead), and j/k go on from there.
+  Opening an outlet or the thread also reads the lead. ⌘ and ⌥ apply to the outlets and the chip as to a row (`ItemListView.openMode`). A Hacker News or Reddit row of a topic ends its meta line with
+  "· ▲ 15 · 💬 4" (SF Symbols `arrowtriangle.up.fill` and `bubble.left`, `DiscussionStats`) when it has the numbers. The Topic sheet's Search in has News sites, Hacker News, Reddit ("Opens without
+  comments."), YouTube & podcasts and Your subscriptions.
+
+### Topics (App: iPhone) — 2026-10-28
+- Drawer (`PhoneDrawer`): a "Topics" section after the view rows and before Folders, always shown (its + is the way to a first topic besides Explore's Follow; empty, it holds a one-line hint).
+  `DrawerTopicRow` shows the "number" symbol, the keyword and the unread count (a spinner while it searches). Holding a row gives Edit Topic…, Notify on New Matches (checked),
+  Mark All as Read and Remove Topic… (alert: "Removing a topic also removes its items."). The drawer's search also matches topics. The + and Edit Topic close the drawer, then the sheet opens.
+- Topic page: the home list with the keyword as its title row (with the filter after it, "Firefox · Videos"). The status row, the chips and the bell/menu bubble of the first version are
+  gone; pressing and holding the title gives `TopicListMenuItems` (Show, Notify on New Matches, Edit Topic…, Mark All as Read) and Hide Read Items. Remove Topic… is in the drawer row's menu.
+- Explore (`ExplorePhoneView`): a row at the top of the results, "Follow as a topic" with `ExploreTopicButton` (Following opens the topic).
+- Not run on the simulator beyond launch (no way to tap from the command line here); build-checked for iOS and macOS.

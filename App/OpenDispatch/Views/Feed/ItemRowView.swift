@@ -10,7 +10,9 @@ import SwiftUI
 ///
 /// iPhone rows put the headline first (17 semibold, a post's text 17 regular, up to three lines) and the
 /// badge with "Source · 3h" under it, beside an 80pt square thumbnail; a YouTube video with a thumbnail
-/// instead leads with it full width at 16:9. No snippet, and no HN points or comments.
+/// instead leads with it full width at 16:9. No snippet. A topic's Hacker News or Reddit row adds its points and
+/// comments to the meta line ("Hacker News · 1d · ▲ 15 · 💬 4", drawn with SF Symbols; `DiscussionStats`). A news story with other
+/// outlets or a discussion behind it is a `StoryRowView` instead.
 ///
 /// The row draws its own rounded background (selected / the other pane's item / hovered) and leaves
 /// the inset hairline to `ItemListView`, which knows the neighbours. Equatable so a hover or selection
@@ -31,6 +33,9 @@ struct ItemRowView: View, Equatable {
     var progress: Double?
     /// Replaces the relative publish time in the meta line (History shows when it was opened).
     var timeText: String?
+    /// A topic's item leads its meta line with the topic's keyword ("OpenAI · The Verge"), as in Saved and
+    /// History; inside the topic's own list that is dropped and only the origin shows.
+    var showsTopic = true
 
     private var titleColor: Color { isRead ? .ofRead : .ofInk }
 
@@ -44,20 +49,7 @@ struct ItemRowView: View, Equatable {
                 articleRow
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
-        .padding(.vertical, isPhone ? Metrics.phoneRowPaddingV : Metrics.rowPaddingV)
-        .background(
-            RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-                .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
-        )
-        .overlay {
-            if isSecondary && !isSelected {
-                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-                    .strokeBorder(Color.ofHairline, lineWidth: 1)
-            }
-        }
-        .contentShape(Rectangle())
+        .itemRowChrome(isSelected: isSelected, isSecondary: isSecondary, isHovered: isHovered, isPhone: isPhone)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
@@ -67,7 +59,7 @@ struct ItemRowView: View, Equatable {
 
     private var articleRow: some View {
         VStack(alignment: .leading, spacing: 4) {
-            metaLine(name: item.source.title, handle: nil)
+            metaLine(name: sourceName, handle: nil)
             HStack(alignment: .top, spacing: 12) {
                 Text(item.item.title)
                     .font(OFFont.itemTitle)
@@ -84,7 +76,7 @@ struct ItemRowView: View, Equatable {
     private var postRow: some View {
         let (name, handle) = TextFormat.splitHandle(item.item.author)
         return VStack(alignment: .leading, spacing: 4) {
-            metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
+            metaLine(name: name.isEmpty ? sourceName : name, handle: handle)
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.item.title)
@@ -121,7 +113,7 @@ struct ItemRowView: View, Equatable {
                 .foregroundStyle(titleColor)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-            metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
+            metaLine(name: name.isEmpty ? sourceName : name, handle: handle)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         if !isPost && item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false {
@@ -145,7 +137,7 @@ struct ItemRowView: View, Equatable {
     /// Badge, then the source (or author) and the rest, all muted, truncated on one line.
     private func metaLine(name: String, handle: String?) -> some View {
         HStack(spacing: 6) {
-            SourceBadge(host: item.source.host, title: item.source.title, size: Metrics.rowBadge)
+            SourceBadge(host: item.source.host, title: item.originName, size: Metrics.rowBadge)
                 .opacity(isRead ? 0.6 : 1)
             metaText(name: name, handle: handle)
                 .lineLimit(1)
@@ -162,7 +154,16 @@ struct ItemRowView: View, Equatable {
 
     private func metaText(name: String, handle: String?) -> Text {
         let line = name + (handle.map { " @\($0)" } ?? "") + " · " + (timeText ?? RelativeTime.format(item.item.publishedAt))
-        return Text(verbatim: line).font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
+        let base = Text(verbatim: line)
+        let text = DiscussionStats.text(item: item.item, isTopicItem: item.source.isTopic).map { Text("\(base)\(Text(verbatim: " \u{00B7} "))\($0)") } ?? base
+        return text.font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
+    }
+
+    /// Where the item is from, as its meta line names it: the source, or for a topic's item the origin (Hacker News, a
+    /// publisher, a channel, a show) with the topic's keyword in front outside the topic's list.
+    private var sourceName: String {
+        guard item.source.isTopic else { return item.source.title }
+        return showsTopic ? "\(item.source.title) \u{00B7} \(item.originName)" : item.originName
     }
 
     private var snippet: String? {
@@ -171,15 +172,37 @@ struct ItemRowView: View, Equatable {
     }
 
     private var accessibilityText: String {
-        var parts = [item.item.title, item.source.title, RelativeTime.format(item.item.publishedAt)]
+        var parts = [item.item.title, sourceName, RelativeTime.format(item.item.publishedAt)]
         if item.source.kind == .youtube { parts.append("Video") }
         if item.source.kind == .podcast { parts.append("Podcast episode") }
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
+        if let stats = DiscussionStats.spoken(item: item.item, isTopicItem: item.source.isTopic) { parts.append(stats) }
         if item.isSaved { parts.append("Saved") }
         if isRead { parts.append(item.source.kind == .youtube ? "Watched" : "Read") }
         if let progress { parts.append("\(Int(progress * 100))% played") }
         if isOpenInTab { parts.append("Open in a tab") }
         return parts.joined(separator: ", ")
+    }
+}
+
+extension View {
+    /// A list row's frame: full width, the row padding and the rounded background (selected / the other pane's item /
+    /// hovered) that `ItemRowView` and `StoryRowView` share.
+    func itemRowChrome(isSelected: Bool, isSecondary: Bool, isHovered: Bool, isPhone: Bool) -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
+            .padding(.vertical, isPhone ? Metrics.phoneRowPaddingV : Metrics.rowPaddingV)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                    .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
+            )
+            .overlay {
+                if isSecondary && !isSelected {
+                    RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                        .strokeBorder(Color.ofHairline, lineWidth: 1)
+                }
+            }
+            .contentShape(Rectangle())
     }
 }
 

@@ -46,6 +46,8 @@ struct ItemListView: View {
     var isPhoneHome = false
     /// A Send to from the row menu failed: the message, shown in an alert.
     @State private var sendError: String?
+    /// A Notify on New Matches change from a topic's title menu failed (iPhone; the Mac's title menu has its own).
+    @State private var topicNotifyError: String?
 
     /// Rows within this many of the end trigger the next page (≈ the web's 600px rootMargin).
     private static let prefetchRows = 8
@@ -77,6 +79,7 @@ struct ItemListView: View {
             } message: {
                 Text(sendError ?? "")
             }
+            .topicNotifyAlert($topicNotifyError)
     }
 
     // MARK: Layout
@@ -160,30 +163,22 @@ struct ItemListView: View {
                     // Press and hold the title for the list's read actions (the Mac has them in the title menu).
                     PhoneTitleRow()
                         .contextMenu {
-                            Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
-                                .disabled(items.isEmpty)
+                            if let topic = model.activeTopic {
+                                TopicListMenuItems(topic: topic, error: $topicNotifyError)
+                            } else {
+                                Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
+                                    .disabled(items.isEmpty)
+                            }
                             Toggle(isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() })) {
                                 Label("Hide Read Items", systemImage: "eye.slash")
                             }
                         }
                         .tint(Color.ofInk)
                 }
+                listRows(items, prefetchFrom: prefetchFrom)
+                #else
+                listRows(items, prefetchFrom: prefetchFrom)
                 #endif
-                if items.isEmpty { ListStateRows() }
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let previous = index > 0 ? items[index - 1].id : nil
-                    row(item, previousID: previous)
-                        .onAppear {
-                            if index == 0 { topRow.id = item.id }
-                            if index >= prefetchFrom { Task { await model.loadMore() } }
-                        }
-                        .onDisappear {
-                            if topRow.id == item.id { topRow.id = nil }
-                        }
-                }
-                if model.nextCursor != nil {
-                    ListSentinel(page: items.count)
-                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -206,6 +201,25 @@ struct ItemListView: View {
         }
     }
 
+    /// The list's states and rows, with the sentinel that pages in the next ones.
+    @ViewBuilder private func listRows(_ items: [FeedItem], prefetchFrom: Int) -> some View {
+        if items.isEmpty { ListStateRows() }
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            let previous = index > 0 ? items[index - 1].id : nil
+            row(item, previousID: previous)
+                .onAppear {
+                    if index == 0 { topRow.id = item.id }
+                    if index >= prefetchFrom { Task { await model.loadMore() } }
+                }
+                .onDisappear {
+                    if topRow.id == item.id { topRow.id = nil }
+                }
+        }
+        if model.nextCursor != nil {
+            ListSentinel(page: items.count)
+        }
+    }
+
     /// Back to the top: the first row, or on the iPhone the title above it.
     private func scrollToTop(_ proxy: ScrollViewProxy, firstID: Int64?) {
         #if os(iOS)
@@ -220,24 +234,18 @@ struct ItemListView: View {
     private func row(_ item: FeedItem, previousID: Int64?) -> some View {
         RowMarks(item: item, previousID: previousID) { marks in
             HoverTracking(hover: hover, id: item.id, previousID: previousID) { hovered, previousHovered in
-                Button(action: { open(item) }) {
-                    ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
-                                isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
-                                isRead: marks.read, progress: marks.progress)
-                        .equatable()
-                }
-                .buttonStyle(.plain)
-                .overlay(alignment: .top) {
-                    // Inset hairline above the row, hidden around the selected, secondary or hovered row.
-                    if marks.divider && !hovered && !previousHovered {
-                        Rectangle()
-                            .fill(Color.ofHairline)
-                            .frame(height: 1)
-                            .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
-                            .allowsHitTesting(false)
+                rowContent(item, marks: marks, hovered: hovered)
+                    .overlay(alignment: .top) {
+                        // Inset hairline above the row, hidden around the selected, secondary or hovered row.
+                        if marks.divider && !hovered && !previousHovered {
+                            Rectangle()
+                                .fill(Color.ofHairline)
+                                .frame(height: 1)
+                                .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
+                                .allowsHitTesting(false)
+                        }
                     }
-                }
-                .padding(.horizontal, 8)
+                    .padding(.horizontal, 8)
             }
         }
         .contextMenu { RowMenu(item: item, isPhone: isPhone, sendError: $sendError) }
@@ -247,23 +255,73 @@ struct ItemListView: View {
         .id(item.id)
     }
 
+    /// The row itself: a button, or for a topic's news story (other outlets or a discussion behind it) a `StoryRowView`,
+    /// whose outlets and discussion chip are buttons of their own.
+    @ViewBuilder private func rowContent(_ item: FeedItem, marks: RowMarkState, hovered: Bool) -> some View {
+        if item.story != nil {
+            StoryRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary, isOpenInTab: marks.openInTab,
+                         isHovered: hovered, isPhone: isPhone, isRead: marks.read,
+                         actions: StoryRowActions(
+                            openLead: { open(item) },
+                            openOutlet: { outlet in openOutlet(outlet, of: item) },
+                            openDiscussion: { openDiscussion(of: item) }))
+                .equatable()
+        } else {
+            Button(action: { open(item) }) {
+                ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
+                            isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
+                            isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id)
+                    .equatable()
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// How a click opens: in the focused pane, or with ⌘ in a new tab and ⌥ in the other pane (macOS).
+    private enum OpenMode { case focused, newTab, split }
+
+    private static var openMode: OpenMode {
+        #if os(macOS)
+        let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command) { return .newTab }
+        if flags.contains(.option) { return .split }
+        #endif
+        return .focused
+    }
+
+    private func show(_ item: FeedItem, _ mode: OpenMode) {
+        switch mode {
+        case .focused: model.open(item)
+        case .newTab: model.openInNewTab(item)
+        case .split: model.openInSplit(item)
+        }
+    }
+
     /// Row click: ⌘ opens a new tab, ⌥ opens the other pane (macOS), otherwise the focused pane.
     private func open(_ item: FeedItem) {
         #if os(iOS)
         if PhoneDrawerTouch.blocksRowTap { return }
         #endif
-        #if os(macOS)
-        let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if flags.contains(.command) {
-            model.openInNewTab(item)
-        } else if flags.contains(.option) {
-            model.openInSplit(item)
-        } else {
-            model.open(item)
-        }
-        #else
-        model.open(item)
+        show(item, Self.openMode)
+    }
+
+    /// A click on one outlet of a story's expanded list: that article opens like a row would, and the lead is read.
+    private func openOutlet(_ outlet: TopicOutlet, of lead: FeedItem) {
+        #if os(iOS)
+        if PhoneDrawerTouch.blocksRowTap { return }
         #endif
+        let mode = Self.openMode
+        model.openOutlet(outlet, of: lead) { show($0, mode) }
+    }
+
+    /// A click on a story's Hacker News chip: the thread opens in the reader.
+    private func openDiscussion(of lead: FeedItem) {
+        #if os(iOS)
+        if PhoneDrawerTouch.blocksRowTap { return }
+        #endif
+        guard let discussion = lead.story?.discussion else { return }
+        let mode = Self.openMode
+        model.openDiscussion(discussion, of: lead) { show($0, mode) }
     }
 }
 
@@ -312,6 +370,8 @@ private struct ListStateRows: View {
                 Text("Searched titles, summaries, authors and full text in \(model.listTitle)")
                     .font(OFFont.ui(13))
                     .foregroundStyle(.ofMuted)
+            } else if let topic = model.activeTopic {
+                topicEmptyState(topic)
             } else if model.sources.isEmpty {
                 // First run: nothing is preinstalled, so the empty list is the way in.
                 Text("Add your first sources")
@@ -350,6 +410,32 @@ private struct ListStateRows: View {
             }
         }
         .multilineTextAlignment(.center)
+    }
+
+    /// An empty topic: still searching its first time, why it found nothing, or that nothing matched yet.
+    @ViewBuilder private func topicEmptyState(_ topic: Source) -> some View {
+        if model.topicStore.refreshing.contains(topic.id) || topic.lastFetchedAt == nil {
+            Text("Searching for \u{201C}\(topic.title)\u{201D}")
+                .font(OFFont.ui(15, .medium))
+                .foregroundStyle(.ofInk)
+            Text("Matches from the last two weeks appear here")
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+        } else if let error = topic.lastError {
+            Text("Couldn\u{2019}t search for \u{201C}\(topic.title)\u{201D}")
+                .font(OFFont.ui(15, .medium))
+                .foregroundStyle(.ofInk)
+            Text(error)
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+        } else {
+            Text(model.topicFilter == .all ? "No matches yet" : "No \(model.topicFilter.title.lowercased()) yet")
+                .font(OFFont.ui(15, .medium))
+                .foregroundStyle(.ofInk)
+            Text("New matches show up here after each refresh")
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+        }
     }
 }
 
@@ -490,8 +576,13 @@ private struct RowMenu: View {
         }
         if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
             Divider()
-            Button("Go to \(item.source.title)", systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
+            Button(goToTitle, systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
         }
+    }
+
+    /// A topic's item goes to its topic (named by keyword); any other to its source.
+    private var goToTitle: String {
+        item.source.isTopic ? "Go to \(item.source.title) Topic" : "Go to \(item.source.title)"
     }
 
     @ViewBuilder private var sendMenu: some View {
@@ -539,7 +630,7 @@ private struct RowMenu: View {
         }
         if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
             Divider()
-            Button("Go to \(item.source.title)") { model.navigate(sourceID: item.source.id) }
+            Button(goToTitle) { model.navigate(sourceID: item.source.id) }
         }
     }
 

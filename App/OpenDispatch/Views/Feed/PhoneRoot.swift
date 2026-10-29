@@ -634,13 +634,14 @@ private enum DrawerPrompt: Identifiable {
 }
 
 /// The drawer: the OpenDispatch wordmark with a glass search bubble; the sidebar's views in its order (All,
-/// Articles, Posts, Video, Podcasts, Saved, Highlights, less the ones hidden in Settings); Folders, each
+/// Articles, Posts, Video, Podcasts, Saved, Highlights, less the ones hidden in Settings); Topics, one row per
+/// followed keyword with its unread count and a + for a new one; Folders, each
 /// with its source count and a chevron that opens its sources inline, then Unfiled if any source is
 /// without a folder; Settings as a glass bubble and Add source as a dark pill floating over the list. The
 /// row for what the list shows gets the soft pill; picking a view, folder or source closes the drawer.
 ///
-/// Search turns the top into a glass field and filters the list to the folders and sources whose name
-/// matches. Holding a folder or source gives its actions (rename, move, copy, delete) as a context menu.
+/// Search turns the top into a glass field and filters the list to the topics, folders and sources whose name
+/// matches. Holding a folder, source or topic gives its actions (rename, move, copy, delete) as a context menu.
 /// Edit switches the list to the folders alone, with a delete control and a drag handle on each, and the
 /// bottom to New folder and Done.
 private struct PhoneDrawer: View {
@@ -659,6 +660,7 @@ private struct PhoneDrawer: View {
     @State private var promptText = ""
     @State private var pendingFolderDelete: Folder?
     @State private var pendingSourceDelete: Source?
+    @State private var pendingTopicDelete: Source?
     @State private var errorMessage: String?
     @FocusState private var searchFocused: Bool
 
@@ -689,9 +691,10 @@ private struct PhoneDrawer: View {
         }
         .modifier(DrawerDialogs(
             prompt: $prompt, promptText: $promptText, pendingFolderDelete: $pendingFolderDelete,
-            pendingSourceDelete: $pendingSourceDelete, errorMessage: $errorMessage,
+            pendingSourceDelete: $pendingSourceDelete, pendingTopicDelete: $pendingTopicDelete, errorMessage: $errorMessage,
             commit: commit, deleteFolder: { folder in run { try await model.deleteFolder(id: folder.id) } },
-            deleteSource: { source in run { try await model.deleteSource(id: source.id) } }))
+            deleteSource: { source in run { try await model.deleteSource(id: source.id) } },
+            deleteTopic: { topic in run { try await model.deleteTopic(id: topic.id) } }))
     }
 
     // MARK: Top
@@ -774,6 +777,7 @@ private struct PhoneDrawer: View {
                     searchResults
                 } else {
                     viewRows
+                    topicsSection
                     foldersSection
                 }
             }
@@ -833,6 +837,75 @@ private struct PhoneDrawer: View {
         case .posts: "ph.posts"
         case .video: "ph.video"
         case .podcasts: "ph.podcasts"
+        }
+    }
+
+    // MARK: Topics
+
+    /// The Topics group between the views and the folders. It shows with no topic too: the + here and
+    /// Explore's Follow are how the first one is made on the iPhone.
+    @ViewBuilder private var topicsSection: some View {
+        DrawerSectionLabel("Topics") {
+            Button {
+                pick { model.beginNewTopic() }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.ofInk)
+                    .frame(width: 32, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New Topic")
+        }
+        if model.topics.isEmpty {
+            Text("Follow a keyword to collect new matches from news, forums, videos and podcasts.")
+                .font(OFFont.ui(14))
+                .foregroundStyle(.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 6)
+        }
+        ForEach(model.topics) { topicRow($0) }
+    }
+
+    private func topicRow(_ topic: Source) -> some View {
+        DrawerTopicRow(
+            topic: topic, unread: model.topicStore.unreadCount(topic),
+            isRefreshing: model.topicStore.refreshing.contains(topic.id), isCurrent: model.selectedSourceID == topic.id
+        ) { pick { model.navigate(sourceID: topic.id) } }
+        .contextMenu {
+            topicMenu(topic)
+        } preview: {
+            DrawerLift {
+                OFIcon.topic.image.font(.system(size: 18)).frame(width: 24, height: 24)
+                Text(topic.title).font(OFFont.ui(17, .medium)).lineLimit(1)
+                Spacer(minLength: 12)
+                Text("Topic").font(OFFont.ui(14)).foregroundStyle(.ofMuted)
+            }
+        }
+        .tint(.ofInk)
+    }
+
+    @ViewBuilder private func topicMenu(_ topic: Source) -> some View {
+        Button {
+            pick { model.beginEditTopic(topic) }
+        } label: {
+            Label("Edit Topic\u{2026}", systemImage: "pencil")
+        }
+        Toggle("Notify on New Matches", isOn: Binding(
+            get: { topic.notifies },
+            set: { on in run { try await model.setSourceNotify(id: topic.id, on: on) } }))
+        Button {
+            model.markAllRead(topic: topic)
+        } label: {
+            Label("Mark All as Read", systemImage: "checkmark.circle")
+        }
+        Divider()
+        Button(role: .destructive) {
+            pendingTopicDelete = topic
+        } label: {
+            Label("Remove Topic\u{2026}", systemImage: "trash")
         }
     }
 
@@ -928,17 +1001,22 @@ private struct PhoneDrawer: View {
 
     // MARK: Search
 
-    /// Folders, then sources, whose name contains the query; a source shows the folder it is in.
+    /// Topics, folders, then sources, whose name contains the query; a source shows the folder it is in.
     @ViewBuilder private var searchResults: some View {
         let q = trimmedQuery
         let folders = model.orderedFolders.filter { $0.title.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
         let found = SourceList.matching(model.sources.filter { !$0.isOpenedLinks }, query: q)
-        if folders.isEmpty, found.isEmpty {
-            Text("No folders or sources match \u{201C}\(q)\u{201D}")
+        let topics = model.topics.filter { $0.title.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        if folders.isEmpty, found.isEmpty, topics.isEmpty {
+            Text("No folders, topics or sources match \u{201C}\(q)\u{201D}")
                 .font(OFFont.ui(15))
                 .foregroundStyle(.ofMuted)
                 .padding(.horizontal, 24)
                 .padding(.top, 12)
+        }
+        if !topics.isEmpty {
+            DrawerSectionLabel("Topics")
+            ForEach(topics) { topicRow($0) }
         }
         if !folders.isEmpty {
             DrawerSectionLabel("Folders")
@@ -1194,10 +1272,12 @@ private struct DrawerDialogs: ViewModifier {
     @Binding var promptText: String
     @Binding var pendingFolderDelete: Folder?
     @Binding var pendingSourceDelete: Source?
+    @Binding var pendingTopicDelete: Source?
     @Binding var errorMessage: String?
     let commit: (DrawerPrompt) -> Void
     let deleteFolder: (Folder) -> Void
     let deleteSource: (Source) -> Void
+    let deleteTopic: (Source) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -1226,6 +1306,15 @@ private struct DrawerDialogs: ViewModifier {
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
                 Text("Removing a source also removes its items.")
+            }
+            .alert(
+                pendingTopicDelete.map { "Remove \($0.title)?" } ?? "Remove topic?",
+                isPresented: isSet($pendingTopicDelete), presenting: pendingTopicDelete
+            ) { topic in
+                Button("Remove Topic", role: .destructive) { deleteTopic(topic) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Removing a topic also removes its items.")
             }
             .alert("Something went wrong", isPresented: isSet($errorMessage)) {
                 Button("OK", role: .cancel) {}
@@ -1404,6 +1493,49 @@ private struct DrawerFolderRow: View {
         .background(isCurrent ? Color.ofNavSelection : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 10)
         .padding(.vertical, 1)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+}
+
+/// A topic row: the "number" symbol, the keyword, and the unread count (a spinner while it searches).
+private struct DrawerTopicRow: View {
+    let topic: Source
+    let unread: Int
+    let isRefreshing: Bool
+    var isCurrent = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: { if !PhoneDrawerTouch.blocksRowTap { action() } }) {
+            HStack(spacing: 13) {
+                OFIcon.topic.image
+                    .font(.system(size: 18))
+                    .foregroundStyle(.ofInk)
+                    .frame(width: 24, height: 24)
+                Text(topic.title)
+                    .font(OFFont.ui(17, .medium))
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if isRefreshing {
+                    ProgressView().controlSize(.small)
+                } else if unread > 0 {
+                    Text(unread.formatted())
+                        .font(OFFont.ui(14))
+                        .monospacedDigit()
+                        .foregroundStyle(.ofMuted)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isCurrent ? Color.ofNavSelection : .clear, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(unread > 0 ? "\(topic.title), \(unread) unread" : topic.title)
+        .accessibilityHint("Topic")
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 }

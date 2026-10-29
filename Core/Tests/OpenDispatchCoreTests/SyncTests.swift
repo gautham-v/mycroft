@@ -441,3 +441,129 @@ struct SyncTests {
         #expect(SyncRecord.sourceName(feedUrl: "https://a/feed").count < 255)
     }
 }
+
+// MARK: Topics
+
+@Suite("Sync: topics")
+struct SyncTopicTests {
+    private let options = TopicOptions(
+        keyword: "Vision Pro", excluded: ["rumor"], notableOnly: true,
+        places: TopicPlaces(news: false, hackerNews: true, media: true, subscriptions: false), skipPaywalled: false)
+
+    @Test func aTopicArrivesAsATopicWithItsOptions() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let topic = try await a.createTopic(options)
+        // Notifications are per device.
+        try await a.setSourceNotify(id: topic.id, on: true)
+        try server.join(a)
+
+        let record = try #require(server.records[SyncRecord.sourceName(feedUrl: topic.feedUrl)])
+        #expect(record["kind"] == .string("topic") && record["feedUrl"] == .string(topic.feedUrl))
+        #expect(record["topicOptions"] == .string(options.json))
+
+        let b = try Fixture.db()
+        let applied = try server.pull(b)
+        let received = try #require(try await b.topics().first)
+        #expect(applied.addedSourceIDs == [received.id])
+        #expect(received.kind == .topic && received.isTopic && received.feedUrl == topic.feedUrl)
+        #expect(received.title == "Vision Pro" && received.topicOptions == options)
+        #expect(received.group == SourceGroup.topics)
+        #expect(received.notifySince == nil)
+        // It is a topic here too: not a subscription.
+        #expect(try await b.sources().isEmpty)
+        #expect(try diff(a).isEmpty && diff(b).isEmpty)
+    }
+
+    @Test func anEditOfTheOptionsOnOneDevicePropagates() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let topic = try await a.createTopic(options)
+        try server.join(a)
+        let b = try Fixture.db()
+        try server.join(b)
+        let onB = try #require(try await b.topics().first)
+
+        var edited = options
+        edited.keyword = "visionOS"
+        edited.excluded = []
+        edited.notableOnly = false
+        edited.places.news = true
+        try await a.updateTopic(id: topic.id, options: edited)
+        #expect(try diff(a).saves == [SyncRecord.sourceName(feedUrl: topic.feedUrl)])
+        try server.push(a)
+        let applied = try server.pull(b)
+        #expect(applied.libraryChanged)
+        let updated = try #require(try await b.topics().first)
+        // Same topic (same row, same identity), new keyword and options.
+        #expect(updated.id == onB.id && updated.feedUrl == topic.feedUrl)
+        #expect(updated.title == "visionOS" && updated.topicOptions == edited)
+        #expect(try diff(b).isEmpty)
+
+        // Changing only an option that isn't in the title still counts as a change.
+        var more = edited
+        more.skipPaywalled = true
+        try await a.updateTopic(id: topic.id, options: more)
+        #expect(try server.push(a).saves.count == 1)
+    }
+
+    @Test func removingATopicRemovesItElsewhere() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let topic = try await a.createTopic(options)
+        try server.join(a)
+        let b = try Fixture.db()
+        try server.join(b)
+        #expect(try await b.topics().count == 1)
+        try await a.deleteTopic(id: topic.id)
+        try server.push(a)
+        try server.pull(b)
+        #expect(try await b.topics().isEmpty)
+        #expect(try diff(b).isEmpty)
+    }
+
+    @Test func aSavedTopicItemWaitsForItsTopicAndTravelsWithIt() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let topic = try await a.createTopic(options)
+        let rows = try Fixture.items(a, sourceId: topic.id, [
+            ParsedItem(guid: "yt:vid00000001", url: "https://www.youtube.com/watch?v=vid00000001", title: "Vision Pro video", author: "Chan",
+                       publishedAt: Fixture.base, videoId: "vid00000001", durationSec: 300)])
+        try await a.setSaved(itemId: rows[0].id, saved: true)
+        try server.join(a)
+
+        let b = try Fixture.db()
+        try server.pull(b)
+        let saved = try await b.items(ItemQuery(view: .saved)).items
+        #expect(saved.map(\.item.guid) == ["yt:vid00000001"])
+        // Under the topic, and it still plays as a video there.
+        #expect(saved[0].source.isTopic && saved[0].source.kind == .youtube && saved[0].item.videoId == "vid00000001")
+        #expect(try diff(b).isEmpty)
+    }
+
+    @Test func unreadableOptionsFallBackToTheTitle() async throws {
+        let b = try Fixture.db()
+        let feedUrl = Topic.newFeedURL()
+        let record = SyncRecord(type: .source, name: SyncRecord.sourceName(feedUrl: feedUrl), fields: [
+            "feedUrl": .string(feedUrl), "title": .string("rust"), "kind": .string("topic"), "topicOptions": .string("{broken"),
+        ])
+        try await b.writer.write { d in
+            _ = try SyncStore.apply(d, modifications: [.init(record: record, systemFields: nil)], deletions: [])
+        }
+        let t = try #require(try await b.topics().first)
+        #expect(t.topicOptions == TopicOptions(keyword: "rust") && t.kind == .topic)
+    }
+
+    @Test func theOptionsFieldIsPartOfTheHashAndCloudKitRoundTrips() throws {
+        var fields: [String: SyncField] = [
+            "feedUrl": .string("opendispatch:topic:abc"), "title": .string("rust"), "kind": .string("topic"), "position": .int(0),
+            "isHidden": .bool(false), "topicOptions": .string(TopicOptions(keyword: "rust").json),
+        ]
+        let r = SyncRecord(type: .source, name: SyncRecord.sourceName(feedUrl: "opendispatch:topic:abc"), fields: fields)
+        fields["topicOptions"] = .string(TopicOptions(keyword: "rust", notableOnly: true).json)
+        #expect(r.hash != SyncRecord(type: .source, name: r.name, fields: fields).hash)
+        let ck = CloudSync.ckRecord(r, systemFields: nil)
+        #expect(ck["topicOptions"] as? String == TopicOptions(keyword: "rust").json)
+        #expect(CloudSync.syncRecord(from: ck) == r)
+    }
+}

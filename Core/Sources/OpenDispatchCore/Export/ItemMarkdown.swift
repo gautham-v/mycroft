@@ -7,18 +7,19 @@ enum ItemMarkdown {
     /// The title, meta line, link(s), as the top of an item document.
     static func header(item: Item, source: Source, timeZone: TimeZone) -> String {
         let title = oneLine(item.title)
+        let origin = source.originName(of: item)
         var meta: [String] = []
         switch source.kind {
         case .youtube:
-            meta = [source.title, "YouTube", longDate(item.publishedAt, timeZone)]
+            meta = [origin, "YouTube", longDate(item.publishedAt, timeZone)]
         case .podcast:
-            meta = [source.title, longDate(item.publishedAt, timeZone)]
-        case .rss, .page:
+            meta = [origin, longDate(item.publishedAt, timeZone)]
+        case .rss, .page, .topic:
             let author = oneLine(item.author ?? "")
-            if !author.isEmpty, author.caseInsensitiveCompare(source.title) != .orderedSame { meta.append(author) }
-            meta.append(contentsOf: [source.title, longDate(item.publishedAt, timeZone)])
+            if !author.isEmpty, author.caseInsensitiveCompare(origin) != .orderedSame { meta.append(author) }
+            meta.append(contentsOf: [origin, longDate(item.publishedAt, timeZone)])
         }
-        if source.kind != .rss, source.kind != .page, let d = TextFormat.duration(item.durationSec) { meta.append(d) }
+        if source.kind != .rss, source.kind != .page, source.kind != .topic, let d = TextFormat.duration(item.durationSec) { meta.append(d) }
         var lines = ["# " + (title.isEmpty ? "Untitled" : title), meta.joined(separator: " · "), item.url]
         if let discussion = item.hnCommentsUrl, !discussion.isEmpty { lines.append("Discussion: " + discussion) }
         return lines.joined(separator: "\n")
@@ -81,7 +82,7 @@ enum ItemMarkdown {
             let item = feedItem.item
             let heading = oneLine(item.title)
             var block = "## " + (heading.isEmpty ? "Untitled" : heading)
-            block += "\n" + [feedItem.source.title, shortDateTime(item.publishedAt, now: now, timeZone), item.url].joined(separator: " · ")
+            block += "\n" + [feedItem.originName, shortDateTime(item.publishedAt, now: now, timeZone), item.url].joined(separator: " · ")
             let summary = truncate(MarkdownConverter.plainText(fromHTML: item.summary ?? ""), to: 280)
             if !summary.isEmpty {
                 words += MarkdownConverter.wordCount(summary)

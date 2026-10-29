@@ -70,6 +70,14 @@ public struct HistoryEntry: Sendable, Hashable, Identifiable {
 
     public var isRead: Bool { readAt != nil }
 
+    /// Where the entry came from, as a text label: the source's title, or for a topic's item "<keyword> \u{00B7} <origin>"
+    /// (`sourceTitle` is the keyword, `itemAuthor` the publisher, channel, show or "Hacker News").
+    public var originLabel: String {
+        guard Topic.isTopicFeedURL(sourceFeedUrl), let origin = itemAuthor?.trimmingCharacters(in: .whitespacesAndNewlines), !origin.isEmpty
+        else { return sourceTitle }
+        return sourceTitle + " \u{00B7} " + origin
+    }
+
     /// What clearing History by time looks at: the last time it was opened or marked read.
     public var activityAt: Date? { openedAt ?? readAt }
 

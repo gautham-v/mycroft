@@ -52,13 +52,20 @@ struct DesktopListHeader: View {
 }
 
 /// The list title as a menu: the sidebar's views (minus hidden ones, plus Highlights) and folders, the current one
-/// checked (none while a single source shows), then Show / Hide Sidebar. Never lists individual sources.
+/// checked (none while a single source shows), and the topics, then Show / Hide Sidebar. Never lists individual sources.
 struct ListTitleMenu: View {
     @Environment(AppModel.self) private var model
     @State private var hovered = false
+    /// A Notify on New Matches change from a topic's section failed.
+    @State private var notifyError: String?
 
     var body: some View {
         Menu {
+            // A topic's own part first: Show, Notify on New Matches, Edit Topic…, Mark All as Read.
+            if let topic = model.activeTopic {
+                TopicListMenuItems(topic: topic, error: $notifyError)
+                Divider()
+            }
             ForEach(SidebarViewItem.ordered.filter { !model.isSidebarViewHidden($0) }) { item in
                 switch item {
                 case .explore:
@@ -79,17 +86,25 @@ struct ListTitleMenu: View {
                         set: { _ in model.navigate(folderID: folder.id) }))
                 }
             }
+            if !model.topics.isEmpty {
+                Divider()
+                ForEach(model.topics) { topic in
+                    Toggle(topic.title, isOn: Binding(get: { model.selectedSourceID == topic.id }, set: { _ in model.navigate(sourceID: topic.id) }))
+                }
+            }
             if !model.showsHighlights && !model.showsHistory {
                 Divider()
-                Button("Mark All as Read") { model.markAllRead() }
-                    .disabled(model.items.isEmpty)
+                if !model.isTopicSelected {
+                    Button("Mark All as Read") { model.markAllRead() }
+                        .disabled(model.items.isEmpty)
+                }
                 Toggle("Hide Read Items", isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() }))
             }
             Divider()
             Button(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") { model.toggleSidebar() }
         } label: {
             HStack(spacing: 5) {
-                Text(model.listTitle)
+                Text(model.listHeading)
                     .font(OFFont.listHeaderTitle)
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
@@ -108,7 +123,8 @@ struct ListTitleMenu: View {
         .menuIndicator(.hidden)
         .onHover { hovered = $0 }
         .padding(.leading, -6)
-        .accessibilityLabel("\(model.listTitle), switch view")
+        .topicNotifyAlert($notifyError)
+        .accessibilityLabel("\(model.listHeading), switch view")
     }
 
     /// Same test as the sidebar's rows.
@@ -183,7 +199,7 @@ struct PhoneTitleRow: View {
     static let id = "phone-title"
 
     var body: some View {
-        Text(title ?? model.listTitle)
+        Text(title ?? model.listHeading)
             .font(OFFont.ui(32, .semibold))
             .tracking(-0.7)
             .foregroundStyle(.ofInk)

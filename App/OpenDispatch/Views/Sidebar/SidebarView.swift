@@ -47,6 +47,7 @@ struct SidebarView: View {
                             filterResults
                         } else {
                             viewRows
+                            SidebarTopicsSection()
                             pinnedSection
                             ForEach(model.orderedFolders) { folder in
                                 folderSection(folder)

@@ -19,6 +19,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     public static let thumbBudget: TimeInterval = 20
     /// Items considered per source per refresh (`fresh.slice(0, 100)`).
     public static let maxItemsPerFetch = 100
+    /// Items considered per topic per refresh: up to 30 from each of the five providers.
+    public static let maxTopicItemsPerFetch = 150
     /// Sources fetched at once. The web started all of them; URLSession caps per-host connections anyway.
     public static let sourceConcurrency = 12
 
@@ -29,16 +31,19 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     let fallbacks: [String: [String]]
     let feedTimeout: TimeInterval
     let concurrency: Int
+    let topicSearch: any TopicSearching
 
-    public init(database: AppDatabase, parser: any FeedParser, scraper: any PageScraper) {
-        self.init(database: database, parser: parser, scraper: scraper, fetch: Self.liveFetch)
+    /// `topicSearch` finds a topic's matches outside the subscriptions; tests pass a fake.
+    public init(database: AppDatabase, parser: any FeedParser, scraper: any PageScraper,
+                topicSearch: any TopicSearching = DefaultTopicSearch()) {
+        self.init(database: database, parser: parser, scraper: scraper, fetch: Self.liveFetch, topicSearch: topicSearch)
     }
 
     /// Tests: inject the feed transport, fallbacks, timeout and concurrency.
     init(
         database: AppDatabase, parser: any FeedParser, scraper: any PageScraper, fetch: @escaping RefreshFeedFetch,
         fallbacks: [String: [String]] = Seed.feedFallbacks, feedTimeout: TimeInterval = Self.feedTimeout,
-        concurrency: Int = Self.sourceConcurrency
+        concurrency: Int = Self.sourceConcurrency, topicSearch: any TopicSearching = DefaultTopicSearch()
     ) {
         self.database = database
         self.parser = parser
@@ -47,6 +52,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         self.fallbacks = fallbacks
         self.feedTimeout = feedTimeout
         self.concurrency = max(1, concurrency)
+        self.topicSearch = topicSearch
     }
 
     /// fetchFeedText: GET with the feed Accept header; non-2xx throws "HTTP <status>".
@@ -122,6 +128,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     /// refreshSource(src): fetch, dedupe, upsert, record the attempt, then backfill thumbnails. Returns items
     /// added. On failure records last_error and rethrows.
     func refresh(_ src: Source) async throws -> Int {
+        if src.kind == .topic { return try await refreshTopic(src) }
         do {
             let stored = try await database.reader.read { try Queries.storedItemKeys($0, sourceId: src.id) }
             let (parsed, update) = try await sourceItems(src, stored: stored)
@@ -151,6 +158,59 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             }
             throw error
         }
+    }
+
+    /// A topic's refresh: search the places it follows, then store the matches like a source's items. Matches repeating a
+    /// stored item's link under another guid (a news article that was a Hacker News story) are dropped, the cut-off keeps pruned
+    /// items from coming back, and article items without a picture get their page's. In the same transaction the topic's
+    /// stored items that its rules no longer allow are removed (a place turned off, a title without the keyword, another
+    /// language; saved and highlighted ones stay), the points and comments of its stored Hacker News stories are renewed, and
+    /// the news articles are grouped into stories (`Queries.groupTopicStories`), so a notification sees one post per story.
+    /// Errors are recorded only when every place failed; a place that worked makes the refresh a success.
+    func refreshTopic(_ src: Source) async throws -> Int {
+        do {
+            guard let options = src.topicOptions else { throw QueryError.invalid("Topic has no options") }
+            let now = Date()
+            let (stored, subscribed, hackerNewsIDs) = try await database.reader.read { db in
+                (try Queries.storedItemKeys(db, sourceId: src.id), try Queries.subscriptions(db),
+                 try Queries.storedHackerNewsIDs(db, sourceId: src.id, since: Retention.cutoff(now: now)))
+            }
+            let outcome = await topicSearch.search(options, subscriptions: TopicSubscriptions(sources: subscribed), now: now)
+            if outcome.allFailed { throw TopicSearchError(outcome.errorMessage ?? "Nothing could be searched") }
+            // The numbers of stories stored earlier move after they were found; one request renews them all. A failure keeps the old ones.
+            let stats = options.places.hackerNews && !hackerNewsIDs.isEmpty ? await topicSearch.hackerNewsStats(ids: hackerNewsIDs) : [:]
+            let cutoff = Retention.cutoff()
+            let fresh = outcome.items.filter { $0.publishedAt >= cutoff }
+            let unique = Self.dedupeTopicItems(Array(fresh.prefix(Self.maxTopicItemsPerFetch)), stored: stored)
+            let languages = topicSearch.languages
+            let rows = try await database.writer.write { db in
+                try Queries.removeStaleTopicItems(db, topic: src, languages: languages)
+                try Queries.applyHackerNewsStats(db, sourceId: src.id, stats: stats)
+                let rows = try Queries.upsertItems(db, sourceId: src.id, items: unique)
+                try Queries.groupTopicStories(db, topic: src)
+                try Queries.markSourceFetched(db, sourceId: src.id, at: Date(), error: nil)
+                return rows
+            }
+            _ = try? await backfillThumbnails(sourceId: src.id, fresh: Self.newThumbTargets(rows))
+            return rows.filter(\.inserted).count
+        } catch {
+            let message = HTTP.message(error)
+            try? await database.writer.write { db in
+                try Queries.markSourceFetched(db, sourceId: src.id, at: Date(), error: message)
+            }
+            throw error
+        }
+    }
+
+    /// A repeated link is one item, except that a Hacker News story may share its link with an article: the story is the
+    /// discussion of the article's story (`Queries.groupTopicStories`), so the two are deduped apart, each among its own kind.
+    static func dedupeTopicItems(_ items: [ParsedItem], stored: [StoredItemKey]) -> [ParsedItem] {
+        func isThread(_ guid: String) -> Bool { guid.hasPrefix("hn:") }
+        let threads = FeedDedupe.dedupe(items.filter { isThread($0.guid) }, stored: stored.filter { isThread($0.guid) }, linkOnly: true)
+        let others = FeedDedupe.dedupe(items.filter { !isThread($0.guid) }, stored: stored.filter { !isThread($0.guid) }, linkOnly: true)
+        let kept = Dictionary((threads + others).map { ($0.guid, $0) }, uniquingKeysWith: { _, last in last })
+        var emitted = Set<String>()
+        return items.compactMap { emitted.insert($0.guid).inserted ? kept[$0.guid] : nil }
     }
 
     /// sourceItems: scraped items for page sources (and the updated seen_urls), feed items otherwise, with

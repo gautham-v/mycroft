@@ -100,7 +100,7 @@ final class ReaderSpeech {
         self.page = page
         let isPost = TextFormat.isSocialPost(item.item.url)
         title = item.item.title
-        source = item.source.title
+        source = item.originName
         voiceID = settings.speechVoice
         rate = settings.speechRate
         page.onJump = { [weak self, weak page] index in

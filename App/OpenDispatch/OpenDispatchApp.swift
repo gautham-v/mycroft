@@ -95,6 +95,7 @@ struct OpenDispatchCommands: Commands {
                 .keyboardShortcut("f", modifiers: .command)
             Button("Filter Sources") { model.openSourceFilter() }
                 .keyboardShortcut("k", modifiers: .command)
+            Button("New Topic…") { model.beginNewTopic() }
             Divider()
             // Same order as the sidebar.
             ForEach(SidebarViewItem.ordered) { item in

@@ -32,16 +32,17 @@ enum PostNotifications {
         for posts in Dictionary(grouping: alerts, by: \.sourceId).values {
             let newest = posts.sorted { $0.publishedAt > $1.publishedAt }
             if newest.count > perSourceLimit, let first = newest.first {
-                try? await center.add(request(first, body: "\(newest.count) new posts, latest: \(first.title)"))
+                try? await center.add(request(first, body: "\(newest.count) new posts, latest: \(first.title)", grouped: true))
             } else {
                 for post in newest.reversed() { try? await center.add(request(post, body: post.title)) }
             }
         }
     }
 
-    private static func request(_ post: NewPostAlert, body: String) -> UNNotificationRequest {
+    /// `grouped`: one notification stands for several posts, so a topic's says its keyword rather than one post's origin.
+    private static func request(_ post: NewPostAlert, body: String, grouped: Bool = false) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = post.sourceTitle
+        content.title = grouped ? post.sourceTitle : post.heading
         content.body = body
         content.sound = .default
         // Grouped by source in Notification Center.

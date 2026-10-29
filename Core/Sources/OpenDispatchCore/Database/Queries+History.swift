@@ -88,9 +88,19 @@ extension Queries {
         q.limit = 200
         q.cursor = nil
         var marked = 0
+        // A topic's list also shows matching items of the user's own sources; those aren't the topic's to mark (its badge doesn't count them).
+        let topicId = try topicScope(db, q)?.id
         while true {
             let page = try items(db, q)
-            for item in page.items {
+            var rows = page.items.filter { topicId == nil || $0.item.sourceId == topicId }
+            // A story's row stands for every article behind it and for its Hacker News thread: they become read with it.
+            if topicId != nil {
+                let leads = rows.map(\.item.id)
+                let members = try Int64.fetchAll(db, sql: "SELECT id FROM items WHERE story_id IN (\(databaseQuestionMarks(count: leads.count)))",
+                                                 arguments: StatementArguments(leads))
+                for id in members { if let member = try feedItem(db, id: id) { rows.append(member) } }
+            }
+            for item in rows {
                 let before = try existing(db, HistoryEntry(item: item))
                 if before?.readAt == nil {
                     try setRead(db, HistoryEntry(item: item), read: true, now: now)

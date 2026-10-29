@@ -123,7 +123,7 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
 
     /// How many sources notify on new posts, when any do.
     private var notificationsDetail: String? {
-        let n = model.sources.filter(\.notifies).count
+        let n = (model.sources + model.topics).filter(\.notifies).count
         return n == 0 ? nil : "\(n)"
     }
 

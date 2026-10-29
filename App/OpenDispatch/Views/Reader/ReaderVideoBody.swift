@@ -80,8 +80,8 @@ struct ReaderVideoBody: View {
             HStack(alignment: .center, spacing: 8) {
                 ReaderFlowLayout(spacingX: 14, spacingY: 8) {
                     HStack(spacing: 8) {
-                        SourceBadge(host: item.source.host, title: item.source.title, size: 22)
-                        Text(item.source.title).fontWeight(.medium).foregroundStyle(.ofInk)
+                        SourceBadge(host: item.source.host, title: item.originName, size: 22)
+                        Text(item.originName).fontWeight(.medium).foregroundStyle(.ofInk)
                     }
                     if let dur = TextFormat.duration(item.item.durationSec) {
                         Text(dur).monospacedDigit()

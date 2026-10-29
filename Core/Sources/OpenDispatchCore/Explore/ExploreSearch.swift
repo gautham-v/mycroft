@@ -96,5 +96,15 @@ public protocol ExploreSearching: Sendable {
     func videos(_ query: String) async throws -> ExploreVideoResults
     /// Podcast episodes matching the query. Throws when iTunes can't be searched.
     func episodes(_ query: String) async throws -> [ExploreEpisode]
+    /// Videos uploaded in the last month, newest first, with their upload time worded in English ("3 hours ago") whatever
+    /// the system language, which Topics turn into dates. Defaults to `videos`.
+    func recentVideos(_ query: String) async throws -> ExploreVideoResults
+    /// More episodes than `episodes` keeps (several per show), for Topics to pick the recent ones from. Defaults to `episodes`.
+    func recentEpisodes(_ query: String) async throws -> [ExploreEpisode]
+}
+
+extension ExploreSearching {
+    public func recentVideos(_ query: String) async throws -> ExploreVideoResults { try await videos(query) }
+    public func recentEpisodes(_ query: String) async throws -> [ExploreEpisode] { try await episodes(query) }
 }
 

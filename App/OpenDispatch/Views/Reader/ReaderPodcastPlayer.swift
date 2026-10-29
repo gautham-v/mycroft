@@ -47,12 +47,12 @@ struct ReaderPodcastPlayer: View {
         .background(Color.ofGround, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.ofHairline))
         .onAppear {
-            player.setNowPlayingInfo(title: item.item.title, show: item.source.title, art: art)
+            player.setNowPlayingInfo(title: item.item.title, show: item.originName, art: art)
             player.onProgress = { [history = model.history, item] position, duration, force in
                 history.recordProgress(item, position: position, duration: duration, force: force)
             }
         }
-        .onChange(of: art) { _, art in player.setNowPlayingInfo(title: item.item.title, show: item.source.title, art: art) }
+        .onChange(of: art) { _, art in player.setNowPlayingInfo(title: item.item.title, show: item.originName, art: art) }
         .onDisappear { player.teardown() }
     }
 

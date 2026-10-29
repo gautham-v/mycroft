@@ -11,7 +11,7 @@ extension WebhookPayload {
             author: item.item.author,
             publishedAt: ISO8601.string(from: item.item.publishedAt),
             summary: summary.isEmpty ? nil : summary,
-            source: SourceInfo(title: item.source.title, host: item.source.host)
+            source: SourceInfo(title: item.originName, host: item.source.host)
         )
     }
 

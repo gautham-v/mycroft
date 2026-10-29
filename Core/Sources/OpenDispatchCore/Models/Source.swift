@@ -31,12 +31,14 @@ public struct Source: Sendable, Hashable, Identifiable {
     /// When notifications for new posts were turned on; nil = off. Only items stored after this notify.
     /// Per device: not synced.
     public var notifySince: Date?
+    /// kind `.topic`: what the topic follows (nil for every other kind). Synced with the source.
+    public var topicOptions: TopicOptions?
 
     public init(
         id: Int64 = 0, title: String, url: String, feedUrl: String, kind: SourceKind, group: String,
         iconUrl: String? = nil, lastFetchedAt: Date? = nil, lastError: String? = nil, seenUrls: [String]? = nil,
         folderId: Int64? = nil, position: Int = 0, createdAt: Date = Date(),
-        pinnedAt: Date? = nil, isHidden: Bool = false, notifySince: Date? = nil
+        pinnedAt: Date? = nil, isHidden: Bool = false, notifySince: Date? = nil, topicOptions: TopicOptions? = nil
     ) {
         self.id = id
         self.title = title
@@ -54,10 +56,17 @@ public struct Source: Sendable, Hashable, Identifiable {
         self.pinnedAt = pinnedAt
         self.isHidden = isHidden
         self.notifySince = notifySince
+        self.topicOptions = topicOptions
     }
 
     public var isPinned: Bool { pinnedAt != nil }
     public var notifies: Bool { notifySince != nil }
+
+    /// A followed keyword search (`Topic`). Tells by the reserved feed URL, not `kind`: in a list row `kind`
+    /// is rewritten per item (`shown(for:)`).
+    public var isTopic: Bool { Topic.isTopicFeedURL(feedUrl) }
+    /// The keyword of a topic, as typed.
+    public var topicKeyword: String? { isTopic ? (topicOptions?.keyword ?? title) : nil }
 
     /// article / post / video / podcast.
     public var type: SourceType { SourceType(kind: kind, url: url) }
@@ -85,6 +94,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         public static let pinnedAt = Column("pinned_at")
         public static let isHidden = Column("is_hidden")
         public static let notifySince = Column("notify_since")
+        public static let topicOptions = Column("topic_options")
     }
 
     public init(row: Row) throws {
@@ -107,6 +117,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         pinnedAt = row["pinned_at"]
         isHidden = row["is_hidden"]
         notifySince = row["notify_since"]
+        topicOptions = TopicOptions(json: row["topic_options"])
     }
 
     public func encode(to container: inout PersistenceContainer) throws {
@@ -126,6 +137,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         container["pinned_at"] = pinnedAt
         container["is_hidden"] = isHidden
         container["notify_since"] = notifySince
+        container["topic_options"] = topicOptions?.json
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {

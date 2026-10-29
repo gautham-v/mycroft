@@ -11,12 +11,25 @@ public struct NewPostAlert: Sendable, Hashable {
     public var publishedAt: Date
     public var sourceId: Int64
     public var sourceTitle: String
+    /// The item's author: for a topic's item, where it comes from (Hacker News, a publisher, a channel, a show).
+    public var itemAuthor: String?
+    /// The source is a topic, whose `sourceTitle` is the keyword.
+    public var isTopic: Bool
 
-    public init(itemId: Int64, title: String, publishedAt: Date, sourceId: Int64, sourceTitle: String) {
+    public init(itemId: Int64, title: String, publishedAt: Date, sourceId: Int64, sourceTitle: String,
+                itemAuthor: String? = nil, isTopic: Bool = false) {
         self.itemId = itemId
         self.title = title
         self.publishedAt = publishedAt
         self.sourceId = sourceId
         self.sourceTitle = sourceTitle
+        self.itemAuthor = itemAuthor
+        self.isTopic = isTopic
+    }
+
+    /// What the notification's title says: the source, or for a topic "<keyword> · <origin>".
+    public var heading: String {
+        guard isTopic, let origin = itemAuthor?.trimmingCharacters(in: .whitespacesAndNewlines), !origin.isEmpty else { return sourceTitle }
+        return sourceTitle + " \u{00B7} " + origin
     }
 }

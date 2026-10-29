@@ -60,7 +60,7 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         case .source: [
             "feedUrl": .string, "title": .string, "url": .string, "kind": .string, "group": .string,
             "iconUrl": .string, "folder": .string, "position": .int, "pinnedAt": .date, "isHidden": .bool,
-            "createdAt": .date,
+            "createdAt": .date, "topicOptions": .string,
         ]
         case .savedItem: [
             "sourceFeedUrl": .string, "guid": .string, "url": .string, "title": .string, "summary": .string,
@@ -92,7 +92,7 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
     var hashedKeys: Set<String> {
         switch self {
         case .folder: ["title", "position"]
-        case .source: ["feedUrl", "title", "folder", "position", "pinnedAt", "isHidden"]
+        case .source: ["feedUrl", "title", "folder", "position", "pinnedAt", "isHidden", "topicOptions"]
         case .savedItem: ["sourceFeedUrl", "guid"]
         // What the user edits, plus readwiseId so every device knows which Readwise highlight this is.
         // The article snapshot (title, source, URL) is fixed when the highlight is made.

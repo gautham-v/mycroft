@@ -39,6 +39,8 @@ public struct ItemQuery: Sendable, Hashable {
     public var since: Date?
     /// Hide Read Items: leave out items read before this time. nil lists read items too.
     public var hideReadBefore: Date?
+    /// A topic's Show filter: which kind of item the list shows (the app sets it only for a topic's list).
+    public var topicFilter: TopicContentFilter
 
     public static let defaultLimit = 50
     public static let maxQueryLength = 200
@@ -47,7 +49,7 @@ public struct ItemQuery: Sendable, Hashable {
     public init(
         view: FeedView = .all, sourceId: Int64? = nil, folderId: Int64? = nil, filter: FeedFilter? = nil,
         search: String = "", cursor: ItemCursor? = nil, limit: Int = ItemQuery.defaultLimit, since: Date? = nil,
-        hideReadBefore: Date? = nil
+        hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all
     ) {
         self.view = view
         self.sourceId = sourceId
@@ -58,6 +60,7 @@ public struct ItemQuery: Sendable, Hashable {
         self.limit = limit
         self.since = since
         self.hideReadBefore = hideReadBefore
+        self.topicFilter = topicFilter
     }
 
     /// The search terms actually matched.
