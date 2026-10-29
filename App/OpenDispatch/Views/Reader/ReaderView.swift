@@ -177,7 +177,7 @@ struct ReaderItemView: View {
                         .padding(.top, 8)
                 }
                 if isVideo {
-                    ReaderVideoBody(item: item, autoplay: settings.autoplay, theater: settings.theater, wide: wide,
+                    ReaderVideoBody(item: item, autoplay: settings.autoplay && model.autoplayItemID == item.id, theater: settings.theater, wide: wide,
                                     viewportHeight: viewportHeight)
                 } else {
                     article

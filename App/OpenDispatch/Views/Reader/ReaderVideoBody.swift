@@ -56,6 +56,10 @@ struct ReaderVideoBody: View {
             }
         }
         .onChange(of: playback.time) { _, _ in recordProgress() }
+        .onChange(of: model.autoplayItemID) { _, id in
+            // Clicking the video already shown as the list's first item opens it: play it now.
+            if autoplay, id == item.id, playback.webView == nil { playback.start?(resumeAt ?? 0) }
+        }
         .onDisappear {
             recordProgress(force: true)
             playback.stop()

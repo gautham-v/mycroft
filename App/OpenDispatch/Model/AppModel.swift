@@ -303,6 +303,9 @@ final class AppModel {
     @ObservationIgnored private var readingStep = 1
     /// Items shown in a pane's active tab when the panes last changed, so only newly shown ones are recorded.
     @ObservationIgnored private var shownItemIDs: Set<Int64> = []
+    /// The item last opened by the user (a click, j/k, a link): only it autoplays (Autoplay on select). An
+    /// item the reader shows as the list's first, such as a new video arriving at the top, waits for play.
+    private(set) var autoplayItemID: Int64?
 
     /// UserDefaults keys keep the app's original name so existing settings carry over.
     private enum Keys {
@@ -761,6 +764,8 @@ final class AppModel {
         let shown = Set(panes.compactMap { $0.activeTab.isNew ? nil : $0.activeTab.itemID })
         let added = shown.subtracting(shownItemIDs)
         shownItemIDs = shown
+        let focused = panes[focusedPane].activeTab.itemID
+        if let id = focused.flatMap({ added.contains($0) ? $0 : nil }) ?? added.first { autoplayItemID = id }
         for id in added {
             if let item = openItems[id] ?? items.first(where: { $0.id == id }) { history.recordOpen(item) }
         }
