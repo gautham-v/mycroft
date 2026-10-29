@@ -15,7 +15,7 @@ enum TopicEditorRequest: Identifiable {
     }
 }
 
-/// The topics and their unread counts, kept current by observing the database (so a topic another device
+/// The topics, kept current by observing the database (so a topic another device
 /// made or edited shows up too). AppModel owns it (`model.topicStore`); the sidebar, the topic list's
 /// header and Explore's Follow button read it. A topic is a source row, so the list of items, refresh and
 /// notifications go through the same AppModel paths as any source; this holds only what the sources
@@ -28,8 +28,6 @@ final class TopicStore {
     /// Ids of `topics`, changing only when a topic is added or removed, so views that need to know whether
     /// the selected source is a topic don't redraw on every refresh stamp.
     private(set) var ids: Set<Int64> = []
-    /// Unread items per source id (a topic's own items).
-    private(set) var unread: [Int64: Int] = [:]
     /// Topics being searched now, for a spinner.
     private(set) var refreshing: Set<Int64> = []
     /// How many rows each filter of the open topic lists (a story is one row), for its title menu. Empty until the
@@ -49,13 +47,6 @@ final class TopicStore {
                     for try await topics in database.observeTopics() { self?.apply(topics) }
                 } catch {
                     // The list keeps what it had.
-                }
-            },
-            Task { [weak self, database] in
-                do {
-                    for try await counts in database.observeUnreadCounts() { self?.unread = counts }
-                } catch {
-                    // The counts keep what they were.
                 }
             },
         ]
@@ -93,8 +84,6 @@ final class TopicStore {
     }
 
     func topic(id: Int64) -> Source? { topics.first { $0.id == id } }
-
-    func unreadCount(_ topic: Source) -> Int { unread[topic.id] ?? 0 }
 
     /// The topic whose keyword is `text`, ignoring case, diacritics and extra spaces (Explore's Following state).
     func topic(matching text: String) -> Source? {

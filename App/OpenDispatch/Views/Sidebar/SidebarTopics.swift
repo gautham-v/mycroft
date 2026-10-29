@@ -2,7 +2,7 @@ import OpenDispatchCore
 import SwiftUI
 
 /// The "Topics" group in the Mac and iPad sidebar, after the view rows and before the sources: a header
-/// with a + (New Topic…) and a row per topic with its keyword and unread count. A row's context menu (and
+/// with a + (New Topic…) and a row per topic with its keyword, like a source row. A row's context menu (and
 /// the "…" on hover) edits it, turns Notify on New Matches on or off, marks it read and removes it.
 /// Shows only when there is at least one topic; the first is made from the Feed menu or Explore's Follow.
 struct SidebarTopicsSection: View {
@@ -17,7 +17,7 @@ struct SidebarTopicsSection: View {
                 header
                 ForEach(topics) { topic in
                     SidebarTopicRow(
-                        topic: topic, active: model.selectedSourceID == topic.id, unread: model.topicStore.unreadCount(topic),
+                        topic: topic, active: model.selectedSourceID == topic.id,
                         refreshing: model.topicStore.refreshing.contains(topic.id),
                         onOpen: { model.navigate(sourceID: topic.id) }
                     ) { menu(topic) }
@@ -86,12 +86,11 @@ struct SidebarTopicsSection: View {
     }
 }
 
-/// A topic row: the "number" symbol in the icon column, the keyword, and the unread count (a spinner while
-/// it searches, the "…" menu on hover).
+/// A topic row: the "number" symbol in the icon column and the keyword, with no count, like a source row (a
+/// spinner while it searches, the "…" menu on hover).
 private struct SidebarTopicRow<MenuContent: View>: View {
     let topic: Source
     let active: Bool
-    let unread: Int
     let refreshing: Bool
     let onOpen: () -> Void
     @ViewBuilder let menu: () -> MenuContent
@@ -119,26 +118,19 @@ private struct SidebarTopicRow<MenuContent: View>: View {
         .onHover { hovered = $0 }
         .help(topic.lastError.map { "Last search failed: \($0)" } ?? topic.title)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(unread > 0 ? "\(topic.title), \(unread) unread" : topic.title)
+        .accessibilityLabel(topic.title)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onOpen() }
     }
 
-    /// The unread count (or a spinner while it searches), which the "…" menu takes the place of on hover. The menu
+    /// A spinner while it searches, which the "…" menu takes the place of on hover. The menu
     /// stays in the row, only hidden, so it isn't torn down when the pointer moves onto its popup.
     private var trailing: some View {
         ZStack(alignment: .trailing) {
-            Group {
-                if refreshing {
-                    ProgressView().controlSize(.mini)
-                } else if unread > 0 {
-                    Text(unread.formatted())
-                        .font(OFFont.ui(12))
-                        .monospacedDigit()
-                        .foregroundStyle(.ofMuted)
-                }
+            if refreshing {
+                ProgressView().controlSize(.mini)
+                    .opacity(hovered ? 0 : 1)
             }
-            .opacity(hovered ? 0 : 1)
             Menu {
                 menu()
             } label: {

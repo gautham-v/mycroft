@@ -871,7 +871,7 @@ private struct PhoneDrawer: View {
 
     private func topicRow(_ topic: Source) -> some View {
         DrawerTopicRow(
-            topic: topic, unread: model.topicStore.unreadCount(topic),
+            topic: topic,
             isRefreshing: model.topicStore.refreshing.contains(topic.id), isCurrent: model.selectedSourceID == topic.id
         ) { pick { model.navigate(sourceID: topic.id) } }
         .contextMenu {
@@ -1497,10 +1497,9 @@ private struct DrawerFolderRow: View {
     }
 }
 
-/// A topic row: the "number" symbol, the keyword, and the unread count (a spinner while it searches).
+/// A topic row: the "number" symbol and the keyword, like a source row (a spinner while it searches).
 private struct DrawerTopicRow: View {
     let topic: Source
-    let unread: Int
     let isRefreshing: Bool
     var isCurrent = false
     let action: () -> Void
@@ -1519,11 +1518,6 @@ private struct DrawerTopicRow: View {
                 Spacer(minLength: 8)
                 if isRefreshing {
                     ProgressView().controlSize(.small)
-                } else if unread > 0 {
-                    Text(unread.formatted())
-                        .font(OFFont.ui(14))
-                        .monospacedDigit()
-                        .foregroundStyle(.ofMuted)
                 }
             }
             .padding(.horizontal, 14)
@@ -1534,7 +1528,7 @@ private struct DrawerTopicRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(unread > 0 ? "\(topic.title), \(unread) unread" : topic.title)
+        .accessibilityLabel(topic.title)
         .accessibilityHint("Topic")
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }

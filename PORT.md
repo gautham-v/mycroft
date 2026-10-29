@@ -1153,7 +1153,7 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
   listed with the story). `AppDatabase.topicFilterCounts(topicId:)` / `observeTopicFilterCounts(topicId:)` give the row count of each filter.
 
 ### Topics (App: model, Mac/iPad UI, sheet) — 2026-10-28
-- `TopicStore` (owned by `AppModel.topicStore`) observes `observeTopics()` and `observeUnreadCounts()`: `topics`, `ids` (changes only when a topic is added or removed), `unread`,
+- `TopicStore` (owned by `AppModel.topicStore`) observes `observeTopics()`: `topics`, `ids` (changes only when a topic is added or removed),
   `refreshing`, `topic(matching:)` (Explore's Following state). A topic is a source, so it is selected with `navigate(sourceID:)`; `AppModel.activeSource` falls back to the topic
   store because `sources` leaves topics out, and the sync handler keeps a selected topic. `topicFilter` (`setTopicFilter`) is the title menu's Show choice; it resets when the list moves on and
   `currentQuery` sends it only for a topic's list. `topicStore.filterCounts` follows `observeTopicFilterCounts` of the open topic (`watchFilterCounts(of:)`, called from `setNav`).
@@ -1179,7 +1179,7 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
 
 ### Topics (App: iPhone) — 2026-10-28
 - Drawer (`PhoneDrawer`): a "Topics" section after the view rows and before Folders, always shown (its + is the way to a first topic besides Explore's Follow; empty, it holds a one-line hint).
-  `DrawerTopicRow` shows the "number" symbol, the keyword and the unread count (a spinner while it searches). Holding a row gives Edit Topic…, Notify on New Matches (checked),
+  `DrawerTopicRow` shows the "number" symbol and the keyword, with no count like a source row (a spinner while it searches). Holding a row gives Edit Topic…, Notify on New Matches (checked),
   Mark All as Read and Remove Topic… (alert: "Removing a topic also removes its items."). The drawer's search also matches topics. The + and Edit Topic close the drawer, then the sheet opens.
 - Topic page: the home list with the keyword as its title row (with the filter after it, "Firefox · Videos"). The status row, the chips and the bell/menu bubble of the first version are
   gone; pressing and holding the title gives `TopicListMenuItems` (Show, Notify on New Matches, Edit Topic…, Mark All as Read) and Hide Read Items. Remove Topic… is in the drawer row's menu.
