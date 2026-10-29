@@ -6,7 +6,7 @@ import AppKit
 
 /// Explore on the Mac and iPad: the New Tab page's field, its recent searches and its results. The field
 /// searches on Return, or opens a web address typed or pasted into it (the New Tab page's old address field).
-/// Results are Videos (a grid), Posts (Reddit, X, Bluesky, Hacker News), Podcast episodes, Sources to follow and a last
+/// Results are Videos (a grid), Articles (news), Posts (Reddit, X, Bluesky, Hacker News), Podcast episodes, Sources to follow and a last
 /// row that searches the web;
 /// each section lands on its own. A result opens in this tab, or ⌘-click (the menu's Open in New Tab) in a
 /// tab after it, leaving the page and its results in place.
@@ -29,7 +29,7 @@ struct ExploreSearchField: View {
                     .foregroundStyle(.ofMuted)
                     .accessibilityHidden(true)
                 TextField("", text: $explore.draft,
-                          prompt: Text("Search videos, posts, podcasts and sources, or enter a link").foregroundStyle(.ofFaint))
+                          prompt: Text("Search videos, news, posts, podcasts and sources, or enter a link").foregroundStyle(.ofFaint))
                     .textFieldStyle(.plain)
                     .font(OFFont.ui(14))
                     .foregroundStyle(.ofInk)
@@ -169,11 +169,13 @@ struct ExploreDesktopResults: View {
     let pane: Int
     @Environment(AppModel.self) private var model
     @State private var allVideos = false
+    @State private var allArticles = false
     @State private var allPosts = false
     @State private var allEpisodes = false
     @State private var allSources = false
 
     private static let videoLimit = 6
+    private static let articleLimit = 5
     private static let postLimit = 5
     private static let episodeLimit = 4
     private static let sourceLimit = 6
@@ -183,6 +185,7 @@ struct ExploreDesktopResults: View {
         VStack(alignment: .leading, spacing: 26) {
             topicRow(explore)
             videos(explore)
+            articles(explore)
             posts(explore)
             episodes(explore)
             sources(explore)
@@ -224,6 +227,34 @@ struct ExploreDesktopResults: View {
                         ForEach(allVideos ? results.videos : Array(results.videos.prefix(Self.videoLimit))) { video in
                             let target = ExploreTarget.video(video)
                             ExploreVideoCard(video: video, isOpening: explore.opening == target.id) { open(target, inNewTab: $0) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// News, with the paywalled sites marked or left out as the lists do (Settings › Integrations › Paywalled articles).
+    @ViewBuilder private func articles(_ explore: ExploreStore) -> some View {
+        switch explore.articles {
+        case .idle:
+            EmptyView()
+        case .loading:
+            section("Articles") { ExploreSkeleton(style: .rows) }
+        case .failed(let message):
+            section("Articles") { ExploreFailure(what: "news", message: message, retry: explore.retryArticles) }
+        case .loaded(let all):
+            let articles = model.shownArticles(all)
+            section("Articles", count: articles.count, limit: Self.articleLimit, expanded: $allArticles) {
+                if articles.isEmpty {
+                    ExploreEmptyNote(text: "No articles for \u{201C}\(explore.query)\u{201D}")
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(allArticles ? articles : Array(articles.prefix(Self.articleLimit))) { article in
+                            let target = ExploreTarget.article(article)
+                            ExploreArticleRow(article: article, paywall: model.paywallStatus(of: article), isOpening: explore.opening == target.id) {
+                                open(target, inNewTab: $0)
+                            }
                         }
                     }
                 }

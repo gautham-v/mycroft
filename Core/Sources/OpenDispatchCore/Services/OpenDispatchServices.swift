@@ -23,12 +23,14 @@ public struct OpenDispatchServices: Sendable {
     public let sponsorBlock: any SponsorBlockFetching
     public let explore: any ExploreSearching
     public let discussions: any DiscussionLoading
+    public let articles: any ArticleSearching
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
         extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService,
         search: any SourceSearching = DefaultSourceSearch(), sponsorBlock: any SponsorBlockFetching = DefaultSponsorBlock(),
-        explore: any ExploreSearching = DefaultExploreSearch(), discussions: any DiscussionLoading = DefaultDiscussions()
+        explore: any ExploreSearching = DefaultExploreSearch(), discussions: any DiscussionLoading = DefaultDiscussions(),
+        articles: any ArticleSearching = DefaultArticleSearch()
     ) {
         self.database = database
         self.feedParser = feedParser
@@ -42,6 +44,7 @@ public struct OpenDispatchServices: Sendable {
         self.sponsorBlock = sponsorBlock
         self.explore = explore
         self.discussions = discussions
+        self.articles = articles
         self.content = ContentService(database: database, extractor: extractor)
         self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }
@@ -141,6 +144,16 @@ public struct OpenDispatchServices: Sendable {
         let item = OpenedLinks.item(post: post)
         if let opened = try await database.openedLink(feedUrl: OpenedLinks.linksFeedURL, url: item.url) { return opened }
         return try await database.insertOpenedLink(item)
+    }
+
+    /// An Explore article as an opened link, from what the search result shows, with no request: the reader reads the page when
+    /// it opens, and shows its paywall banner if only a teaser can be read. A result that is a video or an audio file goes
+    /// through `openLink`, which plays it.
+    public func openExploreArticle(_ article: ExploreArticle) async throws -> FeedItem {
+        let url = article.url
+        if OpenedLinks.youTubeVideoID(url) != nil || ApplePodcastEpisode.link(url) != nil || OpenedLinks.isAudioURL(url) { return try await openLink(url) }
+        if let opened = try await database.openedLink(feedUrl: OpenedLinks.linksFeedURL, url: url) { return opened }
+        return try await database.insertOpenedLink(OpenedLinks.item(article: article))
     }
 
     /// The title of a page, for matching an Apple Podcasts episode to its show's feed.

@@ -23,17 +23,19 @@ enum ExploreTarget: Hashable, Identifiable {
     case video(ExploreVideo)
     case episode(ExploreEpisode)
     case post(DiscussionPost)
+    case article(ExploreArticle)
 
     var id: String {
         switch self {
         case .video(let video): "video:" + video.id
         case .episode(let episode): "episode:" + episode.id
         case .post(let post): "post:" + post.id
+        case .article(let article): "article:" + article.id
         }
     }
 }
 
-/// Explore's searches (videos, posts, podcast episodes, sources to follow) and the last results, which
+/// Explore's searches (videos, news articles, posts, podcast episodes, sources to follow) and the last results, which
 /// stay while you open one and come back (⌘T again, or back from the reader on iPhone). AppModel owns it
 /// (`model.explore`); the New Tab page and the iPhone's Explore page read and drive it.
 ///
@@ -53,6 +55,7 @@ final class ExploreStore {
     /// The query the results are for; empty before the first search and after clearing.
     private(set) var query = ""
     private(set) var videos: ExplorePhase<ExploreVideoResults> = .idle
+    private(set) var articles: ExplorePhase<[ExploreArticle]> = .idle
     private(set) var episodes: ExplorePhase<[ExploreEpisode]> = .idle
     private(set) var feeds: ExplorePhase<[SourceSearchResult]> = .idle
     /// Posts by place. A place missing from it wasn't searched (X when signed out).
@@ -72,7 +75,7 @@ final class ExploreStore {
     /// Bumped by each search, so a section that lands late for an older one is dropped.
     @ObservationIgnored private var generation = 0
 
-    private enum Part: Hashable { case videos, episodes, feeds, posts(DiscussionPlace) }
+    private enum Part: Hashable { case videos, articles, episodes, feeds, posts(DiscussionPlace) }
 
     private static let recentsKey = "openfeed.explore-recents"
     private static let maxRecents = 8
@@ -140,7 +143,7 @@ final class ExploreStore {
 
     // MARK: Searching
 
-    /// Runs the three searches for `text` (trimmed), replacing the results. A blank query clears them.
+    /// Runs the searches for `text` (trimmed), replacing the results. A blank query clears them.
     func search(_ text: String) {
         let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return clear() }
@@ -152,7 +155,7 @@ final class ExploreStore {
         remember(q)
         pickedPostPlace = nil
         posts = [:]
-        for section in [Part.videos, .episodes, .feeds] { load(section) }
+        for section in [Part.videos, .articles, .episodes, .feeds] { load(section) }
         for place in DiscussionPlace.searched where place != .x || accounts.isSignedIn(.x) { load(.posts(place)) }
     }
 
@@ -164,6 +167,7 @@ final class ExploreStore {
 
     /// Runs one section again for the current query (its Try Again).
     func retryVideos() { load(.videos) }
+    func retryArticles() { load(.articles) }
     func retryEpisodes() { load(.episodes) }
     func retryFeeds() { load(.feeds) }
 
@@ -172,6 +176,7 @@ final class ExploreStore {
         generation += 1
         query = ""
         videos = .idle
+        articles = .idle
         episodes = .idle
         feeds = .idle
         posts = [:]
@@ -186,7 +191,7 @@ final class ExploreStore {
 
     private func load(_ section: Part) {
         tasks[section]?.cancel()
-        let q = query, gen = generation, explore = services.explore, search = services.search
+        let q = query, gen = generation, explore = services.explore, search = services.search, news = services.articles
         switch section {
         case .videos:
             videos = .loading
@@ -195,6 +200,14 @@ final class ExploreStore {
                 do { phase = .loaded(try await explore.videos(q)) } catch { phase = .failed(HTTP.message(error)) }
                 guard !Task.isCancelled, gen == generation else { return }
                 videos = phase
+            }
+        case .articles:
+            articles = .loading
+            tasks[section] = Task {
+                let phase: ExplorePhase<[ExploreArticle]>
+                do { phase = .loaded(try await news.articles(q)) } catch { phase = .failed(HTTP.message(error)) }
+                guard !Task.isCancelled, gen == generation else { return }
+                articles = phase
             }
         case .episodes:
             episodes = .loading
@@ -257,6 +270,7 @@ final class ExploreStore {
             case .video(let video): try await services.openExploreVideo(video)
             case .episode(let episode): try await services.openExploreEpisode(episode)
             case .post(let post): try await services.openExplorePost(post)
+            case .article(let article): try await services.openExploreArticle(article)
             }
         }
     }

@@ -1096,6 +1096,21 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
   The watch page is still read (6 s) because the description is only there; when it can't be, the item is built from the hit (title, channel as
   author, length, `hqdefault` thumbnail; `OpenedLinks.item(video:)`) rather than the "YouTube video" fallback. An opened video is returned as is, without a request.
 
+### Explore articles (Core) — 2026-10-29
+- `ArticleSearching` (Explore/DefaultArticleSearch.swift), a protocol of its own so `ExploreSearching` is unchanged; `DefaultArticleSearch` implements it and
+  `OpenDispatchServices.articles` holds it (a defaulted last `init` parameter). `articles(_:) -> [ExploreArticle]` (url, title, outlet, published, summary,
+  imageUrl); throws only when every Bing request failed.
+- Bing News code is shared with Topics in `Topics/BingNews.swift` (`url(query:market:sites:newestFirst:)`, `outletSites`, `search(_:get:)`, `parse`,
+  `articleURL(fromBingLink:)`); `DefaultTopicSearch.newsURL` / `outletSites` / `parseNews` / `articleURL` forward to it and Topics' requests and results are unchanged.
+  `parse` also reads `News:Image` + `News:ImageSize` (a `w={0}&h={1}&c=14` template) into a 360x270 https thumbnail.
+- Order: Bing's relevance order (no `qft=sortbydate`; checked with curl for "openai", "interest rates", "nba finals": relevance answers hold 8-12 articles from the last
+  week or so, date order only the 12 latest mentions). One plain query plus one `site:` query per group of 8 outlet sites, at once; the answers are interleaved by rank, dropped
+  past 30 days / in another language / by repeated address (host without "www.", path without trailing "/", query kept) or outlet + headline, an outlet answer must have the query's words
+  in its headline or summary (`TopicMatcher.matches`), 30 kept.
+- `openExploreArticle(_:)`: stores `OpenedLinks.item(article:)` (guid and url = the article's address, outlet as author, summary, Bing's date, no thumbnail) under `OpenedLinks.linksFeedURL`
+  with no request; an opened link already stored is returned as is; a video, Apple Podcasts or audio address goes through `openLink`.
+- App: `ExploreStore.articles` / `retryArticles` / `ExploreTarget.article`; `AppModel.paywallStatus(of: ExploreArticle)` and `shownArticles(_:)`; `ExploreArticleRow` (Views/Explore/ExploreArticles.swift).
+
 ### Topics (Core) — 2026-10-28
 A Topic is a followed keyword search. It is a row of `sources` (kind `topic`) whose items are what a refresh found outside the
 subscriptions, so refresh, unread counts, Mark All as Read, Notify on New Matches (`notify_since`, `takeNewPostAlerts`), 14-day retention, Saved and

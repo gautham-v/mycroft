@@ -2,10 +2,9 @@ import Foundation
 
 /// A topic's searches, with no key anywhere:
 ///
-/// - news: Bing News' RSS (`/news/search?format=rss`), newest first. Its links go through an `apiclick` redirect that names the
-///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`. Bing answers about ten articles,
-///   mostly syndicated copies and small outlets, so the same search is also run limited to large outlets (`outletNews`): the
-///   sites the app is signed in to, the free major outlets, and the known paywalled sites unless the lists hide those.
+/// - news: Bing News' RSS (`BingNews`), newest first. Bing answers about ten articles, mostly syndicated copies and small
+///   outlets, so the same search is also run limited to large outlets (`outletNews`): the sites the app is signed in to, the
+///   free major outlets, and the known paywalled sites unless the lists hide those.
 /// - Hacker News through Algolia's API.
 /// - Reddit's search page through the hidden web view (`DiscussionWeb`), newest first, with scores; when the web view can't
 ///   (the app is in the background) its JSON, falling back to its RSS when the JSON is refused, which it often is outside a
@@ -218,49 +217,22 @@ public struct DefaultTopicSearch: TopicSearching {
     /// `market` ("en-US") asks Bing for the user's language and region; without one Bing picks from the address. `sites` limits
     /// the search to those sites.
     static func newsURL(_ keyword: String, market: String? = nil, sites: [String] = []) -> String {
-        var query = phrase(keyword)
-        if !sites.isEmpty { query += " (" + sites.map { "site:\($0)" }.joined(separator: " OR ") + ")" }
-        var url = "https://www.bing.com/news/search?q=\(encode(query))&format=rss&qft=sortbydate%3d%221%22"
-        if let market { url += "&mkt=\(encode(market))&setlang=\(encode(market))" }
-        return url
+        BingNews.url(query: phrase(keyword), market: market, sites: sites)
     }
 
     /// Sites per outlet search: Bing drops `site:` terms past a query of about this many.
-    static let sitesPerSearch = 8
+    static let sitesPerSearch = BingNews.sitesPerSearch
 
     /// The sites the outlet searches cover, in groups of `sitesPerSearch`: the ones the app is signed in to, the free major
     /// outlets, then the known paywalled sites, which are left out while the lists hide them (`PaywallTreatment.hide`).
     static func outletSites(signedIn: Set<String> = SiteSignIns.sites, paywalled: Bool = PaywallTreatment.current != .hide) -> [[String]] {
-        var sites = signedIn.sorted()
-        for domain in MajorOutlets.domains + (paywalled ? TopicPaywalls.domains : []) where !sites.contains(domain) { sites.append(domain) }
-        return stride(from: 0, to: sites.count, by: sitesPerSearch).map { Array(sites[$0..<min($0 + sitesPerSearch, sites.count)]) }
+        BingNews.outletSites(signedIn: signedIn, paywalled: paywalled)
     }
 
     /// The news search limited to large outlets, a few sites per request; fails only when every request did.
     func outletNews(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
-        var candidates: [Candidate] = []
-        var errors: [any Error] = []
-        let groups = Self.outletSites()
-        await withTaskGroup(of: Result<[Candidate], any Error>.self) { group in
-            for sites in groups {
-                group.addTask {
-                    do {
-                        let data = try await self.get(Self.newsURL(o.keyword, market: self.languages.market, sites: sites), headers: ["Accept": HTTP.feedAccept])
-                        return .success(try Self.parseNews(data))
-                    } catch {
-                        return .failure(error)
-                    }
-                }
-            }
-            for await result in group {
-                switch result {
-                case .success(let found): candidates.append(contentsOf: found)
-                case .failure(let error): errors.append(error)
-                }
-            }
-        }
-        if errors.count == groups.count, let first = errors.first { throw first }
-        return candidates
+        let urls = Self.outletSites().map { Self.newsURL(o.keyword, market: languages.market, sites: $0) }
+        return try await BingNews.search(urls, get: { try await self.get($0, headers: ["Accept": HTTP.feedAccept]) }).flatMap { $0 }.map(Self.candidate)
     }
 
     func news(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
@@ -270,28 +242,17 @@ public struct DefaultTopicSearch: TopicSearching {
 
     /// The articles in a Bing News RSS answer. Throws when it isn't XML.
     static func parseNews(_ data: Data) throws -> [Candidate] {
-        let entries = try TopicXML.entries(data)
-        return entries.compactMap { e in
-            guard let link = e["link"], let url = articleURL(fromBingLink: link), let title = e["title"], !title.isEmpty,
-                  let published = e["pubDate"].flatMap(FeedParsingSupport.date(from:)) else { return nil }
-            let publisher = e["News:Source"].flatMap { $0.isEmpty ? nil : $0 }
-            let summary = e["description"].flatMap { $0.isEmpty ? nil : $0 }
-            return Candidate(
-                item: ParsedItem(guid: url, url: url, title: title, summary: summary, author: publisher, publishedAt: published),
-                host: URLHost.host(of: url), name: publisher)
-        }
+        try BingNews.parse(data).map(candidate)
+    }
+
+    private static func candidate(_ a: BingNews.Article) -> Candidate {
+        Candidate(
+            item: ParsedItem(guid: a.url, url: a.url, title: a.title, summary: a.summary, author: a.publisher, publishedAt: a.published),
+            host: URLHost.host(of: a.url), name: a.publisher)
     }
 
     /// The article a Bing News link stands for: its `url` parameter. A link that doesn't go through Bing is returned as it is.
-    static func articleURL(fromBingLink link: String) -> String? {
-        guard let c = URLComponents(string: link.trimmingCharacters(in: .whitespacesAndNewlines)), let host = c.host?.lowercased() else { return nil }
-        guard host == "bing.com" || host.hasSuffix(".bing.com") else {
-            return ["http", "https"].contains(c.scheme?.lowercased() ?? "") ? c.string : nil
-        }
-        guard let target = c.queryItems?.first(where: { $0.name == "url" })?.value, let u = URLComponents(string: target),
-              ["http", "https"].contains(u.scheme?.lowercased() ?? ""), u.host != nil else { return nil }
-        return target
-    }
+    static func articleURL(fromBingLink link: String) -> String? { BingNews.articleURL(fromBingLink: link) }
 
     // MARK: Hacker News
 
