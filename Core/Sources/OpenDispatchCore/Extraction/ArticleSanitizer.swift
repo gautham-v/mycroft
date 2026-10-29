@@ -62,7 +62,7 @@ public enum ArticleSanitizer {
     /// Posts from X are rendered as x-* markup the reader styles.
     static let classFilteredTags: Set<String> = ["div", "span", "a", "img"]
 
-    static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
+    static let allowedSchemes: Set<String> = ["http", "https", "mailto", "tel"]
     /// TikTok's player is only ever put in by `EmbeddedPosts` (an article's own TikTok embed is a blockquote).
     static let allowedIframeHosts: Set<String> = ["www.youtube-nocookie.com", "player.vimeo.com", "www.tiktok.com"]
     static let schemeCheckedAttributes: Set<String> = ["href", "src", "cite", "poster"]

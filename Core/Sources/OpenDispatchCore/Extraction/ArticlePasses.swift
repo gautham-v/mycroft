@@ -441,14 +441,18 @@ enum ArticlePasses {
             if let parent = pre.parent(), DOM.closest(parent, "pre") != nil { continue }
             // Inside <pre> a <br> is a newline; make it one so the text keeps it.
             for br in DOM.select(pre, "br") { DOM.replace(br, with: TextNode("\n", "")) }
-            let rows = DOM.children(pre).filter { !DOM.isTag($0, ["br", "script", "style"]) }
+            // Expressive Code and Shiki set the lines inside the <code>: <pre><code><div class="ec-line">.
+            var holder = pre
+            if let only = DOM.children(pre).first, DOM.children(pre).count == 1, DOM.tag(only) == "code", !DOM.children(only).isEmpty,
+               DOM.children(only).allSatisfy({ DOM.isTag($0, ["div", "p"]) }) { holder = only }
+            let rows = DOM.children(holder).filter { !DOM.isTag($0, ["br", "script", "style"]) }
             var text: String?
             func lineNo(_ row: Element, _ i: Int) -> Element? {
                 let kids = DOM.children(row)
                 guard let first = kids.first, let last = kids.last, first !== last else { return nil }
                 return DOM.rawText(first).trimmingCharacters(in: .whitespacesAndNewlines) == String(i + 1) ? first : nil
             }
-            if rows.count >= 2, rows.allSatisfy({ DOM.isTag($0, ["div", "p", "span", "li"]) }) {
+            if rows.count >= 2 || (holder !== pre && !rows.isEmpty), rows.allSatisfy({ DOM.isTag($0, ["div", "p", "span", "li"]) }) {
                 let numbered = rows.enumerated().map { lineNo($0.element, $0.offset) }
                 if Double(numbered.compactMap { $0 }.count) >= Double(rows.count) * 0.8 {
                     numbered.forEach { if let n = $0 { DOM.remove(n) } }
@@ -1107,6 +1111,7 @@ enum ArticlePasses {
         removeBoilerplate(root)
         for img in DOM.select(root, "img") where isTinyImg(img) || playerCover.test(DOM.attr(img, "alt") ?? "") { DOM.remove(img) }
         for svg in DOM.select(root, "svg") where DOM.isConnected(svg) && isIconSvg(svg) { DOM.remove(svg) }
+        tidyStyling(root)
         tidyFigures(root)
         promoteBoldHeadings(root)
         for p in DOM.select(root, "p") where DOM.isConnected(p) && !hasMediaOrText(p) && DOM.first(p, "br") == nil { DOM.remove(p) }
@@ -1268,6 +1273,8 @@ enum ArticlePasses {
         unlinkHeadings(root)
         collapsePictures(root)
         removeSamePageNav(root, pageURL: pageURL)
+        deadAnchors(root, pageURL: pageURL)
+        footnoteMarkers(root)
         markClientRenderedFigures(root, pageURL: pageURL)
         placePayloadVideos(root, videos)
     }

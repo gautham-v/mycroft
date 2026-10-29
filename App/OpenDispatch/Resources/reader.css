@@ -189,7 +189,9 @@ body { overflow-y: hidden; }
 .prose-opendispatch h1,
 .prose-opendispatch h2,
 .prose-opendispatch h3,
-.prose-opendispatch h4 {
+.prose-opendispatch h4,
+.prose-opendispatch h5,
+.prose-opendispatch h6 {
   color: var(--ink);
   font-weight: 600;
   line-height: 1.3;
@@ -200,7 +202,9 @@ body { overflow-y: hidden; }
 .prose-opendispatch h1 { font-size: 1.5em; }
 .prose-opendispatch h2 { font-size: 1.3em; }
 .prose-opendispatch h3 { font-size: 1.12em; }
-.prose-opendispatch h4 { font-size: 1em; }
+.prose-opendispatch h4,
+.prose-opendispatch h5,
+.prose-opendispatch h6 { font-size: 1em; }
 .prose-opendispatch a {
   color: var(--accent);
   text-decoration: underline;
@@ -244,6 +248,11 @@ body { overflow-y: hidden; }
   font-size: 13px;
   color: var(--muted);
 }
+/* A credit or note set as a paragraph in a figure (Getty credits, "Interactive figure not shown here") is caption text. */
+.prose-opendispatch figure > p:not(:has(img, picture, video, svg, iframe)),
+.prose-opendispatch figure > div > p:not(:has(img, picture, video, svg, iframe)) { font-size: 13px; color: var(--muted); margin-top: 0.4em; }
+.prose-opendispatch figure > p + figcaption,
+.prose-opendispatch figure > div + figcaption { margin-top: 0.2em; }
 .prose-opendispatch ul { list-style: disc; padding-left: 1.4em; }
 .prose-opendispatch ol { list-style: decimal; padding-left: 1.4em; }
 .prose-opendispatch li + li { margin-top: 0.35em; }
@@ -254,6 +263,18 @@ body { overflow-y: hidden; }
   padding-left: 1em;
   color: var(--body);
 }
+/* A summary or note box the page drew as a card ("In short", "TL;DR", "Did you know?", a Note callout); the label is its
+   first line. ArticlePasses+Styling marks it. */
+.prose-opendispatch .x-callout {
+  margin: 1.4em 0;
+  padding: 14px 16px;
+  background: var(--hover);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  font-size: 0.96em;
+}
+.prose-opendispatch .x-callout > * { margin-top: 0.6em; margin-bottom: 0; }
+.prose-opendispatch .x-callout > :first-child { margin-top: 0; font-weight: 600; font-size: 1em; color: var(--ink); letter-spacing: 0; }
 /* Definition lists (stat tiles, glossaries): the term small above its value. */
 .prose-opendispatch dl { margin: 1.1em 0 0; }
 .prose-opendispatch dt { font-size: 13px; color: var(--muted); margin-top: 0.8em; }
@@ -290,6 +311,7 @@ body { overflow-y: hidden; }
   overflow-x: auto;
   border-collapse: collapse;
   font-size: 15px;
+  margin: 1.4em 0;
 }
 .prose-opendispatch th,
 .prose-opendispatch td {
