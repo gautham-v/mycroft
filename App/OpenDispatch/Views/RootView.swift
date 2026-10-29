@@ -17,6 +17,7 @@ struct RootView: View {
     /// frame changes on every step of a window resize, and only the overlay should re-render for it,
     /// not this view and with it the sidebar and item list.
     @State private var detailFrame = DetailColumnFrame()
+    @State private var navigationGestures = ReaderNavigationGestures()
     #endif
 
     var body: some View {
@@ -26,6 +27,9 @@ struct RootView: View {
             .tint(.ofAccent)
             .preferredColorScheme(model.settings.theme.colorScheme)
             .task { await model.start() }
+            #if os(macOS)
+            .onAppear { navigationGestures.install(model) }
+            #endif
             #if DEBUG
             // Debug hook for driving Settings from the command line: launch with `-OFSettingsTab data`.
             .onAppear {
