@@ -16,8 +16,9 @@ public enum LeadImage {
         // The same file anywhere in the body, in another size or through another proxy: MacRumors' /2000x/ vs /400x0/,
         // Fox's /1200/675/, Engadget's l-intro-N vs intro-N, futurecdn's -2560-80, Medium's resize:fit:, a CDN that
         // wraps the original in ?url= or a path. A standfirst or byline may come first, so not only the first image.
-        let heroKeys = keys(hero)
-        if !heroKeys.isEmpty, imageSrcs(html).contains(where: { !keys($0).isDisjoint(with: heroKeys) }) { return true }
+        let srcs = imageSrcs(html)
+        let heroKeys = withoutSharedFolderIDs(keys(hero), srcs: srcs)
+        if !heroKeys.isEmpty, srcs.contains(where: { !keys($0).isDisjoint(with: heroKeys) }) { return true }
         // The first image by its looser name (WordPress -1024x576, -e1790…, -scaled, -1) when nothing precedes it.
         if let first = leadingPictureSrc(html, maxTextBefore: 0), let a = looseStem(first), let b = looseStem(hero), a == b { return true }
         // The same picture stored twice by the CMS (Business Insider's ids minted seconds apart) as the body's picture.
@@ -27,7 +28,7 @@ public enum LeadImage {
         // A social card (1200x630 crop with a logo, og:image named social_share) stands in for the page's own picture,
         // which the body leads with, so the card would only repeat it.
         if isCardLike(hero), let first = leadingPictureSrc(html, maxTextBefore: leadingTextBudget), sameSite(first, hero) { return true }
-        return leadingVideo.test(html)
+        return leadingVideo.test(html) || leadsWithPlayer(html)
     }
 
     /// Text allowed before the body's leading picture: a standfirst, a byline, a "Back to Articles" link.
@@ -80,13 +81,14 @@ public enum LeadImage {
         var name = file.lowercased()
         name = renditionPart.replacing(name, with: "")
         name = imageExt.replacing(name, with: "")
+        name = sameFileName(name, host: host)
         while sizeSuffix.test(name) { name = sizeSuffix.replacing(name, with: "") }
         // "l-intro-1793300458" is the large rendition of "intro-1793300458".
         if name.count > 8, name.first?.isLetter == true, name.dropFirst().first == "-" { name.removeFirst(2) }
         if name.count >= 4 {
             out.insert(host + "/" + segments.dropLast().filter { !isSizeSegment($0) }.joined(separator: "/").lowercased() + "/" + name)
         }
-        for id in idTokens(segments) { out.insert("id:\(id)") }
+        out.formUnion(idKeys(segments))
         return out
     }
 
@@ -116,7 +118,7 @@ public enum LeadImage {
 
     /// A path segment that picks a size, crop, format or signature rather than naming the image: /2000x/, /400x0/,
     /// /1200/675/, /q60/, /c800x450-w800-q80/, /resize:fit:1400/, MacRumors' /t/<signature=>/.
-    private static func isSizeSegment(_ s: String) -> Bool {
+    static func isSizeSegment(_ s: String) -> Bool {
         if s.contains(where: { "=,:$!".contains($0) }) { return true }
         // A year or a month is a folder, not a size.
         if s.allSatisfy(\.isNumber) { return s.count >= 3 && !(s.count == 4 && (s.hasPrefix("19") || s.hasPrefix("20"))) }
@@ -125,7 +127,7 @@ public enum LeadImage {
 
     /// Segments (or file-name parts) that are ids: 12+ characters with digits (UUIDs, hashes, Yle's
     /// …/39-17192056ac644117ddf4), never a size or a folder of sizes.
-    private static func idTokens(_ segments: [String]) -> Set<String> {
+    static func idTokens(_ segments: [String]) -> Set<String> {
         Set(segments.map { String($0.split(separator: ".").first ?? Substring($0)) }.filter { seg in
             seg.count >= 12 && !seg.contains(",") && !seg.contains("=") && seg.filter(\.isNumber).count >= 4
         }.map { $0.lowercased() })
@@ -148,7 +150,8 @@ public enum LeadImage {
         guard let ua = unwrap(unescape(a)), let ub = unwrap(unescape(b)), ua.host == ub.host,
               let idA = ua.segments.first(where: { objectID.test($0) }), let idB = ub.segments.first(where: { objectID.test($0) }),
               let ta = UInt32(idA.prefix(8), radix: 16), let tb = UInt32(idB.prefix(8), radix: 16) else { return false }
-        return abs(Int(ta) - Int(tb)) <= 120
+        // The same id twice is a shared folder (Webflow's site id), not one upload stored twice.
+        return idA != idB && abs(Int(ta) - Int(tb)) <= 120
     }
 
     private static let bannerName = P("^(?:thumbnail|thumb|header|banner|cover|hero|featured|preview|og|social)(?:[-_.]\\w+)*$", caseInsensitive: true)
@@ -238,9 +241,9 @@ public enum LeadImage {
         guard let comps = URLComponents(string: url), let host = comps.host?.lowercased() else { return false }
         if host == "opengraph.githubassets.com" || (host.hasSuffix("githubassets.com") && comps.path.contains("og-image")) { return true }
         let path = comps.path
-        if cardDir.test(path) { return true }
+        if cardDir.test(path) || isCardRoute(path) { return true }
         let file = path.split(separator: "/").last.map(String.init) ?? ""
-        return cardName.test(imageExt.replacing(file, with: ""))
+        return cardName.test(imageExt.replacing(file, with: "")) || isLogoFile(file)
     }
 
     private static let cardLikeURL = P("social[-_]?share|overlay-|watermark|(?:^|[^\\d])1200(?:x|-|_|,|%2C)\\s*6(?:30|28)(?:[^\\d]|$)|w1200-h630|width=1200&height=630|opengraph|og[-_]image", caseInsensitive: true)
@@ -284,6 +287,7 @@ extension ArticlePasses {
             if src == nil || src!.hasPrefix("data:") {
                 src = DOM.attr(img, "data-src") ?? DOM.attr(img, "srcset")?.split(separator: ",").first?.split(separator: " ").first.map(String.init)
             }
+            if let s = src { src = fullSizeSource(img, src: s) }
             guard let src, !src.hasPrefix("data:"), let url = DOM.absURL(src, base: base),
                   !isSmallThumbURL(url), !isBadge(img), !isTinyImg(img) else { continue }
             let w = DOM.jsNumber(DOM.attr(img, "width"))
@@ -307,6 +311,7 @@ extension ArticlePasses {
         if lead == nil || (cleaned == og && (crop || lead.map(LeadImage.isCardLike) == true)), let hero = pageLeadImage(document, base: base) {
             lead = hero
         }
+        if let hero = pageImageNamedByAlt(document, base: base, ogAlt: meta("meta[property=og:image:alt]"), current: lead) { lead = hero }
         return lead
     }
 }
