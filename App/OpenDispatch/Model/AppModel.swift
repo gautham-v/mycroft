@@ -249,6 +249,7 @@ final class AppModel {
                 Task { await loadItems(reset: true) }
             }
             if settings.paywallTreatment != oldValue.paywallTreatment || settings.paywalls != oldValue.paywalls { applyPaywallFilter() }
+            if settings.feedOrder != oldValue.feedOrder { Task { await loadItems(reset: true) } }
         }
     }
 
@@ -375,7 +376,12 @@ final class AppModel {
     var currentQuery: ItemQuery {
         ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery,
                   hideReadBefore: hidesReadItems ? hideReadCutoff : nil,
-                  topicFilter: isTopicSelected ? topicFilter : .all)
+                  topicFilter: isTopicSelected ? topicFilter : .all, order: listOrder)
+    }
+
+    /// Feed order applies to All and its type views; a source, folder, Saved and a search stay newest first.
+    var listOrder: FeedOrder {
+        isInSourceFeed || selectedView == .saved || !searchQuery.isEmpty ? .latest : settings.feedOrder
     }
 
     /// Hide Read Items applies here: it's on, and the list isn't Saved (kept on purpose) or a search.

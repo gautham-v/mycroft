@@ -1,7 +1,7 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Appearance pane (AppearancePane): theme, reader font, text size, line spacing, hiding read items, comments, reader
+/// Appearance pane (AppearancePane): theme, reader font, text size, line spacing, feed order, hiding read items, comments, reader
 /// width (not on phones, where the screen is narrower than any width), keyboard shortcuts.
 /// Values live in `model.settings` (AppSettings, JSON in UserDefaults "openfeed.settings"), which
 /// RootView (theme) and the reader (font, size) already read.
@@ -34,6 +34,10 @@ struct SettingsAppearancePane: View {
                 }
                 SettingsTextSizePreview(font: model.settings.readerFont, size: model.settings.textSize,
                                         leading: model.settings.lineSpacing)
+            }
+            SettingsRow(label: "Feed order", hint: "Balanced keeps busy sources from filling the top") {
+                SettingsSegmented(label: "Feed order", selection: $model.settings.feedOrder,
+                                  options: FeedOrder.allCases.map { ($0, $0.label) })
             }
             SettingsRow(label: "Hide read items", hint: "They stay in History") {
                 Toggle("Hide read items", isOn: $model.settings.hideReadItems)

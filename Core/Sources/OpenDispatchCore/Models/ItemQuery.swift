@@ -23,6 +23,15 @@ public struct ItemCursor: Sendable, Hashable, Codable {
     }
 }
 
+/// How a list orders its items (Settings → Appearance → Feed order).
+public enum FeedOrder: String, Codable, Sendable, CaseIterable, Hashable {
+    /// Newest first.
+    case latest
+    /// The first page is the newest items ranked so that each further item from the same source counts as older
+    /// than it is, so a source that posts a lot doesn't fill the top; newest first below them (`Queries.items`).
+    case balanced
+}
+
 /// What the item list shows: GET /api/items?view&source&folder&q&cursor&limit.
 public struct ItemQuery: Sendable, Hashable {
     public var view: FeedView
@@ -41,6 +50,8 @@ public struct ItemQuery: Sendable, Hashable {
     public var hideReadBefore: Date?
     /// A topic's Show filter: which kind of item the list shows (the app sets it only for a topic's list).
     public var topicFilter: TopicContentFilter
+    /// Balanced applies to the first page outside a topic; later pages and topics are always newest first.
+    public var order: FeedOrder
 
     public static let defaultLimit = 50
     public static let maxQueryLength = 200
@@ -49,7 +60,7 @@ public struct ItemQuery: Sendable, Hashable {
     public init(
         view: FeedView = .all, sourceId: Int64? = nil, folderId: Int64? = nil, filter: FeedFilter? = nil,
         search: String = "", cursor: ItemCursor? = nil, limit: Int = ItemQuery.defaultLimit, since: Date? = nil,
-        hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all
+        hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all, order: FeedOrder = .latest
     ) {
         self.view = view
         self.sourceId = sourceId
@@ -61,6 +72,7 @@ public struct ItemQuery: Sendable, Hashable {
         self.since = since
         self.hideReadBefore = hideReadBefore
         self.topicFilter = topicFilter
+        self.order = order
     }
 
     /// The search terms actually matched.

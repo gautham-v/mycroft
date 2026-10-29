@@ -106,7 +106,8 @@ public enum Queries {
         return s
     }
 
-    /// One page of items, newest first (published_at desc, id desc), each joined with its source.
+    /// One page of items, newest first (published_at desc, id desc), each joined with its source. Balanced order
+    /// ranks the first page instead (`balancedPage`).
     public static func items(_ db: Database, _ q: ItemQuery) throws -> ItemPage {
         let limit = min(max(q.limit, 1), 200)
         let src = TableAlias<Source>()
@@ -115,6 +116,7 @@ public enum Queries {
             .including(required: Item.source.aliased(src))
         let topic = try topicScope(db, q)
         for cond in conditions(q, src: src, topic: topic) { req = req.filter(cond) }
+        if q.order == .balanced, q.cursor == nil, topic == nil { return try balancedPage(db, req) }
         let rows = try req
             .order(sortTime(topic: topic != nil).desc, Item.Columns.id.desc)
             .limit(limit + 1)
@@ -124,6 +126,35 @@ public enum Queries {
         if let topic { page = try attachStories(db, to: page, topicId: topic.id) }
         let next = rows.count > limit ? page.last?.cursor(inTopic: topic != nil) : nil
         return ItemPage(items: page, nextCursor: next)
+    }
+
+    /// Balanced order's first page: the newest items, up to `balancedWindowCount` and no more than `balancedWindowSpan`
+    /// older than the newest, so a page can pass `ItemQuery.limit`. Each item counts as `balancedPenalty` older per
+    /// newer item from its source in the page; ties keep time order. The cursor is the page's oldest item, so the
+    /// next pages go on newest first below it.
+    static let balancedWindowCount = 300
+    static let balancedWindowSpan: TimeInterval = 48 * 3600
+    static let balancedPenalty: TimeInterval = 2 * 3600
+
+    private static func balancedPage(_ db: Database, _ req: QueryInterfaceRequest<Item>) throws -> ItemPage {
+        let rows = try req
+            .order(Item.Columns.publishedAt.desc, Item.Columns.id.desc)
+            .limit(balancedWindowCount + 1)
+            .asRequest(of: FeedItem.self)
+            .fetchAll(db)
+        guard let newest = rows.first else { return ItemPage(items: [], nextCursor: nil) }
+        let cutoff = newest.item.publishedAt.addingTimeInterval(-balancedWindowSpan)
+        let window = rows.prefix(balancedWindowCount).prefix { $0.item.publishedAt >= cutoff }
+        var seen: [Int64: Int] = [:]
+        var ranked: [(row: FeedItem, at: Date, index: Int)] = []
+        for (index, row) in window.enumerated() {
+            let newer = seen[row.item.sourceId, default: 0]
+            seen[row.item.sourceId] = newer + 1
+            ranked.append((row, row.item.publishedAt.addingTimeInterval(-Double(newer) * balancedPenalty), index))
+        }
+        ranked.sort { $0.at != $1.at ? $0.at > $1.at : $0.index < $1.index }
+        let next = rows.count > window.count ? window.last?.cursor(inTopic: false) : nil
+        return ItemPage(items: ranked.map { $0.row }, nextCursor: next)
     }
 
     /// One list row by id (GET /api/items/:id), without content_html.

@@ -81,6 +81,40 @@ struct ItemTests {
         #expect(p3.nextCursor == nil)
     }
 
+    @Test func balancedOrderLetsAQuietSourceRise() async throws {
+        let db = try Fixture.db()
+        let busy = try Fixture.source(db, title: "Busy")
+        let quiet = try Fixture.source(db, title: "Quiet", url: "https://quiet.example.com")
+        try Fixture.items(db, sourceId: busy.id, Fixture.parsed(6, prefix: "b", step: -600))
+        try Fixture.items(db, sourceId: quiet.id, Fixture.parsed(1, prefix: "q", start: Fixture.base.addingTimeInterval(-3600)))
+        let latest = try await db.items(ItemQuery()).items.map(\.item.guid)
+        #expect(latest == ["b0", "b1", "b2", "b3", "b4", "b5", "q0"])
+        let balanced = try await db.items(ItemQuery(order: .balanced)).items.map(\.item.guid)
+        #expect(balanced == ["b0", "q0", "b1", "b2", "b3", "b4", "b5"])
+        // A source's list is never ranked.
+        #expect(try await db.items(ItemQuery(sourceId: busy.id, order: .balanced)).items.map(\.item.guid) == ["b0", "b1", "b2", "b3", "b4", "b5"])
+    }
+
+    @Test func balancedOrderPagesNewestFirstBelowItsWindow() async throws {
+        let db = try Fixture.db()
+        let s = try Fixture.source(db)
+        // Ten in the last 48 hours of the list, then five a day apart before them.
+        try Fixture.items(db, sourceId: s.id, Fixture.parsed(10, prefix: "n", step: -3600))
+        try Fixture.items(db, sourceId: s.id, Fixture.parsed(5, prefix: "o", start: Fixture.base.addingTimeInterval(-3 * 86_400), step: -86_400))
+        let p1 = try await db.items(ItemQuery(limit: 3, order: .balanced))
+        #expect(p1.items.map(\.item.guid) == (0..<10).map { "n\($0)" })
+        let p2 = try await db.items(ItemQuery(cursor: try #require(p1.nextCursor), limit: 3, order: .balanced))
+        #expect(p2.items.map(\.item.guid) == ["o0", "o1", "o2"])
+        let p3 = try await db.items(ItemQuery(cursor: try #require(p2.nextCursor), limit: 3, order: .balanced))
+        #expect(p3.items.map(\.item.guid) == ["o3", "o4"])
+        #expect(p3.nextCursor == nil)
+        // Everything inside the window: one page, no cursor.
+        let small = try Fixture.db()
+        let t = try Fixture.source(small)
+        try Fixture.items(small, sourceId: t.id, Fixture.parsed(4))
+        #expect(try await small.items(ItemQuery(limit: 2, order: .balanced)).nextCursor == nil)
+    }
+
     @Test func cursorStringRoundTrips() throws {
         let c = ItemCursor(publishedAt: Date(timeIntervalSince1970: 1_790_000_000.123), id: 42)
         let parsed = try #require(ItemCursor(string: c.stringValue))

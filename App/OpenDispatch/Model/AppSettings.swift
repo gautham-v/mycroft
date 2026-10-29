@@ -77,6 +77,16 @@ enum LineSpacingSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Settings → Appearance → Feed order.
+extension FeedOrder {
+    var label: String {
+        switch self {
+        case .latest: "Latest"
+        case .balanced: "Balanced"
+        }
+    }
+}
+
 /// Reader column cap (Settings → Appearance → Reader width).
 enum ReaderWidthSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     case narrow, medium, wide
@@ -127,6 +137,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var speechRate: Float = 1
     /// Send highlights and notes made on this device to Readwise (when a token is set).
     var sendHighlightsToReadwise: Bool = true
+    /// How All and its Articles, Posts, Video and Podcasts views order items (`AppModel.listOrder`).
+    var feedOrder: FeedOrder = .latest
     /// Leave read items out of the lists (not Saved or searches); they stay in History.
     var hideReadItems: Bool = false
     /// The comments under a post, a video or an article's Hacker News discussion, and the reader's Discussion link.
@@ -169,6 +181,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         let rate = (try? c.decode(Float.self, forKey: .speechRate)) ?? 1
         speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
         sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
+        feedOrder = (try? c.decode(FeedOrder.self, forKey: .feedOrder)) ?? .latest
         hideReadItems = (try? c.decode(Bool.self, forKey: .hideReadItems)) ?? false
         showComments = (try? c.decode(Bool.self, forKey: .showComments)) ?? true
         paywallTreatment = (try? c.decode(PaywallTreatment.self, forKey: .paywallTreatment)) ?? .mark
