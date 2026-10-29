@@ -1,9 +1,10 @@
 import AVFoundation
 import NaturalLanguage
 
-/// The system voices Read aloud can use. Premium and Enhanced voices are downloaded in System
-/// Settings → Accessibility → Spoken Content (iOS: Settings → Accessibility → Spoken Content → Voices);
-/// until then only the compact default ones exist.
+/// The voices Read aloud can use: the natural voice (`NaturalVoice`, English, the default for English
+/// articles) and the system's. Premium and Enhanced system voices are downloaded in System Settings →
+/// Accessibility → Spoken Content (iOS: Settings → Accessibility → Spoken Content → Voices); until then
+/// only the compact default ones exist.
 enum ReaderSpeechVoices {
     /// Where better voices come from, for Settings' hint.
     static var downloadHint: String {
@@ -47,6 +48,15 @@ enum ReaderSpeechVoices {
         available(language: language).first ?? AVSpeechSynthesisVoice(language: language ?? AVSpeechSynthesisVoice.currentLanguageCode())
     }
 
+    /// The natural voice reads this article: it is English (or its language can't be told and the user's
+    /// is), and the saved voice is the natural one, none ("Best available"), or a system voice another
+    /// device has and this one lacks, which falls back to the best.
+    static func prefersNatural(saved id: String?, language: String?) -> Bool {
+        guard (language.map(languageCode) ?? userLanguage) == "en" else { return false }
+        guard let id, id != NaturalVoice.voiceID else { return true }
+        return AVSpeechSynthesisVoice(identifier: id) == nil
+    }
+
     /// The saved voice if this device has it (and it speaks the article's language), else the best one.
     /// Settings sync between devices, so a voice id from a Mac the iPhone has never downloaded falls back here.
     static func resolve(saved id: String?, language: String? = nil) -> AVSpeechSynthesisVoice? {
@@ -67,6 +77,9 @@ enum ReaderSpeechVoices {
     }
 
     // MARK: Labels
+
+    /// "Heart (Natural)".
+    static var naturalLabel: String { "\(NaturalVoice.name) (Natural)" }
 
     static func qualityLabel(_ voice: AVSpeechSynthesisVoice) -> String {
         switch voice.quality {

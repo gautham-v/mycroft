@@ -48,7 +48,7 @@ struct ReaderSpeechBar: View {
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Text("\(ReaderPodcastPlayback.clock(speech.elapsed)) / ~\(ReaderPodcastPlayback.clock(speech.total))")
+                Text(timeLine)
                     .font(OFFont.ui(11.5).monospacedDigit())
                     .foregroundStyle(.ofMuted)
                     .lineLimit(1)
@@ -104,6 +104,20 @@ struct ReaderSpeechBar: View {
                 .ignoresSafeArea(edges: .bottom)
         }
         .overlay(alignment: .top) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
+    }
+}
+
+extension ReaderSpeechBar {
+    /// Elapsed / estimated total, or what the natural voice is waiting on.
+    private var timeLine: String {
+        if speech.preparing {
+            switch speech.natural.phase {
+            case .downloading: return "Downloading the natural voice…"
+            case .loading: return "Loading the natural voice…"
+            default: return "Preparing…"
+            }
+        }
+        return "\(ReaderPodcastPlayback.clock(speech.elapsed)) / ~\(ReaderPodcastPlayback.clock(speech.total))"
     }
 }
 

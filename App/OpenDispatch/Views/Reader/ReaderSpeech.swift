@@ -9,9 +9,9 @@ extension Notification.Name {
     static let readerPodcastDidStart = Notification.Name("openfeed.reader.podcast-did-start")
 }
 
-/// Read aloud (Listen in the reader): speaks the headline, then the article sentence by sentence with
-/// AVSpeechSynthesizer, highlighting the one being spoken in the article and scrolling to keep it in
-/// view (`ReaderSpeechPage`). One session at a time, app-wide, in whichever reader pane started it;
+/// Read aloud (Listen in the reader): speaks the headline, then the article sentence by sentence in the
+/// natural voice (`NaturalVoice`, English) or a system one (AVSpeechSynthesizer), highlighting the one
+/// being spoken in the article and scrolling to keep it in view (`ReaderSpeechPage`). One session at a time, app-wide, in whichever reader pane started it;
 /// the player bar (`ReaderSpeechBar`) and the toolbar's Listen button read its state.
 ///
 /// Like the podcast player, playback belongs to the reader: leaving the article (another item or tab,
@@ -42,6 +42,9 @@ final class ReaderSpeech {
     private(set) var owner: ObjectIdentifier?
     /// Bumped by the Listen menu command; the reader pane that has focus answers it.
     private(set) var commandToken = 0
+    /// Waiting for the natural voice to make the sentence that comes next (the first time, its download).
+    private(set) var preparing = false
+    let natural = NaturalVoice()
 
     @ObservationIgnored private weak var page: ReaderSpeechPage?
     @ObservationIgnored private var entries: [Entry] = []
@@ -51,6 +54,9 @@ final class ReaderSpeech {
     @ObservationIgnored private var voice: AVSpeechSynthesisVoice?
     @ObservationIgnored private var synthesizer: AVSpeechSynthesizer?
     @ObservationIgnored private var delegate: SynthesizerDelegate?
+    /// This session speaks in the natural voice; false after it fails, for the rest of the session.
+    @ObservationIgnored private var usesNatural = false
+    @ObservationIgnored private var naturalPlayer: NaturalSpeechPlayer?
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var queued: [ObjectIdentifier: Queued] = [:]
     @ObservationIgnored private var nextToQueue = 0
@@ -66,6 +72,7 @@ final class ReaderSpeech {
     @ObservationIgnored private var sentenceStartedAt: Date?
     @ObservationIgnored private var sentencePaused = false
     @ObservationIgnored private var previewSynthesizer: AVSpeechSynthesizer?
+    @ObservationIgnored private var previewPlayer: NaturalSpeechPlayer?
 
     private struct Entry {
         var text: String
@@ -136,6 +143,7 @@ final class ReaderSpeech {
         guard !built.isEmpty else { stop(); return }
         entries = built
         count = built.count
+        usesNatural = ReaderSpeechVoices.prefersNatural(saved: voiceID, language: language)
         voice = ReaderSpeechVoices.resolve(saved: voiceID, language: language)
         estimates = Estimates()
         var first = 0
@@ -176,6 +184,10 @@ final class ReaderSpeech {
     private func claimAudio() {
         PodcastRemote.owner?.pause()
         ReaderSpeechRemote.ownsNowPlaying = true
+        activateAudioSession()
+    }
+
+    private func activateAudioSession() {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
@@ -189,6 +201,8 @@ final class ReaderSpeech {
 
     /// Ends the session: stops speaking, drops the highlight, gives audio back.
     func stop() {
+        previewPlayer?.stop()
+        previewPlayer = nil
         startTask?.cancel()
         startTask = nil
         presentTask?.cancel()
@@ -206,6 +220,7 @@ final class ReaderSpeech {
         progress = 0
         restartOnResume = false
         interruptedWhilePlaying = false
+        preparing = false
         if let page {
             page.setActive(false)
             page.scroller.detach()
@@ -224,6 +239,8 @@ final class ReaderSpeech {
     }
 
     private func silence() {
+        naturalPlayer?.stop()
+        naturalPlayer = nil
         synthesizer?.delegate = nil
         synthesizer?.stopSpeaking(at: .immediate)
         synthesizer = nil
@@ -243,6 +260,7 @@ final class ReaderSpeech {
     func pause() {
         guard state == .playing else { return }
         synthesizer?.pauseSpeaking(at: .immediate)
+        naturalPlayer?.pause()
         state = .paused
         sentencePaused = true
         interruptedWhilePlaying = false
@@ -254,7 +272,8 @@ final class ReaderSpeech {
         guard state == .paused else { return }
         claimAudio()
         page?.scroller.following = true
-        if restartOnResume {
+        // An interruption stops the natural voice's audio engine, and what it had queued with it.
+        if restartOnResume || naturalPlayer?.resume() == false {
             play(from: current)
         } else {
             synthesizer?.continueSpeaking()
@@ -296,6 +315,15 @@ final class ReaderSpeech {
         silence()
         queued = [:]
         claimAudio()
+        if usesNatural {
+            state = .playing
+            restartOnResume = false
+            sentencePaused = false
+            present(index)
+            playNatural(from: index)
+            return
+        }
+        preparing = false
         let synth = AVSpeechSynthesizer()
         let delegate = SynthesizerDelegate(owner: self)
         synth.delegate = delegate
@@ -362,19 +390,73 @@ final class ReaderSpeech {
 
     fileprivate func didStart(_ id: ObjectIdentifier) {
         guard let q = queued[id], q.generation == generation else { return }
-        sentenceStartedAt = Date()
-        sentencePaused = false
-        if q.index != current { present(q.index) }
+        started(q.index)
         fill()
     }
 
     fileprivate func didFinish(_ id: ObjectIdentifier) {
         guard let q = queued.removeValue(forKey: id), q.generation == generation else { return }
-        if let started = sentenceStartedAt, !sentencePaused, q.index == current {
-            estimates.add(words: entries[q.index].words, seconds: Date().timeIntervalSince(started))
+        if finished(q.index) { fill() }
+    }
+
+    /// Entry `index` started playing, in either voice.
+    private func started(_ index: Int) {
+        sentenceStartedAt = Date()
+        sentencePaused = false
+        if index != current { present(index) }
+    }
+
+    /// Entry `index` finished playing, in either voice; false when that was the last and the session ended.
+    private func finished(_ index: Int) -> Bool {
+        if let started = sentenceStartedAt, !sentencePaused, index == current {
+            estimates.add(words: entries[index].words, seconds: Date().timeIntervalSince(started))
         }
         sentenceStartedAt = nil
-        if q.index >= entries.count - 1 { stop() } else { fill() }
+        if index >= entries.count - 1 { stop(); return false }
+        return true
+    }
+
+    // MARK: Natural voice
+
+    /// Speaks from entry `index` in the natural voice. Each entry's pause follows it as silence, at the
+    /// same lengths as the system voice's.
+    private func playNatural(from index: Int) {
+        let mine = generation
+        let lines = entries.map {
+            NaturalSpeechPlayer.Line(text: $0.text, pause: ($0.endsBlock ? 0.4 : 0.08) / Double(rate))
+        }
+        let player = NaturalSpeechPlayer(voice: natural, lines: lines, from: index, speed: rate)
+        player.onStart = { [weak self] index in
+            guard let self, self.generation == mine else { return }
+            self.preparing = false
+            self.started(index)
+        }
+        player.onFinish = { [weak self] index in
+            guard let self, self.generation == mine else { return }
+            if self.finished(index) { self.preparing = true }
+        }
+        player.onProgress = { [weak self] index, fraction in
+            guard let self, self.generation == mine, index == self.current else { return }
+            self.progress = fraction
+            self.updateElapsed()
+        }
+        player.onFailure = { [weak self] index in
+            guard let self, self.generation == mine else { return }
+            Self.log.error("natural voice failed at entry \(index); using the system voice")
+            self.usesNatural = false
+            if self.state == .paused { self.current = index; self.restartOnResume = true } else { self.play(from: index) }
+        }
+        player.onReset = { [weak self] in
+            guard let self, self.generation == mine else { return }
+            switch self.state {
+            case .playing: self.play(from: self.current)
+            case .paused: self.restartOnResume = true
+            case .idle: break
+            }
+        }
+        naturalPlayer = player
+        preparing = true
+        player.start()
     }
 
     fileprivate func didCancel(_ id: ObjectIdentifier) { queued.removeValue(forKey: id) }
@@ -475,9 +557,23 @@ final class ReaderSpeech {
     func preview(voice id: String?, speed: Float) {
         stop()
         previewSynthesizer?.stopSpeaking(at: .immediate)
+        previewPlayer?.stop()
+        previewPlayer = nil
+        let text = "This is how articles will sound."
+        if ReaderSpeechVoices.prefersNatural(saved: id, language: nil) {
+            activateAudioSession()
+            let player = NaturalSpeechPlayer(voice: natural, lines: [.init(text: text, pause: 0)], from: 0, speed: speed)
+            player.onFinish = { [weak self] _ in
+                self?.previewPlayer?.stop()
+                self?.previewPlayer = nil
+            }
+            previewPlayer = player
+            player.start()
+            return
+        }
         let synth = AVSpeechSynthesizer()
         previewSynthesizer = synth
-        let utterance = AVSpeechUtterance(string: "This is how articles will sound.")
+        let utterance = AVSpeechUtterance(string: text)
         utterance.voice = ReaderSpeechVoices.resolve(saved: id)
         utterance.rate = ReaderSpeechVoices.utteranceRate(forSpeed: speed)
         synth.speak(utterance)

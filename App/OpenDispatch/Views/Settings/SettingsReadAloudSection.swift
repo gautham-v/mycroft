@@ -2,7 +2,8 @@ import AVFoundation
 import SwiftUI
 
 /// Settings → Playback → Read aloud: the voice and the default speed of the reader's Listen button.
-/// The voice is stored by identifier in `AppSettings.speechVoice`; nil is the best voice installed
+/// The voice is stored by identifier in `AppSettings.speechVoice` (`NaturalVoice.voiceID` for the natural
+/// voice); nil is the best one: the natural voice for English, else the best system voice installed
 /// (Premium, then Enhanced, then default). Settings sync, so an identifier another device has but this
 /// one lacks reads as "Best available" here and is left as it is.
 struct SettingsReadAloudSection: View {
@@ -18,10 +19,13 @@ struct SettingsReadAloudSection: View {
             SettingsSectionLabel(text: "Read aloud")
                 .padding(.top, compact ? 0 : 22)
             SettingsCard {
-                SettingsRow(label: "Voice", hint: ReaderSpeechVoices.downloadHint, stacked: compact) {
+                SettingsRow(label: "Voice", hint: hint, stacked: compact) {
                     HStack(spacing: 8) {
                         let picker = Picker("Voice", selection: voiceSelection(voices)) {
                             Text(bestLabel(voices, showRegion: showRegion)).tag(String?.none)
+                            if Self.offersNatural {
+                                Text(ReaderSpeechVoices.naturalLabel).tag(String?.some(NaturalVoice.voiceID))
+                            }
                             ForEach(voices, id: \.identifier) { voice in
                                 Text(ReaderSpeechVoices.label(voice, showRegion: showRegion)).tag(String?.some(voice.identifier))
                             }
@@ -72,23 +76,47 @@ struct SettingsReadAloudSection: View {
         }
     }
 
+    /// The natural voice speaks English only, so it is offered when that is the user's language.
+    private static var offersNatural: Bool { ReaderSpeechVoices.userLanguage == "en" }
+
+    /// The natural voice reads what Preview and English articles say.
+    private var natural: Bool { ReaderSpeechVoices.prefersNatural(saved: model.settings.speechVoice, language: nil) }
+
+    private var hint: String {
+        guard natural else { return ReaderSpeechVoices.downloadHint }
+        switch speech.natural.phase {
+        case .downloading: return "Downloading the natural voice…"
+        case .loading: return "Loading the natural voice…"
+        case .failed: return "The natural voice couldn't download; the system voice reads until it does."
+        case .ready: return "Runs on this device. Articles in other languages use the system voice."
+        case .notLoaded: return "Downloads about 90 MB the first time it speaks, then runs on this device."
+        }
+    }
+
     /// The saved voice if this device has it, else nil ("Best available") without touching the saved id.
     private func voiceSelection(_ voices: [AVSpeechSynthesisVoice]) -> Binding<String?> {
         Binding(
-            get: { voices.contains { $0.identifier == model.settings.speechVoice } ? model.settings.speechVoice : nil },
+            get: {
+                let id = model.settings.speechVoice
+                if id == NaturalVoice.voiceID { return Self.offersNatural ? id : nil }
+                return voices.contains { $0.identifier == id } ? id : nil
+            },
             set: { model.settings.speechVoice = $0 }
         )
     }
 
     /// What the voice picker shows: the chosen voice, or "Best available: …".
     private func selectedLabel(_ voices: [AVSpeechSynthesisVoice], showRegion: Bool) -> String {
-        guard let id = voiceSelection(voices).wrappedValue, let voice = voices.first(where: { $0.identifier == id }) else {
+        let id = voiceSelection(voices).wrappedValue
+        if id == NaturalVoice.voiceID { return ReaderSpeechVoices.naturalLabel }
+        guard let id, let voice = voices.first(where: { $0.identifier == id }) else {
             return bestLabel(voices, showRegion: showRegion)
         }
         return ReaderSpeechVoices.label(voice, showRegion: showRegion)
     }
 
     private func bestLabel(_ voices: [AVSpeechSynthesisVoice], showRegion: Bool) -> String {
+        if Self.offersNatural { return "Best available: \(ReaderSpeechVoices.naturalLabel)" }
         guard let best = voices.first else { return "Best available" }
         return "Best available: \(ReaderSpeechVoices.label(best, showRegion: showRegion))"
     }
