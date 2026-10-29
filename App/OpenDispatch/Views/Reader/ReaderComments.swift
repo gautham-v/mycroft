@@ -160,7 +160,8 @@ struct ReaderComments: View {
 
     private func load() async {
         if place == .x, !model.accounts.isSignedIn(.x) {
-            phase = .signIn
+            // At launch the sign-ins aren't read yet; `changes` moves once they are, which loads again.
+            phase = model.accounts.checked ? .signIn : .loading
             return
         }
         phase = .loading

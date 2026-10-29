@@ -46,6 +46,9 @@ enum SignInTarget: Identifiable, Equatable {
 @Observable
 final class WebAccountStore {
     private(set) var signedIn: Set<WebAccount> = []
+    /// Whether `signedIn` has been read from the data store since launch. Until then nothing is known, so a view that needs
+    /// X waits instead of asking to sign in.
+    private(set) var checked = false
     /// The sites signed in to beyond X and Reddit, by `Paywalls.site(of:)`: `SiteSignIns`, on this device.
     private(set) var signedInSites: Set<String> = SiteSignIns.sites
     /// The sign-in sheet RootView presents; nil when closed.
@@ -63,10 +66,11 @@ final class WebAccountStore {
     func refresh() async {
         var now: Set<WebAccount> = []
         for account in WebAccount.allCases where await account.isSignedIn() { now.insert(account) }
-        guard now != signedIn else { return }
+        guard now != signedIn || !checked else { return }
         // A view made before the sign-in started without its cookies loaded.
         for account in now.symmetricDifference(signedIn) { DiscussionWeb.shared.forget(account) }
         signedIn = now
+        checked = true
         changes += 1
     }
 

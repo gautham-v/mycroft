@@ -59,9 +59,21 @@ extension WebAccount {
     /// The data store every OpenDispatch web view that should share a sign-in uses.
     @MainActor public static var dataStore: WKWebsiteDataStore { .default() }
 
+    @MainActor private static var storeLoaded = false
+
+    /// The data store's cookies. Until the store is loaded from disk its cookie store reads as empty (at launch, before any
+    /// web view), so the first call asks for its records, which loads it.
+    @MainActor static func cookies() async -> [HTTPCookie] {
+        if !storeLoaded {
+            _ = await dataStore.dataRecords(ofTypes: [WKWebsiteDataTypeCookies])
+            storeLoaded = true
+        }
+        return await dataStore.httpCookieStore.allCookies()
+    }
+
     /// A session cookie for the site is in the app's data store.
     @MainActor public func isSignedIn() async -> Bool {
-        let cookies = await Self.dataStore.httpCookieStore.allCookies()
+        let cookies = await Self.cookies()
         return cookies.contains { cookie in
             cookie.name == sessionCookie && !cookie.value.isEmpty && domains.contains { cookie.domain.hasSuffix($0) }
                 && (cookie.expiresDate.map { $0 > Date() } ?? true)

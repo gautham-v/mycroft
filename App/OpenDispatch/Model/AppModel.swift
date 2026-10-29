@@ -361,6 +361,8 @@ final class AppModel {
     func start() async {
         guard !started else { return }
         started = true
+        // Read first and alongside the rest: a restored X post waits on it for its replies.
+        let signIns = Task { await accounts.refresh() }
         // Topics stored by an older build, or before their rules last changed, match today's rules before anything lists them.
         _ = try? await database.tidyTopics()
         await loadSources()
@@ -368,7 +370,9 @@ final class AppModel {
         await restorePinnedTabs()
         await loadStats()
         await loadIntegrations()
-        await accounts.refresh()
+        await signIns.value
+        // A search made before then skipped X.
+        if accounts.isSignedIn(.x), explore.posts[.x]?.value == nil, explore.posts[.x]?.isLoading != true { explore.retryPosts(.x) }
         // Not awaited: the first fetch from iCloud must not hold up the first refresh.
         Task { await startSync() }
         await refresh(force: false)

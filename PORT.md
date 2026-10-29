@@ -1238,11 +1238,12 @@ Explore searches posts, and the reader shows comments under a thread and under e
   one with no answer in 6 seconds, is loaded afresh (X would show a revisited page from memory without asking). Answers are polled every 100 ms, and a page X
   answered is cached three minutes. Without an answer it waits for posts (or the login wall: `signInRequired`), scrolls twice for a search and three
   times for replies, and keeps each cell once (keyed by its post). `WebAccount` (x, reddit): `isSignedIn()` (the session cookie `auth_token` / `reddit_session`
-  in the default store), `signOut()` (removes the site's data), `browserUserAgent` (Safari's).
+  in the default store; the store reads as cookie-less until loaded from disk, so the first read asks for its records first), `signOut()` (removes the site's data), `browserUserAgent` (Safari's).
 - Reader content: `DefaultContentExtractor` reads a Reddit post (`DiscussionContent`: its text, image, gallery or link) and a Hacker News item (Ask HN text, a link
   to the story) instead of their pages; a title-only post is an empty paragraph, so the reader shows the title and comments. `openLink` stores a pasted Reddit post from its page through the web view.
   `OpenDispatchServices.openExplorePost` stores a hit as an opened link (`OpenedLinks.item(post:)`: X and Bluesky authors as "Name (@handle)", a Reddit post's community as author, score and comments in `hnPoints`/`hnComments`).
-- App: `WebAccountStore` (`model.accounts`: `signedIn`, `signingIn` for RootView's `WebSignInView` sheet, `changes`), refreshed at launch and when the sheet closes
+- App: `WebAccountStore` (`model.accounts`: `signedIn`, `checked`, `signingIn` for RootView's `WebSignInView` sheet, `changes`), refreshed first thing at launch
+  (until `checked`, X's comments and Explore's X chip show a skeleton, not the sign-in note) and when the sheet closes
   (`AppModel.didCloseSignIn`, which also searches X for Explore's query). `ExploreStore.posts` by place, `shownPostPlace` / `pickPostPlace`, `retryPosts`, `ExploreTarget.post`.
   `ReaderComments` (`Views/Reader/ReaderComments.swift`) under the article (`ReaderComments.target(for:)`: the item's own thread, loaded at once, or its `hnCommentsUrl`,
   loaded on "Show comments") and under a video's transcript: a heading with the count and "On <place>", rails per depth, the author line folds a comment and its replies,

@@ -19,7 +19,13 @@ struct ExplorePostsSection: View {
             Group {
                 switch explore.posts[place] {
                 case nil:
-                    if place == .x { ExploreSignInNote(account: .x, isPhone: isPhone) }
+                    if place == .x {
+                        if model.accounts.checked {
+                            ExploreSignInNote(account: .x, isPhone: isPhone)
+                        } else {
+                            ExploreSkeleton(style: .rows, isPhone: isPhone)
+                        }
+                    }
                 case .idle?, .loading?:
                     ExploreSkeleton(style: .rows, isPhone: isPhone)
                 case .failed(let message)?:
