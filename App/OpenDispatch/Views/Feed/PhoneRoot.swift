@@ -893,12 +893,9 @@ private struct PhoneDrawer: View {
         } label: {
             Label("Edit Topic\u{2026}", systemImage: "pencil")
         }
-        Toggle(isOn: Binding(
+        Toggle("Notify on New Matches", isOn: Binding(
             get: { topic.notifies },
-            set: { on in run { try await model.setSourceNotify(id: topic.id, on: on) } })
-        ) {
-            Label("Notify on New Matches", systemImage: OFIcon.bell.rawValue)
-        }
+            set: { on in run { try await model.setSourceNotify(id: topic.id, on: on) } }))
         Button {
             model.markAllRead(topic: topic)
         } label: {
