@@ -18,6 +18,7 @@ import AppKit
 ///   Send To, Go to <source>).
 /// - States: skeleton while the first page loads, error with Retry, empty / no-results messages.
 /// - Infinite scroll: rows near the end and a trailing sentinel call `model.loadMore()`.
+/// - macOS lists the rows in a `LazyVStack` rather than a `List` (see `RowStack`).
 /// - Row click (macOS): ⌘ opens in a new reader tab, ⌥ in the other pane of the split view, otherwise
 ///   in the focused pane. The context menu offers the same two, plus Open Original, Save, a Share submenu
 ///   and Go to <source>. The selected row is the focused pane's
@@ -157,7 +158,7 @@ struct ItemListView: View {
         let items = model.items
         let prefetchFrom = max(0, items.count - Self.prefetchRows)
         return ScrollViewReader { proxy in
-            List {
+            RowStack {
                 #if os(iOS)
                 if isPhone {
                     // Press and hold the title for the list's read actions (the Mac has them in the title menu).
@@ -180,7 +181,6 @@ struct ItemListView: View {
                 listRows(items, prefetchFrom: prefetchFrom)
                 #endif
             }
-            .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .scrollIndicators(.hidden)
             .overlayScrollers()
@@ -206,7 +206,8 @@ struct ItemListView: View {
         if items.isEmpty && model.hiddenPaywalledCount == 0 { ListStateRows() }
         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             let previous = index > 0 ? items[index - 1].id : nil
-            row(item, previousID: previous)
+            ListRow(item: item, previousID: previous, isPhone: isPhone) { row(item, previousID: previous) }
+                .equatable()
                 .onAppear {
                     if index == 0 { topRow.id = item.id }
                     if index >= prefetchFrom { Task { await model.loadMore() } }
@@ -500,6 +501,22 @@ private struct HighlightFollower: View {
     }
 }
 
+/// One row as the list builds it, re-evaluated with the list only when its item, the row above it or the layout
+/// changes. What else a row shows (selection, hover, read state, the theme) it observes itself, so without this every
+/// row the stack had built re-ran its body each time `items` changed, e.g. a page loading mid-scroll.
+private struct ListRow<Content: View>: View, Equatable {
+    let item: FeedItem
+    let previousID: Int64?
+    let isPhone: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View { content() }
+
+    nonisolated static func == (a: ListRow, b: ListRow) -> Bool {
+        a.item == b.item && a.previousID == b.previousID && a.isPhone == b.isPhone
+    }
+}
+
 /// How the list marks a row.
 private struct RowMarkState {
     /// The focused pane's item.
@@ -673,6 +690,24 @@ private struct RowMenu: View {
                 sendError = HTTP.message(error)
             }
         }
+    }
+}
+
+/// The rows' container. macOS: a lazy stack in a scroll view. List is an NSTableView there, and with rows of
+/// varying height it lays out every inserted row up front, so each page appended while scrolling (50 rows) froze
+/// the list for half a second or more. Elsewhere a plain List (pull to refresh, the iPhone's page swipes).
+private struct RowStack<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        #if os(macOS)
+        ScrollView {
+            LazyVStack(spacing: 0) { content }
+        }
+        #else
+        List { content }
+            .listStyle(.plain)
+        #endif
     }
 }
 

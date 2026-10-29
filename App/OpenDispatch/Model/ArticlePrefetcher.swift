@@ -41,6 +41,9 @@ final class ArticlePrefetcher {
     /// are already in the cache.
     private var failed: Set<Int64> = []
     private var warmed: Set<Int64> = []
+    /// This launch: items whose text was extracted (here or by the reader), which `FeedItem.hasContent` from the
+    /// list's page doesn't know yet.
+    private var extracted: Set<Int64> = []
     private let network = NetworkConditions()
     private let images = ArticleImageWarmer()
 
@@ -54,6 +57,11 @@ final class ArticlePrefetcher {
     /// The extraction already running for `id`, for the reader to wait on instead of starting its own.
     func inFlight(_ id: Int64) -> Task<ExtractResult, any Error>? {
         running?.id == id ? running?.task : nil
+    }
+
+    /// `id` has its text now.
+    func noteContent(_ id: Int64) {
+        extracted.insert(id)
     }
 
     /// The reader is opening `id`: stop everything else so it has the network to itself.
@@ -80,7 +88,7 @@ final class ArticlePrefetcher {
             index += step < 0 ? -1 : 1
             guard item.source.kind != .youtube, !failed.contains(item.id) else { continue }
             let wantsImages = jobs.count < imageCount && item.source.kind != .podcast && !warmed.contains(item.id)
-            if item.hasContent && !wantsImages { continue }
+            if (item.hasContent || extracted.contains(item.id)) && !wantsImages { continue }
             jobs.append(Job(id: item.id, images: wantsImages))
         }
         ahead = jobs

@@ -771,12 +771,19 @@ final class AppModel {
         if let it = selectedItem { await toggleSaved(it) }
     }
 
+    /// Applies `change` to the item wherever it is held. `items` and `openItems` are only written when the item
+    /// actually changes: any write to `items` makes the list update every row it has.
     private func patchLocal(_ id: Int64, _ change: (inout FeedItem) -> Void) {
-        if let i = items.firstIndex(where: { $0.id == id }) { change(&items[i]) }
+        if let i = items.firstIndex(where: { $0.id == id }) {
+            var row = items[i]
+            change(&row)
+            if row != items[i] { items[i] = row }
+        }
         if let i = loadedItems.firstIndex(where: { $0.id == id }) { change(&loadedItems[i]) }
-        if var p = openItems[id] {
+        if let old = openItems[id] {
+            var p = old
             change(&p)
-            openItems[id] = p
+            if p != old { openItems[id] = p }
         }
     }
 
@@ -796,12 +803,16 @@ final class AppModel {
         return result
     }
 
+    /// Having text is noted with the prefetcher, not on the row: the row doesn't show it, and every article read ahead
+    /// changing `items` made the list update all its rows mid-scroll. A lead image the row lacks does change the row.
     private func didFetchContent(_ id: Int64, _ result: ExtractResult, url: String? = nil) {
-        guard result.contentHtml != nil || result.leadImage != nil else { return }
-        if result.contentHtml != nil { learnPaywall(id, url: url, result) }
+        if result.contentHtml != nil {
+            learnPaywall(id, url: url, result)
+            prefetcher.noteContent(id)
+        }
+        guard let lead = result.leadImage else { return }
         patchLocal(id) { row in
-            if result.contentHtml != nil { row.hasContent = true }
-            if row.item.thumbnailUrl == nil, let lead = result.leadImage { row.item.thumbnailUrl = lead }
+            if row.item.thumbnailUrl == nil { row.item.thumbnailUrl = lead }
         }
     }
 
