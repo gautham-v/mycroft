@@ -1151,6 +1151,7 @@ enum ArticlePasses {
             let label = leadingLabel(next)
             if next == nil || (label.map { rank($0) <= rank(h) } ?? false) { DOM.remove(block) }
         }
+        cutAtPaywallMarker(root)
         return DOM.innerHTML(root)
     }
 
@@ -1257,6 +1258,8 @@ enum ArticlePasses {
         absolutize(root, base: base)
         normalizeEmbeds(root)
         removeScreenReaderText(root)
+        unhideSoftBarrierText(root)
+        removeVideoCarousel(root)
         removePlayerChrome(root)
         removeInterface(root)
         normalizeCodeBlocks(root)

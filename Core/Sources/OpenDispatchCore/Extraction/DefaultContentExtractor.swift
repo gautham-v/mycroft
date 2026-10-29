@@ -156,7 +156,11 @@ public struct DefaultContentExtractor: ContentExtractor {
         if res.statusCode == 401 || res.statusCode == 403, res.value(forHTTPHeaderField: "cf-mitigated") != "challenge" {
             (data, res) = try await HTTP.fetch(url, timeout: Self.extractTimeout, headers: HTTP.browserHeaders, session: session)
         }
-        guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
+        guard (200..<300).contains(res.statusCode) else {
+            // The site's own "subscribers only" page (LWN answers 403), not a bot check: the article is walled.
+            if [401, 402, 403].contains(res.statusCode), let wall = PaywallDetection.wallResponse(HTTP.text(data, response: res)) { return wall }
+            throw HTTPError.status(res.statusCode)
+        }
         let ct = res.value(forHTTPHeaderField: "Content-Type") ?? ""
         if !ct.isEmpty && !Self.htmlOrXML.test(ct) { throw ExtractionError.unsupportedContentType(ct) }
         let html = HTTP.text(data, response: res)
