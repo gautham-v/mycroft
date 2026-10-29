@@ -278,7 +278,9 @@ struct ReaderVideoBody: View {
                 tabBar
                     .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
                     .background(Color.ofSurface)
-                    .alignmentGuide(.bottom) { $0[.top] }
+                    // Hangs from the band's bottom edge in a frame of no height, rather than through an alignment
+                    // guide, which the band ignored, setting the bar over the bottom of the player and its corners.
+                    .frame(height: 0, alignment: .top)
             }
         }
     }
