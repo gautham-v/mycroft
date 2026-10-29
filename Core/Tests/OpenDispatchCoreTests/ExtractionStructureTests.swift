@@ -221,3 +221,16 @@ struct ExtractionStructureWebKitTests {
         #expect(!body.contains("a few points for your consideration"))
     }
 }
+
+extension ExtractionStructureWebKitTests {
+    /// IEEE Spectrum: the headline's box holds only the picture and its credit, and the story is in a box beside it.
+    @Test @MainActor func aPictureInTheHeadlineBoxDoesNotReplaceTheStoryBesideIt() async throws {
+        let html = """
+        <html><head><title>Systems</title></head><body><main><article><h1>Systems</h1><div class="head"><picture><img src="https://e.com/hands.jpg" width="4000" height="2500" alt="Hands"></picture></div>
+        <div class="body"><div class="photo-credit">Moor Studio/Getty Images</div></div></article>
+        <div class="story"><p>\(Self.para) One.</p><p>\(Self.para) Two.</p><p>\(Self.para) Three.</p></div></main></body></html>
+        """
+        let body = try await extract(html)
+        #expect(body.contains("Two."))
+    }
+}

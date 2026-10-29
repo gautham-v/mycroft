@@ -56,7 +56,9 @@ public struct ArticleExtraction: Sendable {
             let n = DOM.plainText(alt).count
             if let alt, n >= Self.regionMinText, Double(n) >= 0.5 * Double(DOM.plainText(clean).count) { clean = alt }
         }
-        if let picture, clean.map({ !Passes.containsPicture($0, of: picture) }) ?? true {
+        // Only in place of an extraction with no story of its own (The New Yorker's footer, a copyright paragraph): a
+        // page whose headline box is a picture and a credit (IEEE Spectrum's header) can have its text beside it.
+        if let picture, clean.map({ !Passes.containsPicture($0, of: picture) && (DOM.withFragment($0) { DOM.proseLen($0) } ?? 0) < Passes.maxPictureProse * 4 }) ?? true {
             clean = Self.finish(readabilityContent: picture, media: [], base: base)
         }
         if SiteVideo.isVideoPage(document, pageURL: pageURL, pagePlayer: pagePlayer, content: clean, poster: lead) {
