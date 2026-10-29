@@ -3,7 +3,8 @@ import SwiftUI
 
 /// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title, the
 /// player as tall as the reader less room for the title row (at least 960pt wide, if the reader is that wide);
-/// scrolling down shrinks the pinned band to under half the reader so the comments have room. Otherwise the player sits in the text column under the title and meta row.
+/// scrolling down snaps the pinned band to under half the reader so the description and comments have room,
+/// and scrolling back to the top grows it again. Otherwise the player sits in the text column under the title and meta row.
 /// A Short skips the band: a 9:16 player centered in the column, above the title in theater, as tall
 /// as the reader less room for the title to show under it. Under the description, Comments and Transcript
 /// (if the video has captions) are tabs, Comments first; the theater band stays pinned at the top while it
@@ -33,9 +34,9 @@ struct ReaderVideoBody: View {
     @State private var headerHeight: CGFloat = 0
     /// The tab bar has scrolled up past `pinLine`, so its pinned copy shows.
     @State private var tabsPinned = false
-    /// Where the header sits on screen at its pinned place, and how far the band has shrunk from its full height.
+    /// Where the header sits on screen at its pinned place, and whether the band has snapped to its pinned height.
     @State private var headerTop: CGFloat = 0
-    @State private var bandShrink: CGFloat = 0
+    @State private var bandSmall = false
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @Environment(\.readerScroll) private var scroll
@@ -57,11 +58,9 @@ struct ReaderVideoBody: View {
         let room = max(0, width - (wide ? 32 : 0))
         let capped = min(room, Metrics.theaterMaxWidth) * 9 / 16
         let full = max(capped, min(room * 9 / 16, viewportHeight - Metrics.theaterTitleRoom))
-        return (full, min(full, max(capped, viewportHeight * Metrics.theaterPinnedShare)))
+        return (full, min(full, max(Metrics.theaterPinnedMin, viewportHeight * Metrics.theaterPinnedShare)))
     }
-    /// The band player's height now, and how much shorter that is than its full height.
-    private var bandPlayerHeight: CGFloat? { bandHeights.map { max($0.pinned, $0.full - bandShrink) } }
-    private var bandShrunk: CGFloat { bandHeights.map { $0.full - max($0.pinned, $0.full - bandShrink) } ?? 0 }
+    private var bandPlayerHeight: CGFloat? { bandHeights.map { bandSmall ? $0.pinned : $0.full } }
 
     private var showsComments: Bool { model.settings.showComments && item.item.videoId != nil }
     private var showsTranscript: Bool {
@@ -94,10 +93,12 @@ struct ReaderVideoBody: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        // The band shrinks as fast as the reader scrolls, until it's at its pinned height.
+        // Scrolling down snaps the band to its pinned height, and the page moves up under it; at the top it grows back.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
-            let shrink = bandHeights.map { min(max(0, headerTop - top), $0.full - $0.pinned) } ?? 0
-            if shrink != bandShrink { bandShrink = shrink }
+            guard bandHeights != nil else { return }
+            let scrolled = headerTop - top
+            let small = bandSmall ? scrolled >= 1 : scrolled > Metrics.theaterSnapScroll
+            if small != bandSmall { withAnimation(.smooth(duration: 0.3)) { bandSmall = small } }
         }
         .environment(\.readerNarrow, narrow)
         .task(id: model.settings.videoTranscript) {
@@ -227,8 +228,6 @@ struct ReaderVideoBody: View {
         }
         .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
         .padding(.top, narrow ? 16 : theater ? 24 : (wide ? 40 : 32))
-        // Holds the column where the full band put it while the band shrinks above it.
-        .padding(.top, bandShrunk)
         .padding(.bottom, 32)
     }
 
