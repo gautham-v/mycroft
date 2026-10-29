@@ -15,7 +15,7 @@ public enum ExtractionError: Error, LocalizedError, Equatable {
 /// Full-text extraction (port of extractArticle / extractPodcastNotes in src/lib/extract.ts).
 ///
 /// Order for an article: X posts first (status page data, then oEmbed), a Reddit post or Hacker News item from
-/// `DiscussionContent`; otherwise the page is fetched (403/401 retried
+/// `DiscussionContent`, an MSN article from its content API (`MSNArticle`); otherwise the page is fetched (403/401 retried
 /// once with browser headers unless Cloudflare's challenge) and run through `ArticleExtraction` (pre-passes,
 /// Readability in WebKit, cleanup, sanitize) while the feed's own content:encoded copy is fetched alongside (rss
 /// sources, not hnrss). A fuller feed copy (`preferFeed`) beats a cut-short page; when the page fails the feed copy
@@ -57,8 +57,24 @@ public struct DefaultContentExtractor: ContentExtractor {
     // MARK: ContentExtractor
 
     public func extractArticle(url: String, feed: FeedRef?) async throws -> ExtractResult {
-        let isPost = TweetExtraction.tweetURL.test(url) || SocialPosts.network(of: url) != nil
+        var out = try await extractArticleContent(url: url, feed: feed)
+        // Posts embedded in the article (X, Bluesky, Instagram, TikTok…) are drawn as posts, video and all (`EmbeddedPosts`).
+        if let html = out.contentHtml, !Self.isPost(url) {
+            let session = session
+            out.contentHtml = await EmbeddedPosts.expand(html) { u, headers in
+                try? await HTTP.fetch(u, timeout: EmbeddedPosts.timeout, headers: headers, session: session)
+            }
+        }
+        return out
+    }
+
+    static func isPost(_ url: String) -> Bool {
+        TweetExtraction.tweetURL.test(url) || SocialPosts.network(of: url) != nil
             || DiscussionPlace.thread(of: url).map { $0 == .reddit || $0 == .hackerNews } == true
+    }
+
+    func extractArticleContent(url: String, feed: FeedRef?) async throws -> ExtractResult {
+        let isPost = Self.isPost(url)
         if !isPost, signedIn.isSignedIn(url), let page = await extractSignedIn(url: url) { return page }
         if TweetExtraction.tweetURL.test(url) {
             if let t = try? await TweetExtraction.extract(url: url, timeout: Self.extractTimeout, session: session) { return t }
@@ -76,6 +92,9 @@ public struct DefaultContentExtractor: ContentExtractor {
                 try? await HTTP.fetch(u, timeout: Self.extractTimeout, headers: h, session: session)
             }
             if let post { return post }
+        } else if let api = MSNArticle.apiURL(url) {
+            if let (data, res) = try? await HTTP.fetch(api, timeout: Self.extractTimeout, headers: ["Accept": "application/json"], session: session),
+               (200..<300).contains(res.statusCode), let article = MSNArticle.render(data, pageURL: url) { return article }
         }
         let started = Date()
         // The feed's copy is fetched alongside the page: the fallback when the page fails and the yardstick for a page
@@ -94,7 +113,9 @@ public struct DefaultContentExtractor: ContentExtractor {
             // The page worked: the feed only gets a short grace period.
             if let task = fromFeed, let f = await Self.value(of: task, within: Self.feedGrace),
                Self.preferFeedResult(pageHTML: pageHTML, feed: f) {
-                return ExtractResult(contentHtml: f.contentHtml, leadImage: page.leadImage ?? f.leadImage, rendered: f.rendered)
+                // The page's audio (`SiteAudio`) still leads the feed's text.
+                let audio = SiteAudio.audio(in: pageHTML).map(SiteAudio.marker) ?? ""
+                return ExtractResult(contentHtml: f.contentHtml.map { audio + $0 }, leadImage: page.leadImage ?? f.leadImage, rendered: f.rendered)
             }
             fromFeed?.cancel()
             return page
@@ -168,7 +189,8 @@ public struct DefaultContentExtractor: ContentExtractor {
         guard (200..<300).contains(res.statusCode) else { return nil }
         let page = HTTP.text(data, response: res)
         let out = try await extraction.extract(html: page, pageURL: url)
-        guard let html = out.contentHtml, !ArticleExtraction.isLoginWall(html) else { return nil }
+        // A bot check, a login wall, or only the page's footer (Reuters' rendered copy: "Apps Newsletters Advertise…").
+        guard let html = out.contentHtml, !ArticleExtraction.isLoginWall(html), ArticleExtraction.hasProse(html) else { return nil }
         return ExtractResult(contentHtml: html, leadImage: out.leadImage, rendered: true,
                              paywalled: PaywallDetection.isWalled(pageHTML: page, articleHTML: html, url: url))
     }

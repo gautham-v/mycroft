@@ -144,18 +144,51 @@ enum ReaderText {
         return out
     }
 
-    /// A page's hero video or the hero image already leads the extracted HTML.
+    /// A page's hero video or the hero image already leads the extracted HTML, or the hero file is in it further down.
     static func contentHasHero(_ html: String, hero: String) -> Bool {
         if html.contains(hero) || html.contains(hero.replacingOccurrences(of: "&", with: "&amp;")) { return true }
         // Same image in another size or crop (WordPress ?w=1200 vs ?fit=…, -1024x576, -e1790…, -scaled):
         // compare the content's first image by normalized file name.
         if let first = firstImageSrc(html), let a = imageStem(first), let b = imageStem(hero), a == b { return true }
+        // The same file later in the body (Newsweek's photo after a few paragraphs, ?w=1600 vs the og ?w=1200).
+        if let key = imagePath(hero), imageSrcs(html).contains(where: { imagePath($0) == key }) { return true }
+        // The same picture through a cropping proxy whose path differs but carries the image's id (Yle's
+        // …/crop_fill,w_1200,h_628/…/39-17192056ac644117ddf4 vs w_767).
+        let ids = imageIDs(hero)
+        if !ids.isEmpty, imageSrcs(html).contains(where: { !imageIDs($0).isDisjoint(with: ids) }) { return true }
         guard let regex = leadingEmbedRegex else { return false }
         return regex.firstMatch(in: html, range: NSRange(location: 0, length: (html as NSString).length)) != nil
     }
 
     private static let firstImgSrcRegex = try? NSRegularExpression(pattern: #"<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']"#, options: [.caseInsensitive])
     private static let stemSuffixRegex = try? NSRegularExpression(pattern: #"(?:-e\d{6,}|-\d{2,5}x\d{2,5}|-scaled|-\d)$"#)
+
+    /// Every <img> src in the content.
+    private static func imageSrcs(_ html: String) -> [String] {
+        guard let regex = firstImgSrcRegex else { return [] }
+        let ns = html as NSString
+        return regex.matches(in: html, range: NSRange(location: 0, length: ns.length)).map {
+            ns.substring(with: $0.range(at: 1)).replacingOccurrences(of: "&amp;", with: "&")
+        }
+    }
+
+    /// Path segments long and mixed enough to name one image (not a size or a folder): 12+ characters with digits,
+    /// without the extension.
+    private static func imageIDs(_ url: String) -> Set<String> {
+        guard let comps = URLComponents(string: url) else { return [] }
+        return Set(comps.path.split(separator: "/").map { seg in
+            String(seg.split(separator: ".").first ?? seg)
+        }.filter { seg in
+            seg.count >= 12 && seg.contains(where: \.isNumber) && !seg.contains(",") && !seg.contains("=")
+                && seg.filter(\.isNumber).count >= 4
+        })
+    }
+
+    /// host + path, without the query that picks a size.
+    private static func imagePath(_ url: String) -> String? {
+        guard let comps = URLComponents(string: url), let host = comps.host, comps.path.count > 1 else { return nil }
+        return host.lowercased() + comps.path
+    }
 
     /// src of the first <img>, only when it comes before any text (the content leads with it).
     private static func firstImageSrc(_ html: String) -> String? {

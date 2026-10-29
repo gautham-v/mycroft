@@ -252,8 +252,13 @@ body { overflow-y: hidden; }
   margin-right: 0;
   border-left: 3px solid var(--border);
   padding-left: 1em;
-  color: var(--muted);
+  color: var(--body);
 }
+/* Definition lists (stat tiles, glossaries): the term small above its value. */
+.prose-opendispatch dl { margin: 1.1em 0 0; }
+.prose-opendispatch dt { font-size: 13px; color: var(--muted); margin-top: 0.8em; }
+.prose-opendispatch dt:first-child { margin-top: 0; }
+.prose-opendispatch dd { margin: 0.1em 0 0; color: var(--ink); }
 .prose-opendispatch code {
   font-family: var(--font-mono);
   font-size: 0.86em;
@@ -335,5 +340,24 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-foot { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--hairline); }
 /* Posts read before the toolbar's open button replaced it still carry an "Open on X" link. */
 .prose-opendispatch .x-open { display: none; }
+/* A post embedded in an article (EmbeddedPosts): the same post, as an inset card with the network's mark in its
+   author row and its own "Open on X" in the footer. */
+.prose-opendispatch .x-embed { margin: 1.4em 0 0; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--hover); }
+.prose-opendispatch .x-embed + * { margin-top: 1.4em; }
+.prose-opendispatch figure:has(> .x-embed:only-child) { margin: 0; }
+.prose-opendispatch .x-embed > .x-who::after { content: none; }
+.prose-opendispatch .x-embed .x-net { grid-column: 3; grid-row: 1 / span 2; width: 18px; height: 18px; margin-left: 12px; background: var(--ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z'/%3E%3C/svg%3E") center / contain no-repeat; }
+/* Other networks' mark is their icon. */
+.prose-opendispatch .x-embed img.x-net { grid-column: 3; grid-row: 1 / span 2; width: 18px; height: 18px; margin: 0 0 0 12px; border-radius: 4px; background: none; -webkit-mask: none; }
+/* TikTok's player is portrait. */
+.prose-opendispatch .x-embed .x-media.x-tall { outline: none; justify-items: center; }
+.prose-opendispatch .x-embed .x-tall iframe { width: min(100%, 340px); aspect-ratio: 9 / 16; border-radius: 12px; }
+.prose-opendispatch .x-embed .x-body { font-size: 16.5px; line-height: 1.5; color: var(--ink); }
+.prose-opendispatch .x-embed .x-media { outline: 1px solid var(--hairline); outline-offset: -1px; }
+.prose-opendispatch .x-embed .x-media video { height: auto; max-height: 560px; background: #000; object-fit: contain; }
+.prose-opendispatch .x-embed .x-foot { flex-wrap: wrap; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.prose-opendispatch .x-embed .x-link { margin-left: auto; color: var(--accent); text-decoration: none; font-weight: 500; }
+.prose-opendispatch .x-embed .x-link:hover { text-decoration: underline; }
 .prose-opendispatch .x-body ul { margin: 0; padding-left: 1.1em; }
 .prose-opendispatch .x-body li + li { margin-top: 0.3em; }

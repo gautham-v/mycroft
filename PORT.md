@@ -1053,7 +1053,7 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
   Check with `dyld_info -imports <app>/OpenDispatch.debug.dylib | grep libswiftWebKit` (should print nothing).
 - ItemListView keeps the list at the top when a refresh inserts newer items above a top-scrolled list.
 - ReaderText.contentHasHero also matches the content's leading image by normalized file name (WordPress size/crop
-  variants), so the hero isn't shown twice.
+  variants), and any later body image with the hero's host and path (query sizes aside), so the hero isn't shown twice.
 
 ### iOS 26 / typography pass — 2026-10-25
 - Deployment targets: **iOS 26.0** (project.yml), macOS stays 15.0. iOS-26-only SwiftUI API is used only inside

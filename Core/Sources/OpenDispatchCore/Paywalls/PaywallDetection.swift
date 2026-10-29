@@ -29,11 +29,11 @@ public enum PaywallDetection {
         "<meta[^>]+property=[\"']article:content_tier[\"'][^>]+content=[\"'](?:locked|metered)[\"']|<meta[^>]+content=[\"'](?:locked|metered)[\"'][^>]+property=[\"']article:content_tier[\"']",
         caseInsensitive: true)
     private static let scriptOrStyle = DOM.Pattern("<(script|style)\\b[\\s\\S]*?</\\1>", caseInsensitive: true)
-    /// Piano's containers, and a class or id naming a paywall (not "no-paywall").
+    /// Piano's containers, Ghost's members-only call to action, and a class or id naming a paywall (not "no-paywall").
     private static let markup = DOM.Pattern(
-        "<[^>]+(?:\\bclass|\\bid)=[\"'][^\"']*(?:\\btp-container|\\btp-modal|(?<!no-)(?<!no_)paywall)", caseInsensitive: true)
+        "<[^>]+(?:\\bclass|\\bid)=[\"'][^\"']*(?:\\btp-container|\\btp-modal|\\bpost-access-cta|\\bgh-post-upgrade-cta|(?<!no-)(?<!no_)paywall)", caseInsensitive: true)
     private static let phrases = DOM.Pattern(
-        "subscribe to (?:continue|keep) reading|this (?:article|story|content) is (?:only )?for (?:paid )?subscribers|already a subscriber|to continue reading,? (?:please )?(?:subscribe|sign in|log in)",
+        "subscribe to (?:continue|keep) reading|this (?:article|story|content|post) is (?:only )?for (?:paid )?(?:subscribers|members)|already a subscriber|to continue reading,? (?:please )?(?:subscribe|sign in|log in)|sign up for free access to this post",
         caseInsensitive: true)
 
     private static func hasSignal(pageHTML: String, articleHTML: String?, url: String) -> Bool {

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import OpenDispatchCore
@@ -53,12 +54,54 @@ struct ExtractionWebKitTests {
         #expect(!body.contains("opendispatch.invalid"))
     }
 
+    /// OPENDISPATCH_LIVE_VIDEO=<video page url>: the stream the site's player plays (manual check only).
+    @Test @MainActor func liveSiteVideo() async throws {
+        guard let page = ProcessInfo.processInfo.environment["OPENDISPATCH_LIVE_VIDEO"], let url = URL(string: page) else { return }
+        let stream = await SiteVideoResolver.stream(for: url)
+        print("LIVE stream=\(stream?.absoluteString ?? "nil")")
+        let asset = AVURLAsset(url: try #require(stream))
+        let (playable, duration) = try await asset.load(.isPlayable, .duration)
+        print("LIVE playable=\(playable) duration=\(duration.seconds)")
+        #expect(playable)
+    }
+
+    /// OPENDISPATCH_LIVE_BATCH=<file of urls, one per line> OPENDISPATCH_LIVE_DIR=<dir>: extracts each page and writes
+    /// <dir>/<n>.json (url, lead, rendered, paywalled, html or error) for a rendering review (manual check only).
+    @Test @MainActor func liveBatch() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let list = env["OPENDISPATCH_LIVE_BATCH"], let dir = env["OPENDISPATCH_LIVE_DIR"] else { return }
+        let urls = try String(contentsOfFile: list, encoding: .utf8).split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let extractor = DefaultContentExtractor(parser: DefaultFeedParser())
+        await withTaskGroup(of: Void.self) { group in
+            for (n, url) in urls.enumerated() {
+                if n >= 4 { await group.next() }
+                group.addTask { @MainActor in
+                    var record: [String: Any] = ["url": url]
+                    do {
+                        let out = try await extractor.extractArticle(url: url, feed: nil)
+                        record["lead"] = out.leadImage ?? NSNull()
+                        record["rendered"] = out.rendered
+                        record["paywalled"] = out.paywalled
+                        record["html"] = out.contentHtml ?? NSNull()
+                    } catch {
+                        record["error"] = String(describing: error)
+                    }
+                    let data = try? JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted])
+                    FileManager.default.createFile(atPath: "\(dir)/\(n).json", contents: data)
+                    print("LIVE \(n) \(url) \(record["error"] ?? "ok")")
+                }
+            }
+        }
+    }
+
     @Test @MainActor func liveURL() async throws {
         guard let url = ProcessInfo.processInfo.environment["OPENDISPATCH_LIVE_URL"] else { return }
         let out = try await DefaultContentExtractor(parser: DefaultFeedParser()).extractArticle(url: url, feed: nil)
         let body = try #require(out.contentHtml)
         print("LIVE lead=\(out.leadImage ?? "nil") rendered=\(out.rendered) chars=\(body.count)")
-        print(String(body.prefix(3000)))
+        print(String(body.prefix(Int(ProcessInfo.processInfo.environment["OPENDISPATCH_LIVE_CHARS"] ?? "") ?? 3000)))
         #expect(!body.isEmpty)
     }
 }

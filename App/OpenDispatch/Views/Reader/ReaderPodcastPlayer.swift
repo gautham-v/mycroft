@@ -20,13 +20,14 @@ struct ReaderPodcastPlayer: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(AppModel.self) private var model
 
-    /// `resumeAt`: where History says playback got to, for an episode this device never played.
-    init(item: FeedItem, art: String?, wide: Bool, resumeAt: Double? = nil) {
+    /// `resumeAt`: where History says playback got to, for an episode this device never played. `audio`: a story's own
+    /// audio found on its page (`SiteAudio`, NPR's segments) in place of an episode's enclosure.
+    init(item: FeedItem, art: String?, wide: Bool, resumeAt: Double? = nil, audio: SiteAudio.Audio? = nil) {
         self.item = item
         self.art = art
         self.wide = wide
-        _player = State(initialValue: ReaderPodcastPlayback(itemID: item.id, audioURL: item.item.audioUrl,
-                                                            knownDuration: item.item.durationSec, resumeAt: resumeAt))
+        _player = State(initialValue: ReaderPodcastPlayback(itemID: item.id, audioURL: audio?.url ?? item.item.audioUrl,
+                                                            knownDuration: audio?.duration ?? item.item.durationSec, resumeAt: resumeAt))
     }
 
     var body: some View {

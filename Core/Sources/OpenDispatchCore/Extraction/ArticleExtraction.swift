@@ -36,6 +36,9 @@ public struct ArticleExtraction: Sendable {
             ?? DOM.first(document, "meta[name=twitter:image]").flatMap { DOM.attr($0, "content") }
         let lead = Passes.usableLead(DOM.absURL(og, base: base))
         Passes.prepare(document, base: base, pageURL: pageURL, videos: ExtractionPayload.videos(in: html))
+        Self.removePreHeadlineMeta(document)
+        let audio = SiteAudio.take(document)
+        let pagePlayer = SiteVideo.hasPagePlayer(document)
         let heroes = Self.findHeroVideos(document)
         let media = Passes.protectMedia(document)
         Passes.neutralizeReadabilityClasses(document)
@@ -50,6 +53,16 @@ public struct ArticleExtraction: Sendable {
             let alt = try await runReadability(scoped, media: media, base: base)
             let n = DOM.plainText(alt).count
             if let alt, n >= Self.regionMinText, Double(n) >= 0.5 * Double(DOM.plainText(clean).count) { clean = alt }
+        }
+        if SiteVideo.isVideoPage(document, pageURL: pageURL, pagePlayer: pagePlayer, content: clean, poster: lead) {
+            return ExtractResult(contentHtml: SiteVideo.content(document), leadImage: lead)
+        }
+        let titles = [DOM.first(document, "meta[property=og:title]").flatMap { DOM.attr($0, "content") }, title]
+        clean = clean.map { Self.dropTitleHeading($0, titles: titles.compactMap { $0 }) }
+        if let audio {
+            // The story is the audio; the text beside it may be a line or nothing.
+            let text = clean ?? SiteVideo.description(document).map { ArticleSanitizer.sanitize($0) } ?? ""
+            return ExtractResult(contentHtml: SiteAudio.marker(audio) + text, leadImage: lead)
         }
         guard let found = clean else { return ExtractResult(contentHtml: nil, leadImage: lead) }
         let withHero = Self.heroVideoFirst(found, heroes: heroes)
@@ -132,6 +145,41 @@ public struct ArticleExtraction: Sendable {
         return nil
     }
 
+    static let preHeadlineMaxText = 150
+    /// How many leading blocks may hold the headline again.
+    static let titleHeadingReach = 3
+    private static let titleSuffix = DOM.Pattern("\\s+[|–—:-]\\s+[^|–—:-]{1,40}$")
+
+    /// The reader draws the title itself; a heading near the top that repeats it (NPR's audio module title, a
+    /// template's own <h1>) goes. Matched ignoring case, punctuation and a " | Site" suffix.
+    static func dropTitleHeading(_ html: String, titles: [String]) -> String {
+        func key(_ s: String) -> String { DOM.norm(s).filter { $0.isLetter || $0.isNumber } }
+        let keys = Set(titles.flatMap { [key($0), key(titleSuffix.replacing($0, with: ""))] }.filter { $0.count >= 12 })
+        guard !keys.isEmpty else { return html }
+        return DOM.withFragment(html) { body -> String in
+            let blocks = DOM.select(body, "h1, h2, h3, h4, h5, h6, p").filter { !DOM.text($0).isEmpty }
+            for h in blocks.prefix(titleHeadingReach) where DOM.isTag(h, DOM.headingTags) && keys.contains(key(DOM.text(h))) {
+                DOM.remove(h)
+            }
+            return DOM.innerHTML(body)
+        } ?? html
+    }
+
+    /// The kicker and date line a template sets just above the title <h1> in the article column (TechCrunch's
+    /// "In Brief" and "Posted: 9:42 AM PDT"): Readability keeps them when it picks that column. Short siblings before
+    /// the headline with no media go; a featured image there stays.
+    static func removePreHeadlineMeta(_ document: Element) {
+        guard let h1 = headline(document) else { return }
+        var el = try? h1.previousElementSibling()
+        while let cur = el {
+            el = try? cur.previousElementSibling()
+            let media = (DOM.matches(cur, Passes.contentMedia) ? [cur] : []) + DOM.select(cur, Passes.contentMedia)
+            // A section's logo beside a breadcrumb (Bleacher Report's NFL shield) is no featured image.
+            if DOM.textLen(DOM.text(cur)) > preHeadlineMaxText || media.contains(where: { !Passes.isLogo($0) }) { continue }
+            DOM.remove(cur)
+        }
+    }
+
     /// Paragraph texts (long enough to be distinctive).
     static func paragraphTexts(_ root: Element) -> [String] {
         DOM.select(root, "p").map { DOM.norm(DOM.text($0)) }.filter { $0.count >= 40 }
@@ -207,10 +255,23 @@ public struct ArticleExtraction: Sendable {
     // MARK: Login walls
 
     private static let loginWall = ExtractionDOM.Pattern("\\b(log ?in|sign ?in|sign ?up)\\b.{0,40}\\b(sign ?up|continue|to (?:see|view|read))", caseInsensitive: true)
+    /// A bot check's page (DataDome on Reuters: "Please enable JS and disable any ad blocker").
+    private static let botWall = ExtractionDOM.Pattern("\\b(?:enable (?:js|javascript)\\b.{0,40}\\b(?:ad ?blocker|cookies)|verify(?:ing)? (?:that )?you are (?:a )?human|are you a robot|checking your browser|captcha)", caseInsensitive: true)
 
-    /// Rendered pages behind an auth wall come back as a short page about logging in.
+    static let minProseParagraph = 120
+
+    /// Some paragraph reads as prose (a sentence of `minProseParagraph`+ characters), not only links and labels.
+    static func hasProse(_ html: String) -> Bool {
+        DOM.withFragment(html) { body in
+            DOM.select(body, "p, li, blockquote, td").contains { DOM.textLen(DOM.text($0)) >= minProseParagraph }
+                || DOM.textLen(DOM.text(body)) >= 4 * minProseParagraph
+        } ?? false
+    }
+
+    /// Rendered pages behind an auth wall or a bot check come back as a short page about logging in or proving
+    /// you're a person.
     static func isLoginWall(_ html: String) -> Bool {
         let text = ExtractionDOM.Pattern("[\\s]+").replacing(ExtractionDOM.Pattern("<[^>]+>").replacing(html, with: " "), with: " ")
-        return text.count < 2500 && loginWall.test(text)
+        return text.count < 2500 && (loginWall.test(text) || (text.count < 600 && botWall.test(text)))
     }
 }

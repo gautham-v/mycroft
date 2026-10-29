@@ -458,6 +458,65 @@ struct ExtractionFlowTests {
         #expect(body.hasPrefix("<iframe src=\"https://player.vimeo.com/video/777?controls=1\""))
     }
 
+    @Test func techCrunchHeaderLeftOut() async throws {
+        let p = "<p>\(ExtractFixture.para)</p>"
+        let html = """
+        <html><head><title>Spy plot</title><meta property="og:title" content="Spy plot"></head><body><main><div class="article">
+        <div class="article__meta"><span>In Brief</span><div><p>Posted:</p><div><time>9:42 AM PDT · October 29, 2026</time></div></div></div>
+        <figure><img width="1024" height="683" src="/hero.jpg"><figcaption>Image Credits: Nvidia</figcaption></figure>
+        <div class="post-authors-list__authors"><ul><li><img class="post-authors-list__author-thumb" src="/julie.jpg" alt="Julie Bort"></li></ul>
+        <ul><li><a href="/author/julie-bort/">Julie Bort</a></li></ul></div>
+        <h1>Spy plot</h1>\(p)\(p)</div></main></body></html>
+        """
+        let out = try await ArticleExtraction(readability: FakeReadability()).extract(html: html, pageURL: "https://e.com/s")
+        let body = try #require(out.contentHtml)
+        #expect(body.contains("https://e.com/hero.jpg"))
+        #expect(body.contains("Image Credits"))
+        #expect(!body.contains("In Brief"))
+        #expect(!body.contains("Posted:"))
+        #expect(!body.contains("julie.jpg"))
+        #expect(!body.contains("<li>"))
+    }
+
+    @Test func newsweekCaptionAndRelatedHeading() async throws {
+        let p = "<p>\(ExtractFixture.para)</p>"
+        let html = """
+        <html><head><title>Cleats</title></head><body><article><h1>Cleats</h1>\(p)
+        <h4><span>Read More on </span><span>NFL</span></h4>\(p)
+        <div class="container"><div class="imageContainer"><img caption="Caleb Williams looks on. (Photo by Getty Images)" width="5607" height="3738" src="/w.jpg?w=1600"></div>
+        <div class="caption"><div class="content custom-clamp"><span>...</span></div></div></div>\(p)</article></body></html>
+        """
+        let out = try await ArticleExtraction(readability: FakeReadability()).extract(html: html, pageURL: "https://e.com/n")
+        let body = try #require(out.contentHtml)
+        #expect(body.contains("<figcaption>"))
+        #expect(body.contains("Caleb Williams looks on. (Photo by Getty Images)"))
+        #expect(!body.contains("..."))
+        #expect(!body.contains("caption=\""))
+        #expect(!body.contains("Read More"))
+    }
+
+    @Test func siteVideoPageIsMarked() async throws {
+        let html = """
+        <html><head><title>Rapoport book</title><meta property="og:image" content="https://static.e.com/poster.jpg">
+        <meta property="og:description" content="Short blurb.">
+        <script type="application/ld+json">{"@type":"NewsArticle","description":"<p>While on GMFB, Rapoport previews his book.</p>"}</script>
+        </head><body><section><h2><span>Good Morning Football</span></h2><span>Presented By</span>
+        <div class="player" data-id="b36e"></div><h1>Rapoport book</h1><p>While on GMFB, Rapoport previews his book.</p></section></body></html>
+        """
+        let out = try await ArticleExtraction(readability: FakeReadability()).extract(html: html, pageURL: "https://www.e.com/videos/rapoport-book")
+        let body = try #require(out.contentHtml)
+        #expect(SiteVideo.isMarked(body))
+        #expect(body.contains("<p>While on GMFB, Rapoport previews his book.</p>"))
+        #expect(!body.contains("Presented By"))
+        #expect(out.leadImage == "https://static.e.com/poster.jpg")
+        // An article page, or one whose player is in the HTML, is not.
+        let article = try await ArticleExtraction(readability: FakeReadability()).extract(html: html, pageURL: "https://www.e.com/news/rapoport-book")
+        #expect(!SiteVideo.isMarked(article.contentHtml))
+        let playable = html.replacingOccurrences(of: "<div class=\"player\" data-id=\"b36e\"></div>", with: "<video src=\"/clip.mp4\"></video>")
+        let own = try await ArticleExtraction(readability: FakeReadability()).extract(html: playable, pageURL: "https://www.e.com/videos/rapoport-book")
+        #expect(!SiteVideo.isMarked(own.contentHtml))
+    }
+
     @Test func loginWallDetection() {
         #expect(ArticleExtraction.isLoginWall("<p>Log in to continue reading</p>"))
         #expect(!ArticleExtraction.isLoginWall("<p>\(ExtractFixture.para)</p>"))

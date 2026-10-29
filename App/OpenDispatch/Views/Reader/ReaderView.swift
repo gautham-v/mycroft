@@ -116,9 +116,14 @@ struct ReaderItemView: View {
         return html
     }
 
+    /// A page whose video the site's own player loads (`SiteVideo`): the reader plays it above the blurb.
+    private var isSiteVideo: Bool { SiteVideo.isMarked(contentHTML) }
+    /// A story whose page leads with its audio (NPR's segments): played in the podcast player above the text.
+    private var siteAudio: SiteAudio.Audio? { isPodcast ? nil : SiteAudio.audio(in: contentHTML) }
+
     /// The hero to draw above the body unless the content already leads with it (or a video).
     private var visibleHero: String? {
-        guard let hero else { return nil }
+        guard let hero, !isSiteVideo else { return nil }
         if let html = bodyHTML, ReaderText.contentHasHero(html, hero: hero) { return nil }
         // A Reddit post's thumbnail is a small copy of the image its body already shows full size.
         if DiscussionPlace.thread(of: item.item.url) == .reddit, bodyHTML?.contains("<img") == true { return nil }
@@ -358,10 +363,18 @@ struct ReaderItemView: View {
         Group {
             switch content {
             case .ok:
-                ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
-                                     post: isPost ? ReaderHTML.Post(published: item.item.publishedAt, host: itemURL?.host) : nil,
-                                     onReload: { model.reloadArticle(item) },
-                                     onCopyMarkdown: { model.copyMarkdown(item: item) }, speechPage: speechPage)
+                VStack(spacing: 0) {
+                    if isSiteVideo, let page = itemURL {
+                        ReaderSiteVideo(page: page, poster: hero, title: item.item.title)
+                            .id(item.id)
+                            .readerColumn(wide: wide)
+                            .padding(.bottom, 24)
+                    }
+                    ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
+                                         post: isPost ? ReaderHTML.Post(published: item.item.publishedAt, host: itemURL?.host) : nil,
+                                         onReload: { model.reloadArticle(item) },
+                                         onCopyMarkdown: { model.copyMarkdown(item: item) }, speechPage: speechPage)
+                }
             case .loading:
                 VStack(alignment: .leading, spacing: 0) {
                     heroImage
@@ -440,6 +453,10 @@ struct ReaderItemView: View {
             if isPodcast {
                 ReaderPodcastPlayer(item: item, art: podcastArt, wide: wide, resumeAt: model.history.resumePosition(item))
                     .id(item.id)
+                    .padding(.top, 24)
+            } else if let siteAudio {
+                ReaderPodcastPlayer(item: item, art: nil, wide: wide, resumeAt: model.history.resumePosition(item), audio: siteAudio)
+                    .id("\(item.id)-\(siteAudio.url)")
                     .padding(.top, 24)
             }
         }

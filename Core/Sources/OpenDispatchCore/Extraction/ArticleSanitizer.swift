@@ -63,7 +63,8 @@ public enum ArticleSanitizer {
     static let classFilteredTags: Set<String> = ["div", "span", "a", "img"]
 
     static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
-    static let allowedIframeHosts: Set<String> = ["www.youtube-nocookie.com", "player.vimeo.com"]
+    /// TikTok's player is only ever put in by `EmbeddedPosts` (an article's own TikTok embed is a blockquote).
+    static let allowedIframeHosts: Set<String> = ["www.youtube-nocookie.com", "player.vimeo.com", "www.tiktok.com"]
     static let schemeCheckedAttributes: Set<String> = ["href", "src", "cite", "poster"]
     /// Attributes that may be present with an empty value (boolean attributes plus alt).
     static let emptyAllowed: Set<String> = ["alt", "controls", "autoplay", "loop", "muted", "playsinline", "allowfullscreen"]
@@ -77,7 +78,8 @@ public enum ArticleSanitizer {
 
     /// sanitizeArticle(html).
     public static func sanitize(_ html: String) -> String {
-        DOM.withFragment(html) { body in
+        // Word joiners left where a link's "opens in a new window" icon was (openai.com) only get in the way.
+        DOM.withFragment(html.replacingOccurrences(of: "\u{2060}", with: "")) { body in
             clean(children: body)
             return DOM.innerHTML(body)
         } ?? ""
@@ -123,6 +125,33 @@ public enum ArticleSanitizer {
             return
         }
         clean(children: el)
+        // An icon drawn with <use> (not allowed) is left an empty box the width of the column (CBS News' logo).
+        if name == "svg", DOM.first(el, drawable) == nil { DOM.remove(el) }
+    }
+
+    private static let bareVar = ExtractionDOM.Pattern("var\\(\\s*(--[\\w-]+)\\s*\\)")
+    private static let autoSizes = ExtractionDOM.Pattern("^\\s*auto\\s*(?:,\\s*)?(.*)$", caseInsensitive: true)
+    private static let drawable = "path, circle, ellipse, line, polyline, polygon, rect, text"
+
+    /// The element, or the <svg> it is in, carries classes the page's stylesheet painted it by.
+    private static func styledByClass(_ el: Element) -> Bool {
+        var current: Element? = el
+        while let c = current {
+            if DOM.attr(c, "class") != nil { return true }
+            if c.tagName().lowercased() == "svg" { return false }
+            current = c.parent()
+        }
+        return false
+    }
+
+    /// An ancestor inside the <svg> sets the paint this element would inherit.
+    private static func inheritsPaint(_ el: Element) -> Bool {
+        var current = el.parent()
+        while let p = current, p.tagName().lowercased() != "svg" {
+            if DOM.attr(p, "fill") != nil || DOM.attr(p, "stroke") != nil { return true }
+            current = p.parent()
+        }
+        return current.map { DOM.attr($0, "fill") != nil || DOM.attr($0, "stroke") != nil } ?? false
     }
 
     private static func hasSVGAncestor(_ el: Element) -> Bool {
@@ -152,6 +181,12 @@ public enum ArticleSanitizer {
             DOM.setAttr(el, "rel", "noopener noreferrer")
         case "img":
             DOM.setAttr(el, "loading", "lazy")
+            // A vector image's candidates differ only in name; their w descriptors shrink its drawn size (an
+            // openai.com diagram at 197px). One src is enough.
+            if let src = DOM.attr(el, "src"), URL(string: src)?.pathExtension.lowercased() == "svg" {
+                DOM.removeAttr(el, "srcset")
+                DOM.removeAttr(el, "sizes")
+            }
         case "video":
             // Looping figure animations often ship without controls and with preload=none.
             if let poster = DOM.attr(el, "poster"), posterPlaceholder.test(poster) { DOM.removeAttr(el, "poster") }
@@ -159,8 +194,26 @@ public enum ArticleSanitizer {
             DOM.setAttr(el, "preload", "metadata")
         default:
             if svgTags.contains(name) {
+                // A chart styled by the page's classes (Kadoa's line chart) loses that styling here, and an unstyled
+                // shape is filled black: lines get drawn as lines, shapes and labels in the text color. Done from the
+                // <svg>, while every class is still there.
+                if name == "svg" {
+                    for shape in [el] + DOM.select(el, "*") where styledByClass(shape) && !inheritsPaint(shape)
+                        && DOM.attr(shape, "fill") == nil && DOM.attr(shape, "stroke") == nil {
+                        let tag = DOM.tag(shape)
+                        if ["path", "line", "polyline"].contains(tag) {
+                            DOM.setAttr(shape, "fill", "none")
+                            DOM.setAttr(shape, "stroke", "currentColor")
+                        } else if ["rect", "circle", "ellipse", "polygon", "text", "tspan"].contains(tag) {
+                            DOM.setAttr(shape, "fill", "currentColor")
+                        }
+                    }
+                }
                 // Paint/clip references may only point inside the document: url(#id).
                 for (k, v) in attributeList(el) where externalURLRef.test(v) { DOM.removeAttr(el, k) }
+                // Colors from the page's stylesheet (`fill="var(--color-chart-brand-1)"`, Mistral's charts) are
+                // undefined here, and an undefined paint is black: fall back to the text color.
+                for (k, v) in attributeList(el) where bareVar.test(v) { DOM.setAttr(el, k, bareVar.replacing(v, with: "var($1, currentColor)")) }
             }
         }
     }
@@ -177,6 +230,12 @@ public enum ArticleSanitizer {
                 if kept.isEmpty { DOM.removeAttr(el, key) } else {
                     DOM.setAttr(el, key, kept.map { [$0.url, $0.descriptor].filter { !$0.isEmpty }.joined(separator: " ") }.joined(separator: ", "))
                 }
+                continue
+            }
+            // `sizes="auto, …"` sizes a lazy image by its laid-out width, and the reader's `width: auto` image has none
+            // until it loads, so WebKit settles on the 300px default and picks a thumbnail from srcset (Ars charts).
+            if key == "sizes", let rest = autoSizes.firstMatch(value).flatMap({ $0[1] }) {
+                if rest.isEmpty { DOM.removeAttr(el, key) } else { DOM.setAttr(el, key, rest) }
                 continue
             }
             if key == "class" && classFilteredTags.contains(name) {

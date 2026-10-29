@@ -52,13 +52,16 @@ enum ReaderHTML {
         case .dark: " data-theme=\"dark\""
         }
         let heroTag = hero.map { "<img src=\"\(ReaderWebSupport.escapeAttribute($0))\" alt=\"\">" } ?? ""
+        // The page sends no Referer: X's media servers refuse one from another site (an embedded post's avatar, still and
+        // video in an article). Embedded players still get the page's origin, which YouTube needs.
+        let body = body.replacingOccurrences(of: "<iframe ", with: "<iframe referrerpolicy=\"strict-origin-when-cross-origin\" ")
         return """
         <!doctype html>
         <html\(themeAttr)>
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-        <meta name="referrer" content="strict-origin-when-cross-origin">
+        <meta name="referrer" content="no-referrer">
         <style>\(stylesheet)</style>
         <style id="od-theme">\(a.themeCSS ?? "")</style>
         </head>
