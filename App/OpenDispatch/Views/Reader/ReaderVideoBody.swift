@@ -1,8 +1,9 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title,
-/// player up to 960pt. Otherwise the player sits in the text column under the title and meta row.
+/// YouTube item layout (VideoBody in reader.tsx). Theater: full-width black band above the title, the
+/// player as tall as the reader less room for the title row (at least 960pt wide, if the reader is that wide);
+/// scrolling down shrinks the pinned band to under half the reader so the comments have room. Otherwise the player sits in the text column under the title and meta row.
 /// A Short skips the band: a 9:16 player centered in the column, above the title in theater, as tall
 /// as the reader less room for the title to show under it. Under the description, Comments and Transcript
 /// (if the video has captions) are tabs, Comments first; the theater band stays pinned at the top while it
@@ -32,6 +33,9 @@ struct ReaderVideoBody: View {
     @State private var headerHeight: CGFloat = 0
     /// The tab bar has scrolled up past `pinLine`, so its pinned copy shows.
     @State private var tabsPinned = false
+    /// Where the header sits on screen at its pinned place, and how far the band has shrunk from its full height.
+    @State private var headerTop: CGFloat = 0
+    @State private var bandShrink: CGFloat = 0
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @Environment(\.readerScroll) private var scroll
@@ -46,6 +50,18 @@ struct ReaderVideoBody: View {
     private var narrow: Bool { width > 0 && width < Metrics.narrowVideoReader }
 
     private var band: Bool { theater && !vertical && item.item.videoId != nil }
+
+    /// The band player's full and pinned heights; nil until the reader is measured.
+    private var bandHeights: (full: CGFloat, pinned: CGFloat)? {
+        guard band, width > 0 else { return nil }
+        let room = max(0, width - (wide ? 32 : 0))
+        let capped = min(room, Metrics.theaterMaxWidth) * 9 / 16
+        let full = max(capped, min(room * 9 / 16, viewportHeight - Metrics.theaterTitleRoom))
+        return (full, min(full, max(capped, viewportHeight * Metrics.theaterPinnedShare)))
+    }
+    /// The band player's height now, and how much shorter that is than its full height.
+    private var bandPlayerHeight: CGFloat? { bandHeights.map { max($0.pinned, $0.full - bandShrink) } }
+    private var bandShrunk: CGFloat { bandHeights.map { $0.full - max($0.pinned, $0.full - bandShrink) } ?? 0 }
 
     private var showsComments: Bool { model.settings.showComments && item.item.videoId != nil }
     private var showsTranscript: Bool {
@@ -78,6 +94,11 @@ struct ReaderVideoBody: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        // The band shrinks as fast as the reader scrolls, until it's at its pinned height.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
+            let shrink = bandHeights.map { min(max(0, headerTop - top), $0.full - $0.pinned) } ?? 0
+            if shrink != bandShrink { bandShrink = shrink }
+        }
         .environment(\.readerNarrow, narrow)
         .task(id: model.settings.videoTranscript) {
             guard model.settings.videoTranscript, item.item.videoId != nil else {
@@ -206,6 +227,8 @@ struct ReaderVideoBody: View {
         }
         .readerColumn(wide: wide, padding: narrow ? Metrics.readerPaddingNarrow : nil)
         .padding(.top, narrow ? 16 : theater ? 24 : (wide ? 40 : 32))
+        // Holds the column where the full band put it while the band shrinks above it.
+        .padding(.top, bandShrunk)
         .padding(.bottom, 32)
     }
 
@@ -216,7 +239,7 @@ struct ReaderVideoBody: View {
                 ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
                                     thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
                                     resumeAt: resumeAt, controller: playback)
-                    .frame(maxWidth: Metrics.theaterMaxWidth)
+                    .frame(maxWidth: bandPlayerHeight.map { $0 * 16 / 9 } ?? Metrics.theaterMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, wide ? 16 : 0)
                     .background(Color.black)
@@ -226,6 +249,7 @@ struct ReaderVideoBody: View {
         }
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            headerTop = frame.minY
             pinLine = frame.maxY
             headerHeight = frame.height
         }

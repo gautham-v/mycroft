@@ -170,8 +170,12 @@ enum Metrics {
     /// A video reader narrower than this tightens its layout (`ReaderVideoBody`), with this side padding.
     static let narrowVideoReader: CGFloat = 360
     static let readerPaddingNarrow: CGFloat = 12
-    /// Video player max width in theater layout.
+    /// Theater layout: the player is at least as wide as `theaterMaxWidth` allows, and grows past it to as tall
+    /// as the reader less `theaterTitleRoom`, so the title row shows under it. Scrolled down, the pinned player
+    /// shrinks to `theaterPinnedShare` of the reader's height, but no smaller than it would be at `theaterMaxWidth`.
     static let theaterMaxWidth: CGFloat = 960
+    static let theaterTitleRoom: CGFloat = 120
+    static let theaterPinnedShare: CGFloat = 0.45
     /// A Short's 9:16 player is as tall as the reader less `verticalVideoTitleRoom`, so the title shows
     /// under it, but never narrower than 300pt (533pt tall), the least that fits the player's control bar.
     static let verticalVideoTitleRoom: CGFloat = 120
