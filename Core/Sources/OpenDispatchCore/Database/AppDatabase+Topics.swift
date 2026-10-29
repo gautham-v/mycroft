@@ -15,6 +15,21 @@ extension AppDatabase {
         ValueObservation.tracking { db in try Queries.topics(db) }.values(in: reader)
     }
 
+    /// Apply every topic's current rules to what it already stored and group its stories, without searching. The app runs this
+    /// at launch, so a topic stored by an older build, or before its rules changed, is tidied without waiting for its next
+    /// refresh. Returns how many items were removed.
+    @discardableResult
+    public func tidyTopics(languages: TopicLanguages = .current) async throws -> Int {
+        try await writer.write { db in
+            var removed = 0
+            for topic in try Queries.topics(db) {
+                removed += try Queries.removeStaleTopicItems(db, topic: topic, languages: languages)
+                try Queries.groupTopicStories(db, topic: topic)
+            }
+            return removed
+        }
+    }
+
     /// The topic with this keyword (ignoring case and diacritics), or nil.
     public func topic(keyword: String) async throws -> Source? {
         try await reader.read { db in try Queries.topic(db, keyword: keyword) }

@@ -325,6 +325,8 @@ final class AppModel {
     func start() async {
         guard !started else { return }
         started = true
+        // Topics stored by an older build, or before their rules last changed, match today's rules before anything lists them.
+        _ = try? await database.tidyTopics()
         await loadSources()
         await loadItems(reset: true)
         await restorePinnedTabs()

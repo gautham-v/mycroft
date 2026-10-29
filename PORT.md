@@ -1135,8 +1135,11 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
   Hacker News numbers (`TopicSearching.hackerNewsStats(ids:)`: one Algolia `tags=(story_1,story_2,…)` search per 100 stories still inside the retention window; a failure keeps the stored numbers),
   the upsert, then `Queries.groupTopicStories`.
 - Stories: a lead has `story_id` NULL and `story_at` (its newest article's time); other outlets' articles and the Hacker News thread have `story_id` = the lead's id. Only news articles
-  (no video id, audio, Reddit or Hacker News guid) join: by `TopicStories` (title words minus the keyword, stop words and a rough stem; at least 3 shared and 50% of the shorter title, or 2 and 75%;
-  published within 3 days). A headline that links two others pulls both in. A thread joins when its URL equals an article's (`FeedDedupe.linkKey`) or its title matches. The topic list shows
+  (no video id, audio, Reddit or Hacker News guid) join: by `TopicStories` (title words minus the keyword, stop words and a rough stem, each weighted by how rare it is among the topic's titles,
+  `TopicStories.Weights`; 3+ shared words carrying 0.24 of the lighter title's weight, or 2 carrying 0.45; published within 3 days). `groupTopicStories` works every story out again from all stored
+  articles (union-find over matching pairs, the earliest stored article leads), so two stories merge once an article links them; a lead that becomes another story's article carries its read mark
+  to that story. A thread joins when its URL equals an article's (`FeedDedupe.linkKey`), its title matches one, or it nearly matches (2 words, 0.24) two articles of one story.
+  `AppDatabase.tidyTopics()` runs the cleanup and the grouping for every topic without searching; `AppModel.start()` calls it at launch, so a topic stored by an older build is tidied at once. The topic list shows
   `story_id IS NULL` rows only and sorts and pages by `coalesce(story_at, published_at)` (`FeedItem.cursor(inTopic:)` is that time in a topic's list and the item's own `published_at` in every other list, Saved included, so the cursor always matches the query's ORDER BY). `FeedItem.story` (`TopicStory`: `outlets`, lead first, then newest
   first, each with name, headline, url, host, id; `discussion`: the thread with most points) is attached to a page by one extra query and only on a lead with something behind it.
   Removing a lead (retention, cleanup) passes the story to its oldest remaining article (`Queries.repairStories`); a thread left alone is a row again. A read lead's mark is carried over:

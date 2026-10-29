@@ -9,8 +9,8 @@ import GRDB
 /// - Every other article of the story, and the Hacker News thread about it, has `story_id` = the lead's id.
 /// - Only news articles open or join a story. Videos, episodes, Reddit posts and a Hacker News thread with no article stay rows
 ///   of their own, and so does an article no other outlet matched.
-/// - Grouping is saved, so a story doesn't change between refreshes or between pages. Each refresh groups the articles it
-///   stored (`groupTopicStories`); removing a lead gives its story to the next article (`repairStories`).
+/// - Grouping is saved, so a story doesn't change between pages. Each refresh (and each launch) works the stories out again
+///   from every stored article (`groupTopicStories`); removing a lead gives its story to the next article (`repairStories`).
 extension Queries {
 
     // MARK: Grouping
@@ -25,9 +25,11 @@ extension Queries {
     }
 
     /// Group a topic's stored articles into stories and attach Hacker News threads to them. Run in the transaction that stores a
-    /// refresh's items, so a notification never sees an article of an existing story as a new post. Only articles and threads
-    /// that aren't in a story are looked at: each joins the story of an earlier-stored article it matches, or stays a lead.
-    /// Returns how many items were attached.
+    /// refresh's items, so a notification never sees an article of an existing story as a new post, and at launch
+    /// (`AppDatabase.tidyTopics`). The stories are worked out again from every stored article each time, so coverage that first
+    /// looked like two stories becomes one once an article links them, and better rules apply to what is already stored. A
+    /// story's lead is its earliest stored article, so new coverage never takes the lead (or a notification) from it; a lead
+    /// that becomes another story's article hands its read state to that story. Returns how many items changed story.
     @discardableResult
     static func groupTopicStories(_ db: Database, topic: Source) throws -> Int {
         guard topic.isTopic else { return 0 }
@@ -51,70 +53,83 @@ extension Queries {
                 storyId: row["story_id"], isHackerNews: isThread)
             if isThread { threads.append(article) } else { news.append(article) }
         }
+        let weights = TopicStories.Weights((news + threads).map(\.words))
 
-        // Who is in which story now (by lead id); a lead alone is a story of one.
-        var leadOf: [Int64: Int64] = [:]
-        var hasMembers = Set<Int64>()
-        for a in news {
-            leadOf[a.id] = a.storyId ?? a.id
-            if let s = a.storyId { hasMembers.insert(s) }
+        // Articles that match are one story, and so is everything they match in turn (union-find over the matching pairs).
+        // `news` is in id order, so each story's root ends up its earliest stored article.
+        var parent = Array(news.indices)
+        func root(_ i: Int) -> Int {
+            var i = i
+            while parent[i] != i { parent[i] = parent[parent[i]]; i = parent[i] }
+            return i
         }
-        var attached = 0
-        func attach(_ id: Int64, to lead: Int64) throws {
-            try db.execute(sql: "UPDATE items SET story_id = ? WHERE id = ?", arguments: [lead, id])
-            attached += 1
-        }
-
-        // Articles, in the order they were stored: each may join the story of an earlier one. A lead with articles behind it is a
-        // story of its own and isn't merged into another; an article joins the story of its best match.
-        func bestStory(for a: Article, among others: ArraySlice<Article>) -> Int64? {
-            var best: (score: Double, lead: Int64)?
-            for b in others where b.id != a.id && TopicStories.isSameStory(a.words, a.published, b.words, b.published) {
-                guard let lead = leadOf[b.id], lead != a.id else { continue }
-                let score = Double(a.words.intersection(b.words).count) / Double(min(a.words.count, b.words.count))
-                if best == nil || score > best!.score { best = (score, lead) }
-            }
-            return best?.lead
-        }
-        func isLoose(_ a: Article) -> Bool { a.storyId == nil && leadOf[a.id] == a.id && !hasMembers.contains(a.id) && !a.words.isEmpty }
-        for (index, a) in news.enumerated() where isLoose(a) {
-            if let lead = bestStory(for: a, among: news[..<index]) {
-                try attach(a.id, to: lead)
-                leadOf[a.id] = lead
-                hasMembers.insert(lead)
+        for i in news.indices where !news[i].words.isEmpty {
+            for j in news.indices where j > i && TopicStories.isSameStory(news[i].words, news[i].published, news[j].words, news[j].published, weights: weights) {
+                let (a, b) = (root(i), root(j))
+                if a != b { parent[max(a, b)] = min(a, b) }
             }
         }
-        // An article that only matched something stored after it (a headline that links two others) joins that story now.
-        var joined = true
-        while joined {
-            joined = false
-            for a in news where isLoose(a) {
-                if let lead = bestStory(for: a, among: news[...]) {
-                    try attach(a.id, to: lead)
-                    leadOf[a.id] = lead
-                    hasMembers.insert(lead)
-                    joined = true
-                }
-            }
-        }
+        var storyOf: [Int64: Int64] = [:]
+        for i in news.indices { storyOf[news[i].id] = news[root(i)].id }
 
-        // Hacker News threads: the story that links to the same page, else the best title match.
-        let keys = Dictionary(news.compactMap { a in FeedDedupe.linkKey(a.url).map { ($0, a) } }, uniquingKeysWith: { first, _ in first })
-        for t in threads where t.storyId == nil {
-            if let key = FeedDedupe.linkKey(t.url), let a = keys[key], let lead = leadOf[a.id] {
-                try attach(t.id, to: lead)
+        // Threads: the story that links to the same page, else the story whose articles it matches, else none.
+        let byLink = Dictionary(news.compactMap { a in FeedDedupe.linkKey(a.url).map { ($0, a.id) } }, uniquingKeysWith: { first, _ in first })
+        var threadStory: [Int64: Int64] = [:]
+        for t in threads {
+            if let key = FeedDedupe.linkKey(t.url), let article = byLink[key] {
+                threadStory[t.id] = storyOf[article]
                 continue
             }
-            var best: (score: Double, lead: Int64)?
-            for b in news where TopicStories.isSameStory(t.words, t.published, b.words, b.published) {
-                let score = Double(t.words.intersection(b.words).count) / Double(max(1, min(t.words.count, b.words.count)))
-                if best == nil || score > best!.score { best = (score, leadOf[b.id] ?? b.id) }
+            // The best article it matches outright, else a story two of whose articles it nearly matches.
+            var best: (score: Double, story: Int64)?
+            var near: [Int64: Int] = [:]
+            for b in news where abs(t.published.timeIntervalSince(b.published)) <= TopicStories.window {
+                guard let story = storyOf[b.id] else { continue }
+                if TopicStories.overlaps(t.words, b.words, weights: weights) {
+                    let score = TopicStories.score(t.words, b.words, weights: weights)
+                    if best == nil || score > best!.score { best = (score, story) }
+                } else if TopicStories.nearlyOverlaps(t.words, b.words, weights: weights) {
+                    near[story, default: 0] += 1
+                }
             }
-            if let best { try attach(t.id, to: best.lead) }
+            if let best {
+                threadStory[t.id] = best.story
+            } else if let story = near.filter({ $0.value >= 2 }).max(by: { $0.value < $1.value })?.key {
+                threadStory[t.id] = story
+            }
+        }
+
+        var changed = 0
+        var readCarried = Set<Int64>()
+        for a in news {
+            let story = storyOf[a.id]!
+            let wanted: Int64? = story == a.id ? nil : story
+            guard wanted != a.storyId else { continue }
+            // A lead that becomes another story's article: that story is read if this one was.
+            if a.storyId == nil, let story = wanted, !readCarried.contains(story), try isRead(db, itemId: a.id) {
+                readCarried.insert(story)
+            }
+            try db.execute(sql: "UPDATE items SET story_id = ? WHERE id = ?", arguments: [wanted, a.id])
+            changed += 1
+        }
+        for t in threads where threadStory[t.id] != t.storyId {
+            try db.execute(sql: "UPDATE items SET story_id = ? WHERE id = ?", arguments: [threadStory[t.id], t.id])
+            changed += 1
+        }
+        for story in readCarried where try !isRead(db, itemId: story) {
+            if let item = try feedItem(db, id: story) { try setRead(db, HistoryEntry(item: item), read: true) }
         }
 
         try refreshStoryTimes(db)
-        return attached
+        return changed
+    }
+
+    /// The item has a read mark in History.
+    private static func isRead(_ db: Database, itemId: Int64) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS (SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id JOIN history h
+              ON h.source_feed_url = s.feed_url AND h.item_guid = i.guid AND h.read_at IS NOT NULL WHERE i.id = ?)
+            """, arguments: [itemId]) ?? false
     }
 
     /// `story_at` of every lead with something behind it is its newest article's time; leads with nothing behind them have none.

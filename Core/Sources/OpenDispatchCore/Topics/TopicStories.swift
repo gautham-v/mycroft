@@ -62,22 +62,40 @@ public struct TopicStory: Sendable, Hashable {
 ///
 /// A title becomes a set of significant words: lowercased, without accents, punctuation, stop words, the topic's own keyword and
 /// one- and two-letter words, each cut back to a rough stem ("reunites" and "reunited" are "reunit"). Two articles are one story
-/// when they were published within `window` of each other and their sets overlap enough (`isSameStory`). A Hacker News thread
-/// joins a story whose article it links to, or whose title it matches the same way.
+/// when they were published within `window` of each other and their sets overlap enough (`isSameStory`), weighing each word by
+/// how rare it is among the topic's titles (`Weights`). A Hacker News thread joins a story whose article it links to, or whose
+/// title it matches the same way.
 public enum TopicStories {
     /// How far apart two articles of one story were published.
     public static let window: TimeInterval = 3 * 86_400
 
-    /// Shared words needed: at least `minShared` and `minOverlap` of the shorter title's words, or (for short titles)
-    /// `minSharedShort` and `minOverlapShort`. Tuned on the Firefox topic: "Firefox Just Reunited Some Of The Internet's Most Iconic
-    /// Early Memes In A Nostalgic New Ad" and "'The internet used to be fun': Firefox reunites 2000s meme stars for anti-AI ad"
-    /// share 4 of 7 words; the three Smart Window headlines share 5 of 8; the Tesla court and Apple 27.2 headlines share 5 to 8.
-    /// Looser bars (0.33 with 3 words) pull in different stories on the same company ("South Korean Police Are Cracking Down On
-    /// Tesla Owners Jailbreaking FSD" with the court case).
-    static let minShared = 3
-    static let minOverlap = 0.5
-    static let minSharedShort = 2
-    static let minOverlapShort = 0.75
+    /// Two titles are one story when the words they share carry at least `minScore` of the lighter title's weight (`Weights`)
+    /// and they share three words or more, or, sharing only two, when those carry `minScoreTwoWords`. Tuned on the Firefox topic:
+    /// the four Smart Window headlines score 0.33 to 0.60 with each other and the meme-ad coverage 0.24 to 1.0, while different
+    /// stories on the same product stay below: "Please hold tests until security fixes ship" against "Firefox 159 fixes 167
+    /// security flaws" (two words, 0.20), a settings-page story against the Smart Window one (two words, 0.33).
+    static let minShared = 2
+    static let minScore = 0.24
+    static let minScoreTwoWords = 0.45
+
+    /// How much each word says about which story a title is about, from every title being grouped: a word few of the topic's
+    /// titles use ("smart", "window") says more than one most of them share. A word's weight is log(1 + titles / titles using it).
+    public struct Weights: Sendable {
+        private let weights: [String: Double]
+
+        public init(_ titles: [Set<String>]) {
+            var used: [String: Int] = [:]
+            for words in titles { for w in words { used[w, default: 0] += 1 } }
+            let n = Double(max(titles.count, 1))
+            weights = used.mapValues { log(1 + n / Double($0)) }
+        }
+
+        /// Every word weighs the same: the score is the share of the shorter title's words the two have in common.
+        public static let uniform = Weights([])
+
+        func weight(_ word: String) -> Double { weights[word] ?? 1 }
+        func total(_ words: Set<String>) -> Double { words.reduce(0) { $0 + weight($1) } }
+    }
 
     /// Words that carry no story. Also the "Show HN:" and "Ask HN:" prefixes of Hacker News titles.
     static let stopWords: Set<String> = Set("""
@@ -116,17 +134,29 @@ public enum TopicStories {
         return w
     }
 
+    /// How alike two titles' word sets are: the weight of the words they share over the lighter title's total, 0 to 1.
+    public static func score(_ a: Set<String>, _ b: Set<String>, weights: Weights = .uniform) -> Double {
+        let lighter = min(weights.total(a), weights.total(b))
+        guard lighter > 0 else { return 0 }
+        return weights.total(a.intersection(b)) / lighter
+    }
+
     /// The word sets are alike enough to be one story (the time window is checked separately: `isSameStory`).
-    public static func overlaps(_ a: Set<String>, _ b: Set<String>) -> Bool {
-        guard !a.isEmpty, !b.isEmpty else { return false }
+    public static func overlaps(_ a: Set<String>, _ b: Set<String>, weights: Weights = .uniform) -> Bool {
         let shared = a.intersection(b).count
-        let overlap = Double(shared) / Double(min(a.count, b.count))
-        return (shared >= minShared && overlap >= minOverlap) || (shared >= minSharedShort && overlap >= minOverlapShort)
+        guard shared >= minShared else { return false }
+        return score(a, b, weights: weights) >= (shared > minShared ? minScore : minScoreTwoWords)
+    }
+
+    /// The weaker test a Hacker News thread passes against an article: two shared words carrying `minScore`. A thread that
+    /// passes it against two articles of one story is that story's discussion (a short HN title rarely shares more).
+    static func nearlyOverlaps(_ a: Set<String>, _ b: Set<String>, weights: Weights) -> Bool {
+        a.intersection(b).count >= minShared && score(a, b, weights: weights) >= minScore
     }
 
     /// Two articles: published within `window` of each other with title words that overlap.
-    public static func isSameStory(_ a: Set<String>, _ aDate: Date, _ b: Set<String>, _ bDate: Date) -> Bool {
-        abs(aDate.timeIntervalSince(bDate)) <= window && overlaps(a, b)
+    public static func isSameStory(_ a: Set<String>, _ aDate: Date, _ b: Set<String>, _ bDate: Date, weights: Weights = .uniform) -> Bool {
+        abs(aDate.timeIntervalSince(bDate)) <= window && overlaps(a, b, weights: weights)
     }
 }
 

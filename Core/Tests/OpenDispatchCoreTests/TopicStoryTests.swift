@@ -343,6 +343,44 @@ struct TopicStoryTests {
         #expect(list[0].story?.outlets.count == 3)
     }
 
+    @Test func twoStoriesBecomeOneWhenAnArticleLinksThemAndAReadStoryStaysRead() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try Fixture.items(db, sourceId: t.id, [
+            article("a1", "Firefox launches the alpha nebula widget", "One", hoursAgo: 30),
+            article("a2", "Firefox alpha nebula widget arrives today", "Two", hoursAgo: 29),
+            article("b1", "Firefox gamma orion gadget ships", "Three", hoursAgo: 28),
+            article("b2", "Firefox gamma orion gadget lands", "Four", hoursAgo: 27)])
+        try await group(db, t)
+        #expect(try await rows(db, t).count == 2)
+        let b = try #require(try await rows(db, t).first { $0.item.guid == "b1" })
+        try await db.recordOpen(HistoryEntry(item: b), isMedia: false)
+        #expect(try await db.unreadCounts()[t.id] == 1)
+
+        // Coverage of both: one story now, led by its earliest article, and read since half of it was.
+        try Fixture.items(db, sourceId: t.id, [
+            article("c", "Firefox alpha nebula widget meets the gamma orion gadget", "Five", hoursAgo: 26)])
+        try await group(db, t)
+        let list = try await rows(db, t)
+        #expect(list.map(\.item.guid) == ["a1"])
+        #expect(list[0].story?.outlets.count == 5)
+        #expect(try await db.unreadCounts()[t.id] == nil)
+    }
+
+    @Test func launchTidiesWhatAnOlderBuildStored() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try Fixture.items(db, sourceId: t.id, [
+            article("verge", Headline.verge, "The Verge", hoursAgo: 20), article("beta", Headline.betaNews, "BetaNews", hoursAgo: 19),
+            article("body", "A browser roundup that mentions it in passing", "Somewhere", hoursAgo: 10),
+            redditPost("1", "Firefox keeps crashing", hoursAgo: 5)])
+        #expect(try await rows(db, t).count == 4)
+        #expect(try await db.tidyTopics(languages: TopicLanguages(preferred: ["en-US"], region: "US")) == 2)
+        let list = try await rows(db, t)
+        #expect(list.map(\.item.guid) == ["verge"])
+        #expect(list[0].story?.outlets.count == 2)
+    }
+
     @Test func articlesDaysApartAreDifferentStories() async throws {
         let db = try Fixture.db()
         let t = try await makeTopic(db)
@@ -787,14 +825,15 @@ struct TopicRefreshRuleTests {
 
         try await group(db, t)
         let list = try await rows(db, t)
-        // The twelve news articles are eight rows: the meme ad (three outlets) and Smart Window (three) are one each.
-        #expect(list.count == 36)
+        // The twelve news articles are seven rows: the meme ad (three outlets), Smart Window (three) and Firefox 159's security
+        // fixes (note and PCWorld) are one each.
+        #expect(list.count == 35)
         let stories = list.compactMap(\.story)
-        #expect(stories.map { $0.outlets.count }.sorted() == [3, 3])
-        #expect(Set(stories.flatMap { $0.outlets.map(\.name) }) == ["Yahoo", "KHOU", "BetaNews", "9to5Mac", "The Verge"])
+        #expect(stories.map { $0.outlets.count }.sorted() == [2, 3, 3])
+        #expect(Set(stories.flatMap { $0.outlets.map(\.name) }) == ["Yahoo", "KHOU", "BetaNews", "9to5Mac", "The Verge", "note", "PCWorld"])
         let counts = try await db.topicFilterCounts(topicId: t.id)
-        #expect(counts == [.all: 36, .news: 8, .discussions: 20, .videos: 5, .episodes: 3])
-        #expect(try await db.unreadCounts()[t.id] == 36)
+        #expect(counts == [.all: 35, .news: 7, .discussions: 20, .videos: 5, .episodes: 3])
+        #expect(try await db.unreadCounts()[t.id] == 35)
 
     }
 }
