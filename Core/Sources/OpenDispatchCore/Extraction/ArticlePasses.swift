@@ -720,7 +720,7 @@ enum ArticlePasses {
 
     /// Site logos and avatars make poor heroes; prefer nothing over those.
     static func usableLead(_ u: String?) -> String? {
-        guard let u, !u.isEmpty, !genericLead.test(u) else { return nil }
+        guard let u, !u.isEmpty, !genericLead.test(u), !LeadImage.isGenericCard(u) else { return nil }
         return u
     }
 
@@ -745,7 +745,7 @@ enum ArticlePasses {
             for img in DOM.select(body, "img[src]") {
                 let w = DOM.jsNumber(DOM.attr(img, "width"))
                 guard let src = DOM.attr(img, "src") else { continue }
-                if isTinyImg(img) || isBadge(img) || (w > 0 && w < 400) || genericLead.test(src) { continue }
+                if isTinyImg(img) || isBadge(img) || (w > 0 && w < 400) || genericLead.test(src) || isSmallThumbURL(src) { continue }
                 return src
             }
             return nil

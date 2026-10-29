@@ -32,9 +32,7 @@ public struct ArticleExtraction: Sendable {
     public func extract(html: String, pageURL: String) async throws -> ExtractResult {
         guard let document = DOM.parseDocument(html, baseURI: pageURL) else { return ExtractResult(contentHtml: nil, leadImage: nil) }
         let base = DOM.absURL(DOM.first(document, "base[href]").flatMap { DOM.attr($0, "href") }, base: pageURL) ?? pageURL
-        let og = DOM.first(document, "meta[property=og:image]").flatMap { DOM.attr($0, "content") }
-            ?? DOM.first(document, "meta[name=twitter:image]").flatMap { DOM.attr($0, "content") }
-        let lead = Passes.usableLead(DOM.absURL(og, base: base))
+        let lead = Passes.chooseLead(document, base: base)
         Passes.prepare(document, base: base, pageURL: pageURL, videos: ExtractionPayload.videos(in: html))
         Passes.placeApolloImages(document, html: html)
         Self.removePreHeadlineMeta(document)

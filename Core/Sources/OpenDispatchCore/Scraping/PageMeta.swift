@@ -92,7 +92,8 @@ public enum PageMeta {
     public static func pageImage(_ meta: Reader, ld: [String: Any]?, pageURL: String) -> String? {
         guard let u = absURL(meta.value(imageKeys) ?? ldImage(ld?["image"]), base: pageURL) else { return nil }
         let lower = u.lowercased()
-        return lower.hasPrefix("http://") || lower.hasPrefix("https://") ? u : nil
+        // A sharing crop with a logo stamped on it becomes the page's own picture (LeadImage.clean).
+        return lower.hasPrefix("http://") || lower.hasPrefix("https://") ? LeadImage.clean(u) : nil
     }
 
     /// Share image from page HTML (a full page or just its <head>).
