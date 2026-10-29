@@ -203,7 +203,7 @@ struct ItemListView: View {
 
     /// The list's states and rows, with the sentinel that pages in the next ones.
     @ViewBuilder private func listRows(_ items: [FeedItem], prefetchFrom: Int) -> some View {
-        if items.isEmpty { ListStateRows() }
+        if items.isEmpty && model.hiddenPaywalledCount == 0 { ListStateRows() }
         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             let previous = index > 0 ? items[index - 1].id : nil
             row(item, previousID: previous)
@@ -216,8 +216,10 @@ struct ItemListView: View {
                 }
         }
         if model.nextCursor != nil {
-            ListSentinel(page: items.count)
+            // The page that loaded may be all hidden, so the sentinel is keyed by what was loaded, not by what shows.
+            ListSentinel(page: items.count + model.hiddenPaywalledCount)
         }
+        PaywallFooter()
     }
 
     /// Back to the top: the first row, or on the iPhone the title above it.
@@ -260,7 +262,7 @@ struct ItemListView: View {
     @ViewBuilder private func rowContent(_ item: FeedItem, marks: RowMarkState, hovered: Bool) -> some View {
         if item.story != nil {
             StoryRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary, isOpenInTab: marks.openInTab,
-                         isHovered: hovered, isPhone: isPhone, isRead: marks.read,
+                         isHovered: hovered, isPhone: isPhone, isRead: marks.read, paywall: marks.paywall,
                          actions: StoryRowActions(
                             openLead: { open(item) },
                             openOutlet: { outlet in openOutlet(outlet, of: item) },
@@ -270,7 +272,8 @@ struct ItemListView: View {
             Button(action: { open(item) }) {
                 ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
                             isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
-                            isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id)
+                            isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id,
+                            paywall: marks.paywall)
                     .equatable()
             }
             .buttonStyle(.plain)
@@ -458,6 +461,31 @@ private struct ListSentinel: View {
     }
 }
 
+/// The list's last row when it hides articles from paywalled sites: how many, and Show to see them until you leave the list.
+private struct PaywallFooter: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let count = model.hiddenPaywalledCount
+        if count > 0 {
+            HStack(spacing: 4) {
+                Text("\(count) hidden from sites you don\u{2019}t subscribe to \u{00B7}")
+                    .foregroundStyle(.ofMuted)
+                Button("Show") { model.showHiddenPaywalled() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.ofAccent)
+            }
+            .font(OFFont.ui(13))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .plainListRow()
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
 /// Keeps the highlighted row visible when it moves (keyboard), without the list body reading it.
 private struct HighlightFollower: View {
     let proxy: ScrollViewProxy
@@ -485,6 +513,8 @@ private struct RowMarkState {
     /// Read (History), and a video or episode's progress.
     var read: Bool
     var progress: Double?
+    /// The site wants a subscription and the setting marks it (see `ItemRowView.paywall`).
+    var paywall: PaywallStatus
 }
 
 /// A row's selection-dependent part, read per row so moving the selection re-evaluates the rows on
@@ -508,7 +538,8 @@ private struct RowMarks<Content: View>: View {
             openInTab: !selected && !secondary && model.openItemIDs.contains(id),
             divider: previousID != nil && !selected && !secondary && previousID != highlighted && previousID != secondaryID,
             read: entry?.isRead ?? false,
-            progress: entry?.progress))
+            progress: entry?.progress,
+            paywall: model.paywallStatus(of: item)))
     }
 }
 

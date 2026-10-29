@@ -61,8 +61,8 @@ struct RootView: View {
                 TopicEditorView(request: request).environment(model)
             }
             .sheet(item: Binding(get: { model.accounts.signingIn }, set: { model.accounts.signingIn = $0 }),
-                   onDismiss: { Task { await model.didCloseSignIn() } }) { account in
-                WebSignInView(account: account)
+                   onDismiss: { Task { await model.didCloseSignIn() } }) { target in
+                WebSignInView(target: target, onDone: { if case .site(let site, _) = target { model.accounts.signIn(site: site) } })
             }
             .sheet(isPresented: $model.isShortcutsPresented) {
                 ShortcutsView().environment(model)

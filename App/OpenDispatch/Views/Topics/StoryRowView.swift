@@ -18,17 +18,19 @@ struct StoryRowView: View, Equatable {
     var isHovered = false
     var isPhone = false
     var isRead = false
+    /// The lead's site wants a subscription (see `ItemRowView.paywall`).
+    var paywall: PaywallStatus = .free
     var actions = StoryRowActions()
 
     /// The closures are left out: the list builds them afresh and they do the same thing.
     nonisolated static func == (a: StoryRowView, b: StoryRowView) -> Bool {
         a.item == b.item && a.isSelected == b.isSelected && a.isSecondary == b.isSecondary && a.isOpenInTab == b.isOpenInTab
-            && a.isHovered == b.isHovered && a.isPhone == b.isPhone && a.isRead == b.isRead
+            && a.isHovered == b.isHovered && a.isPhone == b.isPhone && a.isRead == b.isRead && a.paywall == b.paywall
     }
 
     var body: some View {
         StoryRowContent(item: item, isSelected: isSelected, isSecondary: isSecondary, isOpenInTab: isOpenInTab,
-                        isHovered: isHovered, isPhone: isPhone, isRead: isRead, actions: actions)
+                        isHovered: isHovered, isPhone: isPhone, isRead: isRead, paywall: paywall, actions: actions)
     }
 }
 
@@ -51,6 +53,7 @@ private struct StoryRowContent: View {
     let isHovered: Bool
     let isPhone: Bool
     let isRead: Bool
+    let paywall: PaywallStatus
     let actions: StoryRowActions
 
     @State private var expanded = false
@@ -59,7 +62,7 @@ private struct StoryRowContent: View {
     private var outlets: [TopicOutlet] { story.outlets }
     /// The newest coverage, which is where the row sorts.
     private var newest: Date { item.item.storyAt ?? item.item.publishedAt }
-    private var titleColor: Color { isRead ? .ofRead : .ofInk }
+    private var titleColor: Color { isRead ? .ofRead : paywall.markLabel != nil ? .ofBody : .ofInk }
     /// One entry per outlet, in order: two articles from the same outlet show it once. The expanded list keeps every article.
     private var distinctOutlets: [TopicOutlet] {
         var seen = Set<String>()
@@ -170,6 +173,13 @@ private struct StoryRowContent: View {
                 .foregroundStyle(Color.ofMuted)
                 .lineLimit(1)
                 .fixedSize()
+            if let mark = paywall.markText {
+                Text("\(Text(verbatim: "\u{00B7} "))\(mark)")
+                    .font(metaFont)
+                    .foregroundStyle(Color.ofMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
             if isOpenInTab && !isPhone {
                 Spacer(minLength: 0)
                 Circle()
@@ -187,6 +197,7 @@ private struct StoryRowContent: View {
         if let discussion = story.discussion {
             parts.append("\(DiscussionStats.pointsText(discussion.points)), \(DiscussionStats.commentsText(discussion.comments)) on Hacker News")
         }
+        if let label = paywall.markLabel { parts.append(label) }
         if item.isSaved { parts.append("Saved") }
         if isRead { parts.append("Read") }
         if isOpenInTab { parts.append("Open in a tab") }
