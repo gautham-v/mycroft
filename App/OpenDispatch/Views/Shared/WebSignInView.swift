@@ -29,8 +29,9 @@ struct WebSignInView: View {
                         .foregroundStyle(.ofOK)
                 }
                 Spacer()
+                // Esc, not Return: Return belongs to the page's fields (it submitted the username and closed the sheet).
                 Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
