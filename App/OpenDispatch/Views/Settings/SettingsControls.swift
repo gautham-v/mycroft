@@ -2,8 +2,9 @@ import SwiftUI
 
 // Shared controls for the Settings panes: PaneHeading, SettingRow, Segmented and the pane buttons
 // from src/components/settings-dialog.tsx. Phones get 44pt targets (the web's max-md:h-11), and their
-// panes sit on the warm ground as white grouped cards (SettingsCard) with monochrome inset controls;
-// the Mac's panel is unchanged.
+// panes sit on the warm ground as white grouped cards (SettingsCard) with monochrome inset controls.
+// On the Mac and iPad a card is a bordered rounded panel a shade off the pane, with a hairline between
+// its rows, under a section title (SettingsSectionLabel), like System Settings.
 
 /// True on iPhone-width layouts. macOS is always regular.
 struct SettingsCompactKey: EnvironmentKey {
@@ -19,6 +20,9 @@ extension EnvironmentValues {
 }
 
 extension Color {
+    /// A card's fill on the Mac and iPad: the pane's color a step toward the text.
+    static var ofSettingsCard: Color { .ofHover }
+
     /// The fill of a control inside a phone card (segmented track, buttons, fields); code gray elsewhere.
     static var ofSettingsInset: Color {
         #if os(iOS)
@@ -35,7 +39,7 @@ private struct SettingsInCardKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    fileprivate var settingsInCard: Bool {
+    var settingsInCard: Bool {
         get { self[SettingsInCardKey.self] }
         set { self[SettingsInCardKey.self] = newValue }
     }
@@ -55,11 +59,77 @@ struct SettingsCard<Content: View>: View {
                 .environment(\.settingsInCard, true)
                 .padding(.bottom, 22)
         } else {
-            VStack(alignment: .leading, spacing: 0, content: content)
+            SettingsPanelCard(content: content).padding(.bottom, 22)
         }
         #else
-        VStack(alignment: .leading, spacing: 0, content: content)
+        SettingsPanelCard(content: content).padding(.bottom, 22)
         #endif
+    }
+}
+
+/// The Mac and iPad card: rows 14pt from the sides with a hairline between them, on a bordered rounded panel.
+struct SettingsPanelCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Group(subviews: content()) { subviews in
+                ForEach(subviews.indices, id: \.self) { i in
+                    if i > 0 { SettingsHairline() }
+                    subviews[i]
+                }
+            }
+        }
+        .environment(\.settingsInCard, true)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .settingsPanelChrome()
+    }
+}
+
+extension View {
+    /// The Mac and iPad card's panel: card fill, 10pt corners, a hairline border.
+    func settingsPanelChrome() -> some View {
+        background(Color.ofSettingsCard, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.ofHairline, lineWidth: 1))
+    }
+}
+
+/// A titled group of rows: the section title, the card, and an optional note under it.
+struct SettingsSection<Content: View, Accessory: View>: View {
+    let title: String?
+    var footer: String?
+    @ViewBuilder var accessory: () -> Accessory
+    @ViewBuilder var content: () -> Content
+    @Environment(\.settingsCompact) private var compact
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let title {
+                HStack(alignment: .firstTextBaseline) {
+                    SettingsSectionLabel(text: title)
+                    accessory()
+                        .padding(.trailing, compact ? 20 : 4)
+                        .padding(.bottom, compact ? 8 : 8)
+                }
+            }
+            SettingsCard(content: content)
+            if let footer {
+                Text(footer)
+                    .font(OFFont.ui(compact ? 13.5 : 12))
+                    .foregroundStyle(.ofMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, compact ? 20 : 14)
+                    .padding(.top, -14)
+                    .padding(.bottom, 22)
+            }
+        }
+    }
+}
+
+extension SettingsSection where Accessory == EmptyView {
+    init(title: String?, footer: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.init(title: title, footer: footer, accessory: { EmptyView() }, content: content)
     }
 }
 
@@ -98,8 +168,12 @@ private struct SettingsSectionChrome: ViewModifier {
             content.environment(\.settingsInCard, false).settingsCardChrome()
         } else {
             content
+                .environment(\.settingsInCard, false)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .overlay(alignment: .top) { SettingsHairline() }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .settingsPanelChrome()
+                .padding(.bottom, 22)
         }
     }
 }
@@ -109,50 +183,42 @@ private struct SettingsTopHairline: ViewModifier {
     @Environment(\.settingsInCard) private var inCard
 
     func body(content: Content) -> some View {
-        content.overlay(alignment: .top) { if !(compact && inCard) { SettingsHairline() } }
+        content.overlay(alignment: .top) { if !inCard { SettingsHairline() } }
     }
 }
 
-/// Pane title (hidden on phones, where the navigation title shows it) and a one-line hint.
+/// A pane's one-line hint. The title shows in the navigation bar on phones and in the band above the pane elsewhere.
 struct SettingsPaneHeading: View {
     let title: String
     let hint: String
     @Environment(\.settingsCompact) private var compact
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if !compact {
-                Text(title)
-                    .font(OFFont.ui(17, .semibold))
-                    .tracking(-0.17)
-                    .foregroundStyle(.ofInk)
-            }
-            Text(hint)
-                .font(OFFont.ui(compact ? 14 : 13))
-                .foregroundStyle(.ofMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, compact ? 18 : 12)
-        .padding(.horizontal, compact ? 20 : 0)
-        .padding(.trailing, compact ? 0 : 40)
+        Text(hint)
+            .font(OFFont.ui(compact ? 14 : 13))
+            .foregroundStyle(.ofMuted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, compact ? 18 : 16)
+            .padding(.horizontal, compact ? 20 : 14)
+            .accessibilityLabel("\(title). \(hint)")
     }
 }
 
-/// Section label inside a pane (folder names in Sources, groups in Shortcuts): 11/600 faint. On a
-/// phone it is the 15/500 muted label above a card.
+/// Section title above a card (folder names in Sources, groups in Shortcuts): 13/600 ink, in line with the
+/// card's rows. On a phone it is the 15/500 muted label above a card.
 struct SettingsSectionLabel: View {
     let text: String
     @Environment(\.settingsCompact) private var compact
 
     var body: some View {
         Text(text)
-            .font(compact ? OFFont.ui(15, .medium) : OFFont.ui(11, .semibold))
-            .tracking(compact ? 0 : 0.11)
-            .foregroundStyle(compact ? Color.ofMuted : Color.ofFaint)
+            .font(compact ? OFFont.ui(15, .medium) : OFFont.ui(13, .semibold))
+            .foregroundStyle(compact ? Color.ofMuted : Color.ofInk)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, compact ? 20 : 0)
-            .padding(.bottom, compact ? 8 : 6)
+            .padding(.horizontal, compact ? 20 : 14)
+            .padding(.bottom, 8)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -250,7 +316,7 @@ struct SettingsSegmented<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(RoundedRectangle(cornerRadius: compact ? 12 : 6, style: .continuous).fill(compact ? Color.ofSettingsInset : Color.ofCode))
+        .background(RoundedRectangle(cornerRadius: compact ? 12 : 6, style: .continuous).fill(compact ? Color.ofSettingsInset : Color.ofSelection))
         .animation(.easeOut(duration: 0.12), value: selection)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)

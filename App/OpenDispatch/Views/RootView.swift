@@ -25,6 +25,7 @@ struct RootView: View {
         layout
             .copyToastOverlay()
             .tint(.ofAccent)
+            .environment(\.listLayout, model.settings.listLayout)
             .preferredColorScheme(model.settings.theme.colorScheme)
             .task { await model.start() }
             #if os(macOS)

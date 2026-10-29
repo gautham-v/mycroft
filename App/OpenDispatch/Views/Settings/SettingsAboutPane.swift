@@ -52,19 +52,19 @@ struct SettingsAboutPane: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 14)
-                .overlay(alignment: .top) { SettingsHairline() }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 18)
 
-                ForEach(Self.about, id: \.self) { text in
-                    paragraph(text).padding(.bottom, 12)
+                SettingsCard {
+                    ForEach(Self.about, id: \.self) { text in
+                        paragraph(text).padding(.vertical, 12)
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    SettingsSectionLabel(text: "Credits")
+                SettingsSectionLabel(text: "Credits")
+                SettingsCard {
                     credits
                 }
-                .padding(.top, 12)
-                .overlay(alignment: .top) { SettingsHairline() }
             }
         }
     }
@@ -114,6 +114,8 @@ struct SettingsAboutPane: View {
                     .foregroundStyle(.ofMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 10)
         }
     }
 }

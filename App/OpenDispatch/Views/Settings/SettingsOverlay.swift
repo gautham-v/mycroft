@@ -34,7 +34,7 @@ struct SettingsOverlay: View {
         .onAppear { NSApp.keyWindow?.makeFirstResponder(nil) }
     }
 
-    private static let maxSize = CGSize(width: 720, height: 520)
+    private static let maxSize = CGSize(width: 860, height: 640)
     private static let radius: CGFloat = 12
     /// Dark mode dims harder: the window is already near-black there.
     private static let backdrop = Color(light: 0x000000, lightAlpha: 0.3, dark: 0x000000, darkAlpha: 0.5)

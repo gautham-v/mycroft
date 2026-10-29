@@ -200,14 +200,14 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
         guard let state, let context, Date().timeIntervalSince(context.at) < 5 else { return [] }
         var items: [NSMenuItem] = []
         if let anchor = context.anchor {
-            for color in HighlightColor.allCases {
+            for color in state.store.colorsDefaultFirst {
                 items.append(colorItem(color, checked: false) { [weak self] in
                     self?.highlightSelection(color: color, note: false, anchor: anchor)
                 })
             }
             items.append(.separator())
             items.append(ReaderMenuItem("Add Note\u{2026}") { [weak self] in
-                self?.highlightSelection(color: .yellow, note: true, anchor: anchor)
+                self?.highlightSelection(color: state.store.defaultColor, note: true, anchor: anchor)
             })
             items.append(.separator())
         } else if let id = context.id, let h = state.store.highlight(id: id) {
@@ -235,14 +235,15 @@ final class ReaderHighlightBridge: NSObject, WKScriptMessageHandler {
     #if os(iOS)
     /// Highlight (the colors and Underline) and Add Note, for the selection's edit menu.
     func editMenuElements() -> [UIMenuElement] {
-        let colors = HighlightColor.allCases.map { color in
+        guard let state else { return [] }
+        let colors = state.store.colorsDefaultFirst.map { color in
             UIAction(title: color.title, image: color.menuImage) { [weak self] _ in
                 self?.highlightSelection(color: color, note: false, anchor: nil)
             }
         }
         let highlight = UIMenu(title: "Highlight", image: UIImage(systemName: OFIcon.highlighter.rawValue), children: colors)
         let note = UIAction(title: "Add Note", image: UIImage(systemName: "note.text.badge.plus")) { [weak self] _ in
-            self?.highlightSelection(color: .yellow, note: true, anchor: nil)
+            self?.highlightSelection(color: state.store.defaultColor, note: true, anchor: nil)
         }
         return [highlight, note]
     }

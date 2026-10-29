@@ -74,6 +74,12 @@ enum ReaderWebSupport {
             .replacingOccurrences(of: ">", with: "&gt;")
     }
 
+    /// A JavaScript string literal (JSON) for `s`, for values we interpolate into scripts.
+    nonisolated static func jsString(_ s: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [s]), let json = String(data: data, encoding: .utf8) else { return "\"\"" }
+        return String(json.dropFirst().dropLast())
+    }
+
     /// Navigation rule for both web views: the document we loaded ourselves (`documentURL`, the base
     /// URL of loadHTMLString) and any sub-frame (embeds) load in place; every other main-frame
     /// navigation (a followed link, a script or meta redirect) opens in the system browser.

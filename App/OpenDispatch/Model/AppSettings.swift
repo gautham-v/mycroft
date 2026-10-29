@@ -108,6 +108,63 @@ enum ReaderWidthSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// List row spacing (Settings → Appearance → Lists).
+enum ListDensitySetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    case comfortable, compact
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
+/// List thumbnails: none, the original size, or larger.
+enum ListThumbnailSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    case off, small, large
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
+/// How a list tells read items from unread ones.
+enum UnreadMarkerSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Read titles go grey (the original look).
+    case dim
+    /// A dot before unread titles, and read titles grey.
+    case dot
+    /// No difference.
+    case none
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .dim: "Dim read"
+        case .dot: "Dot on unread"
+        case .none: "None"
+        }
+    }
+}
+
+/// Source icons (favicons) in color or grey, in lists, the sidebar and the reader.
+enum SourceIconSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    case color, monochrome
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
+/// Links in articles (reader.css data-links).
+enum LinkStyleSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Accent color, underlined (the original look).
+    case underlined
+    /// Accent color, no underline.
+    case accent
+    /// Text color, underlined.
+    case plain
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .underlined: "Accent, underlined"
+        case .accent: "Accent"
+        case .plain: "Text color, underlined"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable, Sendable {
     var theme: ThemeSetting = .system
     var readerFont: ReaderFontSetting = .sans
@@ -148,6 +205,22 @@ struct AppSettings: Codable, Equatable, Sendable {
     var paywallTreatment: PaywallTreatment = .mark
     /// The sites that have walled an article, and which ones stopped being asked about; synced with the settings.
     var paywalls = PaywallBook()
+    /// Settings → Themes: the theme for light mode and for dark mode, by `AppTheme.id`.
+    var lightTheme: String = AppTheme.defaultID
+    var darkTheme: String = AppTheme.defaultID
+    /// The user's own themes, made by changing a color in Settings → Themes; chosen with `AppTheme.customID`.
+    var customLightTheme: ThemeBase?
+    var customDarkTheme: ThemeBase?
+    /// Settings → Appearance → Accent color.
+    var accent: AccentSetting = .theme
+    /// Settings → Appearance → Lists.
+    var listDensity: ListDensitySetting = .comfortable
+    var listThumbnails: ListThumbnailSetting = .small
+    var unreadMarker: UnreadMarkerSetting = .dim
+    var sourceIcons: SourceIconSetting = .color
+    /// The color of a highlight made without picking one (Add Note, the first color in the menus).
+    var highlightColor: HighlightColor = .yellow
+    var linkStyle: LinkStyleSetting = .underlined
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -186,6 +259,17 @@ struct AppSettings: Codable, Equatable, Sendable {
         showComments = (try? c.decode(Bool.self, forKey: .showComments)) ?? true
         paywallTreatment = (try? c.decode(PaywallTreatment.self, forKey: .paywallTreatment)) ?? .mark
         paywalls = (try? c.decode(PaywallBook.self, forKey: .paywalls)) ?? PaywallBook()
+        lightTheme = (try? c.decode(String.self, forKey: .lightTheme)) ?? AppTheme.defaultID
+        darkTheme = (try? c.decode(String.self, forKey: .darkTheme)) ?? AppTheme.defaultID
+        customLightTheme = (try? c.decodeIfPresent(ThemeBase.self, forKey: .customLightTheme)) ?? nil
+        customDarkTheme = (try? c.decodeIfPresent(ThemeBase.self, forKey: .customDarkTheme)) ?? nil
+        accent = (try? c.decode(AccentSetting.self, forKey: .accent)) ?? .theme
+        listDensity = (try? c.decode(ListDensitySetting.self, forKey: .listDensity)) ?? .comfortable
+        listThumbnails = (try? c.decode(ListThumbnailSetting.self, forKey: .listThumbnails)) ?? .small
+        unreadMarker = (try? c.decode(UnreadMarkerSetting.self, forKey: .unreadMarker)) ?? .dim
+        sourceIcons = (try? c.decode(SourceIconSetting.self, forKey: .sourceIcons)) ?? .color
+        highlightColor = (try? c.decode(HighlightColor.self, forKey: .highlightColor)) ?? .yellow
+        linkStyle = (try? c.decode(LinkStyleSetting.self, forKey: .linkStyle)) ?? .underlined
     }
 
     init() {}
@@ -201,6 +285,11 @@ struct AppSettings: Codable, Equatable, Sendable {
 
     /// The reader's text column cap; nil with Fill window (the pane's width minus its side padding).
     var readerColumnWidth: CGFloat? { fillWindow ? nil : readerWidth.points }
+
+    /// What list rows read from the environment (`\.listLayout`).
+    var listLayout: ListLayout {
+        ListLayout(density: listDensity, thumbnails: listThumbnails, unreadMarker: unreadMarker, sourceIcons: sourceIcons)
+    }
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         guard let data = defaults.data(forKey: storageKey),

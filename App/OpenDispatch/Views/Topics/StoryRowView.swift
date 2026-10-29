@@ -57,12 +57,16 @@ private struct StoryRowContent: View {
     let actions: StoryRowActions
 
     @State private var expanded = false
+    @Environment(\.listLayout) private var layout
+
+    /// Read and drawn as read (see `ItemRowView.dimsRead`).
+    private var dimsRead: Bool { isRead && layout.unreadMarker != .none }
 
     private var story: TopicStory { item.story ?? TopicStory(outlets: []) }
     private var outlets: [TopicOutlet] { story.outlets }
     /// The newest coverage, which is where the row sorts.
     private var newest: Date { item.item.storyAt ?? item.item.publishedAt }
-    private var titleColor: Color { isRead ? .ofRead : paywall.markLabel != nil ? .ofBody : .ofInk }
+    private var titleColor: Color { dimsRead ? .ofRead : paywall.markLabel != nil ? .ofBody : .ofInk }
     /// One entry per outlet, in order: two articles from the same outlet show it once. The expanded list keeps every article.
     private var distinctOutlets: [TopicOutlet] {
         var seen = Set<String>()
@@ -132,7 +136,7 @@ private struct StoryRowContent: View {
 
     private func title(_ font: Font, tracking: CGFloat, lines: Int? = nil) -> some View {
         Text(item.item.title)
-            .font(isRead && isPhone ? OFFont.phonePostText : font)
+            .font(dimsRead && isPhone ? OFFont.phonePostText : font)
             .tracking(tracking)
             .lineSpacing(2)
             .foregroundStyle(titleColor)
@@ -141,16 +145,19 @@ private struct StoryRowContent: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func thumbnail(_ style: ItemThumbnail.Style) -> some View {
-        ItemThumbnail(item: item, style: style)
-            .opacity(isRead ? 0.55 : 1)
+    @ViewBuilder private func thumbnail(_ style: ItemThumbnail.Style) -> some View {
+        if layout.thumbnails != .off {
+            ItemThumbnail(item: item, style: style, scale: layout.thumbnailScale)
+                .opacity(dimsRead ? 0.55 : 1)
+        }
     }
 
     /// The favicon stack, the outlets' names (truncating), "+N" and the age.
     private var metaLine: some View {
         HStack(spacing: 6) {
+            if !isRead && layout.unreadMarker == .dot { UnreadDot() }
             StoryOutletStack(outlets: shownOutlets)
-                .opacity(isRead ? 0.6 : 1)
+                .opacity(dimsRead ? 0.6 : 1)
             Text(verbatim: shownOutlets.map(\.name).joined(separator: ", "))
                 .font(metaFont)
                 .foregroundStyle(Color.ofMuted)

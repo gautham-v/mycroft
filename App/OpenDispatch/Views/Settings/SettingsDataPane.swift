@@ -142,17 +142,7 @@ struct SettingsDataPane: View {
         }
     }
 
-    private func syncHint(now: Date) -> String {
-        switch model.syncStatus {
-        case .off: return "Off on this device"
-        case .unavailable(let why): return why
-        case .syncing: return "Syncing…"
-        case .synced(let at):
-            let rel = RelativeTime.format(at, now: now)
-            return rel == "now" ? "Up to date" : "Synced \(rel) ago"
-        case .failed(let why): return "Couldn't sync: \(why)"
-        }
-    }
+    private func syncHint(now: Date) -> String { model.syncStatus.line(now: now) }
 
     private var locationRow: some View {
         VStack(alignment: .leading, spacing: 4) {

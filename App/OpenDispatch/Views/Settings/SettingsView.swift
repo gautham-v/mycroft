@@ -4,20 +4,6 @@ import SwiftUI
 /// The pane list is AppModel's SettingsTab (so `model.showSettings(_:)` can open any pane).
 typealias SettingsPane = SettingsTab
 
-extension SettingsTab {
-    var symbol: String {
-        switch self {
-        case .sources: OFIcon.folder.rawValue
-        case .appearance: "textformat.size"
-        case .playback: OFIcon.video.rawValue
-        case .notifications: OFIcon.bell.rawValue
-        case .integrations: OFIcon.send.rawValue
-        case .data: "internaldrive"
-        case .about: "info.circle"
-        }
-    }
-}
-
 /// Port of src/components/settings-dialog.tsx. Hosted by the macOS in-window overlay (SettingsOverlay),
 /// the iOS Settings tab, and the iOS/iPad sheet (`model.showSettings(_:)`).
 /// - Regular width (macOS overlay, iPad sheet): the web's 140pt nav column on ground + a scrolling pane on surface.
@@ -79,38 +65,34 @@ struct SettingsView: View {
 
     private var splitLayout: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Settings")
-                    .font(OFFont.ui(11, .semibold))
-                    .tracking(0.11)
-                    .foregroundStyle(.ofFaint)
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 8)
-                ForEach(SettingsPane.allCases) { p in
-                    SettingsNavRow(title: p.label, selected: pane == p) { select(p) }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 16)
-            .frame(width: 140)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .background(Color.ofGround)
+            SettingsSidebar(selection: pane, select: select)
+                .frame(width: 214)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Color.ofGround)
+                .overlay(alignment: .trailing) { Rectangle().fill(Color.ofHairline).frame(width: 1) }
 
             ScrollView {
                 paneContent(pane)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 4)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: 680, alignment: .leading)
+                    .frame(maxWidth: .infinity)
             }
             .scrollContentBackground(.hidden)
-            // The close button sits in its own band above the pane, so rows scroll under it
-            // instead of colliding with a row's control on the right.
+            // The pane's title and the close button sit in their own band above the pane, so rows scroll
+            // under it instead of colliding with a row's control on the right.
             .safeAreaInset(edge: .top, spacing: 0) {
-                HStack {
+                HStack(spacing: 0) {
+                    Text(pane.label)
+                        .font(OFFont.ui(15, .semibold))
+                        .foregroundStyle(.ofInk)
+                        .padding(.leading, 28)
+                        .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 0)
                     closeButton
                 }
+                .frame(minHeight: 50)
                 .background(Color.ofSurface)
             }
             .background(Color.ofSurface)
@@ -173,6 +155,10 @@ struct SettingsView: View {
             SettingsSourcesPane(onAdd: { isAddSourceShown = true }, onOpen: open(source:))
         case .appearance:
             SettingsAppearancePane(onShowShortcuts: { isShortcutsShown = true })
+        case .themes:
+            SettingsThemesPane()
+        case .reader:
+            SettingsReaderPane()
         case .playback:
             SettingsPlaybackPane()
         case .notifications:
@@ -190,32 +176,6 @@ struct SettingsView: View {
     private func open(source: Source) {
         model.isSettingsPresented = false
         model.navigate(sourceID: source.id)
-    }
-}
-
-/// Left nav row (NAV_ROW): 32pt, 14pt ink, nav-selection / nav-hover backgrounds.
-private struct SettingsNavRow: View {
-    let title: String
-    let selected: Bool
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(OFFont.ui(14))
-                .foregroundStyle(.ofInk)
-                .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, minHeight: Metrics.sidebarRowHeight, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-                        .fill(selected ? Color.ofNavSelection : (hovering ? Color.ofNavHover : Color.clear))
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 

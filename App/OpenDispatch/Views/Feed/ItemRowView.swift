@@ -40,7 +40,19 @@ struct ItemRowView: View, Equatable {
     /// the meta line, and the title is a little quieter. `.free` for no mark.
     var paywall: PaywallStatus = .free
 
-    private var titleColor: Color { isRead ? .ofRead : paywall.markLabel != nil ? .ofBody : .ofInk }
+    /// Settings → Appearance → Lists.
+    @Environment(\.listLayout) private var layout
+
+    /// The row's own values; the environment's list layout re-renders it by itself.
+    nonisolated static func == (a: ItemRowView, b: ItemRowView) -> Bool {
+        a.item == b.item && a.isSelected == b.isSelected && a.isSecondary == b.isSecondary && a.isOpenInTab == b.isOpenInTab
+            && a.isHovered == b.isHovered && a.isPhone == b.isPhone && a.isRead == b.isRead && a.progress == b.progress
+            && a.timeText == b.timeText && a.showsTopic == b.showsTopic && a.paywall == b.paywall
+    }
+
+    /// Read and drawn as read: with Unread marker set to None, read rows look like the rest.
+    private var dimsRead: Bool { isRead && layout.unreadMarker != .none }
+    private var titleColor: Color { dimsRead ? .ofRead : paywall.markLabel != nil ? .ofBody : .ofInk }
 
     var body: some View {
         Group {
@@ -110,7 +122,7 @@ struct ItemRowView: View, Equatable {
         let (name, handle) = isPost ? TextFormat.splitHandle(item.item.author) : ("", nil)
         let text = VStack(alignment: .leading, spacing: 8) {
             Text(item.item.title)
-                .font(isPost || isRead ? OFFont.phonePostText : OFFont.phoneItemTitle)
+                .font(isPost || dimsRead ? OFFont.phonePostText : OFFont.phoneItemTitle)
                 .tracking(isPost ? -0.2 : -0.3)
                 .lineSpacing(2)
                 .foregroundStyle(titleColor)
@@ -119,7 +131,7 @@ struct ItemRowView: View, Equatable {
             metaLine(name: name.isEmpty ? sourceName : name, handle: handle)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        if !isPost && item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false {
+        if !isPost && item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false && layout.thumbnails != .off {
             VStack(alignment: .leading, spacing: 12) {
                 thumbnail(.wide)
                 text
@@ -132,16 +144,19 @@ struct ItemRowView: View, Equatable {
         }
     }
 
-    private func thumbnail(_ style: ItemThumbnail.Style) -> some View {
-        ItemThumbnail(item: item, style: style, progress: progress)
-            .opacity(isRead ? 0.55 : 1)
+    @ViewBuilder private func thumbnail(_ style: ItemThumbnail.Style) -> some View {
+        if layout.thumbnails != .off {
+            ItemThumbnail(item: item, style: style, progress: progress, scale: layout.thumbnailScale)
+                .opacity(dimsRead ? 0.55 : 1)
+        }
     }
 
     /// Badge, then the source (or author) and the rest, all muted, truncated on one line.
     private func metaLine(name: String, handle: String?) -> some View {
         HStack(spacing: 6) {
+            if !isRead && layout.unreadMarker == .dot { UnreadDot() }
             SourceBadge(host: item.source.host, title: item.originName, size: Metrics.rowBadge)
-                .opacity(isRead ? 0.6 : 1)
+                .opacity(dimsRead ? 0.6 : 1)
             metaText(name: name, handle: handle)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -210,9 +225,23 @@ extension View {
     /// A list row's frame: full width, the row padding and the rounded background (selected / the other pane's item /
     /// hovered) that `ItemRowView` and `StoryRowView` share.
     func itemRowChrome(isSelected: Bool, isSecondary: Bool, isHovered: Bool, isPhone: Bool) -> some View {
-        frame(maxWidth: .infinity, alignment: .leading)
+        modifier(ItemRowChrome(isSelected: isSelected, isSecondary: isSecondary, isHovered: isHovered, isPhone: isPhone))
+    }
+
+}
+
+private struct ItemRowChrome: ViewModifier {
+    let isSelected: Bool
+    let isSecondary: Bool
+    let isHovered: Bool
+    let isPhone: Bool
+    @Environment(\.listLayout) private var layout
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, isPhone ? Metrics.phoneRowPaddingH : Metrics.rowPaddingH)
-            .padding(.vertical, isPhone ? Metrics.phoneRowPaddingV : Metrics.rowPaddingV)
+            .padding(.vertical, layout.rowPaddingV(phone: isPhone))
             .background(
                 RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
                     .fill(isSelected ? Color.ofSelection : isHovered || isSecondary ? Color.ofHover : Color.clear)
@@ -290,6 +319,8 @@ struct ItemThumbnail: View {
     var style: Style = .compact
     /// A video or episode in progress (0...1): a line along the bottom edge.
     var progress: Double?
+    /// Settings → Appearance → Lists → Thumbnails: Large draws the compact and square styles bigger.
+    var scale: CGFloat = 1
     @Environment(\.displayScale) private var displayScale
 
     private var progressHeight: CGFloat { isWide ? 4 : 3 }
@@ -305,8 +336,8 @@ struct ItemThumbnail: View {
     /// Largest side drawn, in points (the wide frame is at most a phone's width less the row padding).
     private var pointSize: CGFloat {
         switch style {
-        case .compact: Metrics.thumbWidth
-        case .square: Metrics.phoneThumb
+        case .compact: Metrics.thumbWidth * scale
+        case .square: Metrics.phoneThumb * scale
         case .wide: 400
         }
     }
@@ -396,8 +427,8 @@ struct ItemThumbnail: View {
     /// The frame the art fills: 64×42, an 80pt square, or full width at 16:9.
     @ViewBuilder private func sized(_ base: some View) -> some View {
         switch style {
-        case .compact: base.frame(width: Metrics.thumbWidth, height: Metrics.thumbHeight)
-        case .square: base.frame(width: Metrics.phoneThumb, height: Metrics.phoneThumb)
+        case .compact: base.frame(width: (Metrics.thumbWidth * scale).rounded(), height: (Metrics.thumbHeight * scale).rounded())
+        case .square: base.frame(width: (Metrics.phoneThumb * scale).rounded(), height: (Metrics.phoneThumb * scale).rounded())
         case .wide: base.aspectRatio(16 / 9, contentMode: .fit).frame(maxWidth: .infinity)
         }
     }

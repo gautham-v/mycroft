@@ -45,7 +45,11 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
                     }
                 }
                 GroupedCard {
-                    paneRow(.appearance, detail: model.settings.theme.label)
+                    paneRow(.appearance, detail: model.settings.theme == .system ? "Auto" : model.settings.theme.label)
+                    paneRow(.themes, detail: themesDetail)
+                    paneRow(.reader, detail: model.settings.readerFont.label)
+                }
+                GroupedCard {
                     paneRow(.playback)
                     paneRow(.notifications, detail: notificationsDetail)
                 }
@@ -121,6 +125,12 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The light and dark themes, or the one name when both are the same.
+    private var themesDetail: String {
+        let light = model.settings.theme(dark: false).name, dark = model.settings.theme(dark: true).name
+        return light == dark ? light : "\(light), \(dark)"
+    }
+
     /// How many sources notify on new posts, when any do.
     private var notificationsDetail: String? {
         let n = (model.sources + model.topics).filter(\.notifies).count
@@ -135,7 +145,7 @@ struct SettingsPhoneRoot<PaneContent: View>: View {
     }
 
     private func paneRow(_ p: SettingsPane, title: String? = nil, detail: String? = nil) -> some View {
-        paneRow(p, title: title, detail: detail) { EmptyView() }
+        paneRow(p, title: title, detail: detail) { GroupedIcon(systemName: p.symbol) }
     }
 
     private func paneRow<Leading: View>(_ p: SettingsPane, title: String? = nil, detail: String? = nil,

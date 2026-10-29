@@ -207,6 +207,13 @@ body { overflow-y: hidden; }
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
 }
+/* Settings → Reader → Links: the accent without the underline, or the text color with a quiet one. */
+.prose-opendispatch[data-links="accent"] a { text-decoration: none; }
+.prose-opendispatch[data-links="accent"] a:hover { text-decoration: underline; }
+.prose-opendispatch[data-links="plain"] a {
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
 .prose-opendispatch img,
 .prose-opendispatch video {
   display: block;

@@ -243,6 +243,7 @@ final class AppModel {
         didSet {
             guard settings != oldValue else { return }
             settings.save()
+            ThemeRuntime.shared.apply(settings)
             if !applyingSyncedSettings { mirrorSettingsForSync() }
             if settings.hideReadItems != oldValue.hideReadItems {
                 hideReadCutoff = Date()
@@ -325,6 +326,7 @@ final class AppModel {
         let loaded = AppSettings.load()
         settings = loaded
         PaywallTreatment.current = loaded.paywallTreatment
+        ThemeRuntime.shared.apply(loaded)
         syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? true
         sync = CloudSync(database: services.database) { [weak self] event in
             await self?.handleSync(event)
@@ -2012,12 +2014,14 @@ final class AppModel {
 
 /// Settings panes: the web's four (settings-dialog.tsx) plus the native Data and About panes.
 enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case sources, appearance, playback, notifications, integrations, data, about
+    case sources, appearance, themes, reader, playback, notifications, integrations, data, about
     var id: String { rawValue }
     var label: String {
         switch self {
         case .sources: "Sources"
         case .appearance: "Appearance"
+        case .themes: "Themes"
+        case .reader: "Reader"
         case .playback: "Playback"
         case .notifications: "Notifications"
         case .integrations: "Integrations"

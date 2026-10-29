@@ -1,10 +1,10 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Appearance pane (AppearancePane): theme, reader font, text size, line spacing, feed order, hiding read items, comments, reader
-/// width (not on phones, where the screen is narrower than any width), keyboard shortcuts.
-/// Values live in `model.settings` (AppSettings, JSON in UserDefaults "openfeed.settings"), which
-/// RootView (theme) and the reader (font, size) already read.
+/// Appearance pane: the color scheme as pictures, the accent color, and how lists look (density, thumbnails,
+/// the unread marker, source icons, feed order, hiding read items), then keyboard shortcuts. Values live in `model.settings`
+/// (AppSettings, JSON in UserDefaults "openfeed.settings"); RootView applies the scheme, ThemeRuntime the accent,
+/// and list rows read the rest through `\.listLayout`.
 struct SettingsAppearancePane: View {
     let onShowShortcuts: () -> Void
     @Environment(AppModel.self) private var model
@@ -14,153 +14,216 @@ struct SettingsAppearancePane: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
             SettingsPaneHeading(title: "Appearance", hint: "Applies on this device.")
-            SettingsCard {
-                SettingsRow(label: "Theme") {
-                    SettingsSegmented(label: "Theme", selection: $model.settings.theme, options: [
-                        (.light, "Light"), (.system, "System"), (.dark, "Dark"),
-                    ])
+            SettingsSection(title: "Appearance") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Color scheme")
+                        .font(OFFont.ui(compact ? 15 : 12))
+                        .foregroundStyle(.ofMuted)
+                    HStack(spacing: compact ? 10 : 16) {
+                        ForEach([ThemeSetting.system, .light, .dark]) { scheme in
+                            SchemeTile(scheme: scheme, selected: model.settings.theme == scheme) {
+                                model.settings.theme = scheme
+                            }
+                        }
+                    }
                 }
-                SettingsRow(label: "Reader font", hint: compact ? nil : "Headline and body in the article view",
+                .padding(.vertical, 14)
+                SettingsRow(label: "Accent color", hint: model.settings.accent == .theme ? "The theme\u{2019}s own" : nil,
                             stacked: compact) {
-                    SettingsSegmented(label: "Reader font", selection: $model.settings.readerFont,
-                                      options: ReaderFontSetting.allCases.map { ($0, $0.label) })
+                    AccentPicker(selection: $model.settings.accent)
                 }
-                SettingsRow(label: "Text size", hint: "\(OFFont.bodySize(model.settings.textSize).formatted()) pt") {
-                    SettingsTextSizeStepper(size: $model.settings.textSize)
+            }
+            SettingsSection(title: "Lists") {
+                SettingsRow(label: "Density") {
+                    SettingsSegmented(label: "Density", selection: $model.settings.listDensity,
+                                      options: ListDensitySetting.allCases.map { ($0, $0.label) })
                 }
-                SettingsRow(label: "Line spacing") {
-                    SettingsSegmented(label: "Line spacing", selection: $model.settings.lineSpacing,
-                                      options: LineSpacingSetting.allCases.map { ($0, $0.label) })
+                SettingsRow(label: "Thumbnails") {
+                    SettingsSegmented(label: "Thumbnails", selection: $model.settings.listThumbnails,
+                                      options: ListThumbnailSetting.allCases.map { ($0, $0.label) })
                 }
-                SettingsTextSizePreview(font: model.settings.readerFont, size: model.settings.textSize,
-                                        leading: model.settings.lineSpacing)
-            }
-            SettingsRow(label: "Feed order", hint: "Balanced keeps busy sources from filling the top") {
-                SettingsSegmented(label: "Feed order", selection: $model.settings.feedOrder,
-                                  options: FeedOrder.allCases.map { ($0, $0.label) })
-            }
-            SettingsRow(label: "Hide read items", hint: "They stay in History") {
-                Toggle("Hide read items", isOn: $model.settings.hideReadItems)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .tint(.ofOK)
-                    #if os(macOS)
-                    .controlSize(.small)
-                    #endif
-            }
-            SettingsRow(label: "Show comments", hint: "Replies under posts, videos and articles") {
-                Toggle("Show comments", isOn: $model.settings.showComments)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .tint(.ofOK)
-                    #if os(macOS)
-                    .controlSize(.small)
-                    #endif
-            }
-            if !compact {
-                SettingsRow(label: "Reader width", hint: "Width of the article column") {
-                    SettingsSegmented(label: "Reader width", selection: $model.settings.readerWidth, options: [
-                        (.narrow, "Narrow"), (.medium, "Medium"), (.wide, "Wide"),
-                    ])
-                    .disabled(model.settings.fillWindow)
+                SettingsRow(label: "Unread marker", hint: "How unread items stand out") {
+                    SettingsMenuPicker(label: "Unread marker", selection: $model.settings.unreadMarker,
+                                       options: UnreadMarkerSetting.allCases.map { ($0, $0.label) })
                 }
-                SettingsRow(label: "Fill window", hint: "Use the whole reader pane") {
-                    Toggle("Fill window", isOn: $model.settings.fillWindow)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .tint(.ofOK)
-                        #if os(macOS)
-                        .controlSize(.small)
-                        #endif
+                SettingsRow(label: "Source icons") {
+                    SettingsSegmented(label: "Source icons", selection: $model.settings.sourceIcons,
+                                      options: SourceIconSetting.allCases.map { ($0, $0.label) })
+                }
+                SettingsRow(label: "Feed order", hint: "Balanced keeps busy sources from filling the top") {
+                    SettingsSegmented(label: "Feed order", selection: $model.settings.feedOrder,
+                                      options: FeedOrder.allCases.map { ($0, $0.label) })
+                }
+                SettingsRow(label: "Hide read items", hint: "They stay in History") {
+                    SettingsToggle(label: "Hide read items", isOn: $model.settings.hideReadItems)
                 }
             }
             // Shortcuts need a hardware keyboard and the side-by-side layout, so not on phones.
             if !compact {
-                SettingsRow(label: "Keyboard shortcuts", hint: "Or press ? anywhere") {
-                    Button("Show", action: onShowShortcuts)
-                        .buttonStyle(SettingsPaneButtonStyle())
-                        .accessibilityLabel("Show keyboard shortcuts")
+                SettingsSection(title: "Keyboard") {
+                    SettingsRow(label: "Keyboard shortcuts", hint: "Or press ? anywhere") {
+                        Button("Show", action: onShowShortcuts)
+                            .buttonStyle(SettingsPaneButtonStyle())
+                            .accessibilityLabel("Show keyboard shortcuts")
+                    }
                 }
             }
         }
     }
 }
 
-/// Text size as steps: a smaller and a larger "A" around one dot per size, the current one and below filled.
-private struct SettingsTextSizeStepper: View {
-    @Binding var size: TextSizeSetting
+/// A color scheme as a picture: a small window, light, dark or split, on the accent.
+private struct SchemeTile: View {
+    let scheme: ThemeSetting
+    let selected: Bool
+    let action: () -> Void
+    @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
 
     var body: some View {
-        HStack(spacing: 2) {
-            stepButton("Smaller text", glyph: 11, to: size.smaller)
-            HStack(spacing: 5) {
-                ForEach(TextSizeSetting.allCases) { step in
-                    Circle()
-                        .fill(step.rawValue == size.rawValue || isBelow(step) ? Color.ofInk : Color.ofBorder)
-                        .frame(width: 5, height: 5)
+        Button(action: action) {
+            VStack(spacing: 7) {
+                ZStack {
+                    LinearGradient(colors: [Color.ofAccent.opacity(0.75), Color.ofAccent], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    switch scheme {
+                    case .light: window(model.settings.palette(dark: false))
+                    case .dark: window(model.settings.palette(dark: true))
+                    case .system:
+                        ZStack {
+                            window(model.settings.palette(dark: false))
+                            window(model.settings.palette(dark: true)).mask(Diagonal())
+                        }
+                    }
                 }
+                .frame(width: compact ? 88 : 116, height: compact ? 60 : 74)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .padding(3)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(selected ? Color.ofInk.opacity(0.5) : Color.clear, lineWidth: 2.5)
+                }
+                Text(scheme == .system ? "Auto" : scheme.label)
+                    .font(OFFont.ui(compact ? 14 : 12, selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.ofInk : Color.ofMuted)
             }
-            .padding(.horizontal, 6)
-            .accessibilityHidden(true)
-            stepButton("Larger text", glyph: 16, to: size.larger)
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: compact ? 12 : 6, style: .continuous).fill(compact ? Color.ofSettingsInset : Color.ofCode))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Text size")
-        .accessibilityValue(size.label)
-    }
-
-    private func isBelow(_ step: TextSizeSetting) -> Bool {
-        let all = TextSizeSetting.allCases
-        return (all.firstIndex(of: step) ?? 0) < (all.firstIndex(of: size) ?? 0)
-    }
-
-    private func stepButton(_ label: String, glyph: CGFloat, to next: TextSizeSetting?) -> some View {
-        Button {
-            if let next { size = next }
-        } label: {
-            Text("A")
-                .font(OFFont.ui(glyph, .medium))
-                .foregroundStyle(next == nil ? Color.ofFaint : Color.ofInk)
-                .frame(width: compact ? 44 : 32, height: compact ? 40 : 28)
-                .contentShape(Rectangle())
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(next == nil)
-        .accessibilityLabel(label)
+        .accessibilityLabel(scheme == .system ? "Auto" : scheme.label)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    /// A window in a palette's colors: sidebar, title line and two text lines.
+    private func window(_ p: ThemePalette) -> some View {
+        HStack(spacing: 0) {
+            Color(hex: p.ground).frame(width: 15)
+            VStack(alignment: .leading, spacing: 4) {
+                RoundedRectangle(cornerRadius: 1.5).fill(Color(hex: p.ink)).frame(width: 26, height: 3)
+                RoundedRectangle(cornerRadius: 1.5).fill(Color(hex: p.muted).opacity(0.6)).frame(width: 34, height: 3)
+                RoundedRectangle(cornerRadius: 1.5).fill(Color(hex: p.muted).opacity(0.6)).frame(width: 22, height: 3)
+                RoundedRectangle(cornerRadius: 1.5).fill(Color(hex: p.accent)).frame(width: 12, height: 3)
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(hex: p.surface))
+        }
+        .frame(width: compact ? 54 : 68, height: compact ? 38 : 46)
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
     }
 }
 
-/// A one-line sample of the reader headline and body at the chosen font, size and line spacing.
-private struct SettingsTextSizePreview: View {
-    let font: ReaderFontSetting
-    let size: TextSizeSetting
-    let leading: LineSpacingSetting
+/// The lower right half of a rectangle, for the Auto tile's dark side.
+private struct Diagonal: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.maxX * 0.62, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX * 0.38, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// The accent colors as swatches; Theme is the color wheel.
+private struct AccentPicker: View {
+    @Binding var selection: AccentSetting
     @Environment(\.settingsCompact) private var compact
 
     var body: some View {
-        let headline = OFFont.headlineSize(size, wide: false) * 0.62
-        let bodySize = OFFont.bodySize(size)
-        VStack(alignment: .leading, spacing: 4) {
-            Text("The quick brown fox")
-                .font(OFFont.reader(font, headline, .semibold))
-                .foregroundStyle(.ofInk)
-            Text("Jumps over the lazy dog, as it has done in type specimens for well over a century.")
-                .font(OFFont.reader(font, bodySize))
-                .foregroundStyle(.ofBody)
-                .lineSpacing(bodySize * (leading.lineHeight - 1.2))
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: compact ? 7 : 8) {
+            ForEach(AccentSetting.allCases) { accent in
+                SettingsSwatch(label: accent.label, selected: selection == accent, size: compact ? 22 : 18) {
+                    if let hex = accent.hex {
+                        Circle().fill(Color(light: hex.light, dark: hex.dark))
+                    } else {
+                        Circle().fill(AngularGradient(colors: [0xFF453A, 0xFF9F0A, 0xFFD60A, 0x30D158, 0x0A84FF, 0xBF5AF2, 0xFF453A].map { Color(hex: $0) }, center: .center))
+                    }
+                } action: {
+                    selection = accent
+                }
+            }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: compact ? 16 : 8, style: .continuous).fill(compact ? Color.ofSettingsInset : Color.ofGround))
-        .padding(.vertical, compact ? 12 : 0)
-        .padding(.bottom, compact ? 0 : 10)
-        .accessibilityHidden(true)
-        .animation(.easeOut(duration: 0.12), value: size)
-        .animation(.easeOut(duration: 0.12), value: leading)
+    }
+}
+
+/// A round color choice with a ring around the selected one.
+struct SettingsSwatch<Fill: View>: View {
+    let label: String
+    let selected: Bool
+    var size: CGFloat = 18
+    @ViewBuilder var fill: () -> Fill
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            fill()
+                .frame(width: size, height: size)
+                .overlay { Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5) }
+                .padding(3)
+                .overlay { Circle().strokeBorder(selected ? Color.ofInk.opacity(0.55) : Color.clear, lineWidth: 2) }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+}
+
+/// A Settings switch: small on the Mac, in the OK green.
+struct SettingsToggle: View {
+    let label: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(label, isOn: $isOn)
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(.ofOK)
+            #if os(macOS)
+            .controlSize(.small)
+            #endif
+    }
+}
+
+/// A pop-up menu of options, for choices too long for a segmented control.
+struct SettingsMenuPicker<Value: Hashable>: View {
+    let label: String
+    @Binding var selection: Value
+    let options: [(Value, String)]
+
+    var body: some View {
+        Picker(label, selection: $selection) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                Text(option.1).tag(option.0)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .tint(.ofInk)
+        .fixedSize()
     }
 }
 

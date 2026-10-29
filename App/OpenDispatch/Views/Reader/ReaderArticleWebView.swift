@@ -14,6 +14,10 @@ enum ReaderHTML {
         var wide: Bool
         /// Text column cap in points; nil fills the view (Fill window).
         var columnWidth: CGFloat?
+        /// Settings → Reader → Links (reader.css data-links).
+        var links: LinkStyleSetting = .underlined
+        /// The themes' colors over reader.css's own (`AppSettings.readerThemeCSS`); nil keeps them.
+        var themeCSS: String? = nil
 
         /// The `--column` value reader.css caps the article at.
         var columnCSS: String { columnWidth.map { "\(Int($0))px" } ?? "none" }
@@ -56,9 +60,10 @@ enum ReaderHTML {
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
         <meta name="referrer" content="strict-origin-when-cross-origin">
         <style>\(stylesheet)</style>
+        <style id="od-theme">\(a.themeCSS ?? "")</style>
         </head>
         <body>
-        <article class="prose-opendispatch" style="\(ReaderWebSupport.escapeAttribute("--column: \(a.columnCSS)\(post?.css ?? "")"))" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-leading="\(a.leading.rawValue)" data-wide="\(a.wide ? "1" : "0")">\(heroTag)<div>\(body)</div></article>
+        <article class="prose-opendispatch" style="\(ReaderWebSupport.escapeAttribute("--column: \(a.columnCSS)\(post?.css ?? "")"))" data-font="\(a.font.rawValue)" data-size="\(a.size.rawValue)" data-leading="\(a.leading.rawValue)" data-wide="\(a.wide ? "1" : "0")" data-links="\(a.links.rawValue)">\(heroTag)<div>\(body)</div></article>
         </body>
         </html>
         """
@@ -90,16 +95,20 @@ enum ReaderHTML {
         case .light: "'light'"
         case .dark: "'dark'"
         }
+        let themeCSS = ReaderWebSupport.jsString(a.themeCSS ?? "")
         return """
         (function () {
           var t = \(theme);
           if (t) document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme');
+          var s = document.getElementById('od-theme');
+          if (s) s.textContent = \(themeCSS);
           var a = document.querySelector('article');
           if (!a) return;
           a.setAttribute('data-font', '\(a.font.rawValue)');
           a.setAttribute('data-size', '\(a.size.rawValue)');
           a.setAttribute('data-leading', '\(a.leading.rawValue)');
           a.setAttribute('data-wide', '\(a.wide ? "1" : "0")');
+          a.setAttribute('data-links', '\(a.links.rawValue)');
           a.style.setProperty('--column', '\(a.columnCSS)');
         })();
         """

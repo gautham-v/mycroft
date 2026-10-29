@@ -173,9 +173,8 @@ struct SettingsIntegrationsPane: View {
                 .disabled(!dirty || saving)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(.top, compact ? 0 : 12)
-        .padding(.bottom, compact ? 22 : 0)
-        .overlay(alignment: .top) { if !compact { SettingsHairline() } }
+        .padding(.top, compact ? 0 : -8)
+        .padding(.bottom, 22)
         .animation(.easeOut(duration: 0.15), value: saved)
     }
 

@@ -97,11 +97,13 @@ struct SettingsSourcesPane: View {
         ForEach(groups, id: \.key) { group in
             VStack(alignment: .leading, spacing: 0) {
                 SettingsSectionLabel(text: group.label)
-                ForEach(group.sources) { source in
-                    row(source, now: now)
+                SettingsPanelCard {
+                    ForEach(group.sources) { source in
+                        row(source, now: now)
+                    }
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 22)
         }
     }
 
@@ -141,7 +143,7 @@ struct SettingsSourcesPane: View {
             }
         }
         .padding(.vertical, 10)
-        .overlay(alignment: .top) { SettingsHairline() }
+        .settingsTopHairline()
         .contextMenu {
             Button("Open Feed") { onOpen(s) }
             Button("Rename…") {

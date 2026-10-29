@@ -37,18 +37,21 @@ extension Color {
         self.init(hex: UInt32(s, radix: 16) ?? 0x888888)
     }
 
+    // Themed tokens (Themes.swift): the palette of the light and dark themes chosen in Settings → Themes,
+    // the Default themes being the values these always had. Reading one inside a view's body makes the
+    // view re-render when the theme or accent changes.
+
     /// Window background; sidebar background on desktop.
-    static let ofGround = Color(light: 0xF2F2F4, dark: 0x2A2A2C)
+    static var ofGround: Color { ThemeRuntime.shared.colors.ground }
+    /// The macOS sidebar's tint over its material: light on the Default themes, nearly opaque on the others
+    /// so their color shows.
+    static var ofSidebarGround: Color { ThemeRuntime.shared.colors.sidebarGround }
     /// List and reader panels, sheets, cards. iOS: a warm off-white (Duet's) that white cards sit on.
-    #if os(iOS)
-    static let ofSurface = Color(light: 0xF8F8F6, dark: 0x1C1C1B)
-    #else
-    static let ofSurface = Color(light: 0xFFFFFF, dark: 0x212121)
-    #endif
+    static var ofSurface: Color { ThemeRuntime.shared.colors.surface }
     /// Selected list row.
-    static let ofSelection = Color(light: 0xE8E8EC, dark: 0x383839)
+    static var ofSelection: Color { ThemeRuntime.shared.colors.selection }
     /// Hovered list row / button.
-    static let ofHover = Color(light: 0xF4F4F6, dark: 0x2C2C2D)
+    static var ofHover: Color { ThemeRuntime.shared.colors.hover }
     /// Sidebar rows sit on ground, so they need their own hover/selection. Tints, not solids, so the
     /// translucent macOS sidebar shows through them; on opaque ground they match E9E9ED/353537 and
     /// E1E1E6/3F3F42.
@@ -57,50 +60,47 @@ extension Color {
     /// Dividers on the sidebar (its edge, above the footer, the search box): ofHairline as a tint.
     static let ofNavHairline = Color(light: 0x000000, lightAlpha: 0.06, dark: 0xFFFFFF, darkAlpha: 0.06)
     /// Titles, primary text.
-    static let ofInk = Color(light: 0x1D1D1F, dark: 0xF5F5F7)
+    static var ofInk: Color { ThemeRuntime.shared.colors.ink }
     /// Body text.
-    static let ofBody = Color(light: 0x3A3A3C, dark: 0xD1D1D6)
+    static var ofBody: Color { ThemeRuntime.shared.colors.body }
     /// Secondary text, meta lines, section labels (Claude desktop's grey, brighter than Apple's).
-    static let ofMuted = Color(light: 0x5E5E63, dark: 0xB4B4B4)
+    static var ofMuted: Color { ThemeRuntime.shared.colors.muted }
     /// Tertiary text, placeholder icons.
-    static let ofFaint = Color(light: 0xAEAEB2, dark: 0x636366)
+    static var ofFaint: Color { ThemeRuntime.shared.colors.faint }
     /// Titles of items already read: quieter than ink, still readable.
-    static let ofRead = Color(light: 0x8E8E93, dark: 0x8A8A8E)
+    static var ofRead: Color { ThemeRuntime.shared.colors.read }
     /// Control borders.
-    static let ofBorder = Color(light: 0xD2D2D7, dark: 0x454545)
+    static var ofBorder: Color { ThemeRuntime.shared.colors.border }
     /// Dividers between rows and sections (warmer on iOS, to match its ground).
-    #if os(iOS)
-    static let ofHairline = Color(light: 0xE4E4E0, dark: 0x34342F)
-    #else
-    static let ofHairline = Color(light: 0xE5E5EA, dark: 0x373737)
-    #endif
+    static var ofHairline: Color { ThemeRuntime.shared.colors.hairline }
     /// Scroller knob (macOS), Claude desktop's grey.
-    static let ofScroller = Color(light: 0xBDBDC2, dark: 0x767676)
+    static var ofScroller: Color { ThemeRuntime.shared.colors.scroller }
     /// Search box on the sidebar (Claude Code's: lighter than the sidebar behind it). Translucent on
     /// macOS, where the sidebar is.
     #if os(macOS)
     static let ofField = Color(light: 0xFFFFFF, lightAlpha: 0.6, dark: 0xFFFFFF, darkAlpha: 0.05)
     #else
-    static let ofField = Color(light: 0xFFFFFF, dark: 0x343436)
+    static var ofField: Color { ThemeRuntime.shared.colors.field }
     #endif
     /// Code background, chips, skeletons, thumbnail placeholders.
-    static let ofCode = Color(light: 0xF0F0F3, dark: 0x2E2E30)
+    static var ofCode: Color { ThemeRuntime.shared.colors.code }
     #if os(iOS)
     /// iPhone grouped cards (Settings, Sources) on ofSurface; 26pt corners (`Metrics.cardRadius`).
-    static let ofCard = Color(light: 0xFFFFFF, dark: 0x282826)
+    static var ofCard: Color { ThemeRuntime.shared.colors.card }
     /// Inside a card: the search/paste field, the square behind a row's leading icon.
-    static let ofCardInset = Color(light: 0xEFEFEC, dark: 0x343431)
+    static var ofCardInset: Color { ThemeRuntime.shared.colors.cardInset }
     /// The side drawer behind the Feed.
-    static let ofDrawer = Color(light: 0xEFEFEC, dark: 0x232321)
+    static var ofDrawer: Color { ThemeRuntime.shared.colors.drawer }
     #endif
-    /// The one accent: links, active tab, saved state, focus ring.
-    static let ofAccent = Color(light: 0x007AFF, dark: 0x0A84FF)
+    /// The one accent: links, active tab, saved state, focus ring. The theme's, or Settings → Appearance → Accent color.
+    static var ofAccent: Color { ThemeRuntime.shared.colors.accent }
     static let ofDanger = Color(light: 0xFF3B30, dark: 0xFF453A)
     static let ofOK = Color(light: 0x34C759, dark: 0x30D158)
 }
 
 extension ShapeStyle where Self == Color {
     static var ofGround: Color { Color.ofGround }
+    static var ofSidebarGround: Color { Color.ofSidebarGround }
     static var ofSurface: Color { Color.ofSurface }
     static var ofSelection: Color { Color.ofSelection }
     static var ofHover: Color { Color.ofHover }

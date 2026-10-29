@@ -144,7 +144,8 @@ struct ReaderItemView: View {
     private var appearance: ReaderHTML.Appearance {
         ReaderHTML.Appearance(font: settings.readerFont, size: settings.textSize, leading: settings.lineSpacing,
                               theme: settings.theme, wide: wide,
-                              columnWidth: settings.readerColumnWidth)
+                              columnWidth: settings.readerColumnWidth, links: settings.linkStyle,
+                              themeCSS: settings.readerThemeCSS)
     }
 
     /// Listen (read aloud) works on anything with an extracted body.

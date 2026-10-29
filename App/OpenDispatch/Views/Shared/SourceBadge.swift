@@ -12,6 +12,8 @@ struct SourceBadge: View {
     let title: String
     var size: CGFloat = 16
     @Environment(\.displayScale) private var displayScale
+    /// Settings → Appearance → Lists → Source icons: Monochrome draws every badge in grey.
+    @Environment(\.listLayout.sourceIcons) private var iconStyle
 
     var body: some View {
         Group {
@@ -27,6 +29,7 @@ struct SourceBadge: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: (size * 0.29).rounded(), style: .continuous))
+        .grayscale(iconStyle == .monochrome ? 1 : 0)
         .accessibilityHidden(true)
     }
 

@@ -175,6 +175,15 @@ final class HighlightStore {
     // MARK: Editing
 
     /// Whether changes made now should be sent to Readwise.
+    /// The color for a highlight made without picking one, and the first in the menus (Settings → Reader).
+    var defaultColor: HighlightColor { model.settings.highlightColor }
+
+    /// Every color, the default first.
+    var colorsDefaultFirst: [HighlightColor] {
+        let d = defaultColor
+        return [d] + HighlightColor.allCases.filter { $0 != d }
+    }
+
     private var sendsToReadwise: Bool {
         model.settings.sendHighlightsToReadwise && model.integrations.readwiseConfigured
     }

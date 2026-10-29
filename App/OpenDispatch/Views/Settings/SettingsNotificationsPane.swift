@@ -47,8 +47,7 @@ struct SettingsNotificationsPane: View {
                         .buttonStyle(SettingsSmallButtonStyle(quiet: true))
                 }
             }
-            .padding(.top, compact ? 0 : 22)
-            .padding(.trailing, compact ? 4 : 0)
+            .padding(.trailing, 4)
             if let errorMessage {
                 Text(errorMessage)
                     .font(OFFont.ui(compact ? 13.5 : 12))
