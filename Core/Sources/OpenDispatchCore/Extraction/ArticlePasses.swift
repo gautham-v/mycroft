@@ -1290,6 +1290,7 @@ enum ArticlePasses {
         unwrapZoomButtons(root)
         unwrapImageButtons(root)
         removeNotices(root, pageURL: pageURL)
+        removeAccessChrome(root)
         removeInterface(root)
         removeRecirculation(root, pageURL: pageURL)
         removePageInterface(root, pageURL: pageURL)

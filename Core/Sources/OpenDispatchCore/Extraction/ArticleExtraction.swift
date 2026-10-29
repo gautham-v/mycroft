@@ -34,6 +34,7 @@ public struct ArticleExtraction: Sendable {
         let base = DOM.absURL(DOM.first(document, "base[href]").flatMap { DOM.attr($0, "href") }, base: pageURL) ?? pageURL
         Passes.placeGalleryItems(document, base: base)
         let lead = Passes.chooseLead(document, base: base)
+        if Passes.isBarrierPage(document) { return ExtractResult(contentHtml: Self.walledTeaser(document, pageHTML: html, pageURL: pageURL), leadImage: lead) }
         Passes.prepare(document, base: base, pageURL: pageURL, videos: ExtractionPayload.videos(in: html))
         Passes.placeApolloImages(document, html: html)
         Self.removePreHeadlineMeta(document)

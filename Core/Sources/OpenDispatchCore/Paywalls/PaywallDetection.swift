@@ -53,11 +53,12 @@ public enum PaywallDetection {
         if access.contains(.walled) { return true }
         if freeTier.test(pageHTML) || (access.contains(.free) && !access.contains(.mixed)) { return false }
         if TopicPaywalls.isPaywalled(url) { return true }
+        if marksAccess(pageHTML) { return true }
         if contentTier.test(pageHTML) { return true }
         // The server's own copy of the story (JSON-LD `articleBody`) is a fraction of the length it declares: the rest is behind the gate (Japan Times).
         if blocks.contains(where: servedCut) { return true }
         let body = scriptOrStyle.replacing(pageHTML, with: " ")
-        return markup.test(body) || phrases.test(DOM.plainText(body))
+        return markup.test(body) || (phrases.test(DOM.plainText(body)) && showsPhrase(body, phrases))
     }
 
     /// The page says where the preview stops. Scripts are left out: they hold the same sentences as templates on every page.
