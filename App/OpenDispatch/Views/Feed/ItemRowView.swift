@@ -31,6 +31,9 @@ struct ItemRowView: View, Equatable {
     var progress: Double?
     /// Replaces the relative publish time in the meta line (History shows when it was opened).
     var timeText: String?
+    /// A topic's item leads its meta line with the topic's keyword ("OpenAI · The Verge"), as in Saved and
+    /// History; inside the topic's own list that is dropped and only the origin shows.
+    var showsTopic = true
 
     private var titleColor: Color { isRead ? .ofRead : .ofInk }
 
@@ -67,7 +70,7 @@ struct ItemRowView: View, Equatable {
 
     private var articleRow: some View {
         VStack(alignment: .leading, spacing: 4) {
-            metaLine(name: item.source.title, handle: nil)
+            metaLine(name: sourceName, handle: nil)
             HStack(alignment: .top, spacing: 12) {
                 Text(item.item.title)
                     .font(OFFont.itemTitle)
@@ -84,7 +87,7 @@ struct ItemRowView: View, Equatable {
     private var postRow: some View {
         let (name, handle) = TextFormat.splitHandle(item.item.author)
         return VStack(alignment: .leading, spacing: 4) {
-            metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
+            metaLine(name: name.isEmpty ? sourceName : name, handle: handle)
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.item.title)
@@ -121,7 +124,7 @@ struct ItemRowView: View, Equatable {
                 .foregroundStyle(titleColor)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-            metaLine(name: name.isEmpty ? item.source.title : name, handle: handle)
+            metaLine(name: name.isEmpty ? sourceName : name, handle: handle)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         if !isPost && item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false {
@@ -145,7 +148,7 @@ struct ItemRowView: View, Equatable {
     /// Badge, then the source (or author) and the rest, all muted, truncated on one line.
     private func metaLine(name: String, handle: String?) -> some View {
         HStack(spacing: 6) {
-            SourceBadge(host: item.source.host, title: item.source.title, size: Metrics.rowBadge)
+            SourceBadge(host: item.source.host, title: item.originName, size: Metrics.rowBadge)
                 .opacity(isRead ? 0.6 : 1)
             metaText(name: name, handle: handle)
                 .lineLimit(1)
@@ -165,13 +168,20 @@ struct ItemRowView: View, Equatable {
         return Text(verbatim: line).font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
     }
 
+    /// Where the item is from, as its meta line names it: the source, or for a topic's item the origin (Hacker News, a
+    /// publisher, a channel, a show) with the topic's keyword in front outside the topic's list.
+    private var sourceName: String {
+        guard item.source.isTopic else { return item.source.title }
+        return showsTopic ? "\(item.source.title) \u{00B7} \(item.originName)" : item.originName
+    }
+
     private var snippet: String? {
         let s = TextFormat.stripHTML(item.item.summary)
         return s.isEmpty ? nil : s
     }
 
     private var accessibilityText: String {
-        var parts = [item.item.title, item.source.title, RelativeTime.format(item.item.publishedAt)]
+        var parts = [item.item.title, sourceName, RelativeTime.format(item.item.publishedAt)]
         if item.source.kind == .youtube { parts.append("Video") }
         if item.source.kind == .podcast { parts.append("Podcast episode") }
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }

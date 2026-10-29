@@ -84,7 +84,7 @@ struct NewTabView: View {
             VStack(alignment: .leading, spacing: 2) {
                 sectionTitle(title)
                 ForEach(items, id: \.id) { item in
-                    NewTabRow(host: item.source.host, sourceTitle: item.source.title, title: item.item.title) {
+                    NewTabRow(host: item.source.host, sourceTitle: item.originName, title: item.item.title) {
                         model.focusPane(pane)
                         model.open(item)
                     }
@@ -286,7 +286,7 @@ struct ReaderTabStrip: View {
         return Group {
             if tab.isPinned {
                 Group {
-                    if let item { SourceBadge(host: item.source.host, title: item.source.title, size: 14) }
+                    if let item { SourceBadge(host: item.source.host, title: item.originName, size: 14) }
                 }
                 .frame(width: 32, height: 28)
             } else {
@@ -300,7 +300,7 @@ struct ReaderTabStrip: View {
                             .scaledToFit()
                             .frame(width: 14, height: 14)
                     } else if let item {
-                        SourceBadge(host: item.source.host, title: item.source.title, size: 14)
+                        SourceBadge(host: item.source.host, title: item.originName, size: 14)
                     }
                     Text(title)
                         .font(OFFont.ui(13))

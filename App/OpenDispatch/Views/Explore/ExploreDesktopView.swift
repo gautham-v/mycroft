@@ -178,6 +178,7 @@ struct ExploreDesktopResults: View {
     var body: some View {
         let explore = model.explore
         VStack(alignment: .leading, spacing: 26) {
+            topicRow(explore)
             videos(explore)
             episodes(explore)
             sources(explore)
@@ -186,6 +187,21 @@ struct ExploreDesktopResults: View {
     }
 
     // MARK: Sections
+
+    /// The query and Follow, which makes it a topic.
+    private func topicRow(_ explore: ExploreStore) -> some View {
+        HStack(spacing: 10) {
+            Text("Results for \u{201C}\(explore.query)\u{201D}")
+                .font(OFFont.ui(15, .semibold))
+                .foregroundStyle(.ofInk)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            ExploreTopicButton(query: explore.query)
+        }
+        .padding(.horizontal, 8)
+    }
 
     @ViewBuilder private func videos(_ explore: ExploreStore) -> some View {
         switch explore.videos {

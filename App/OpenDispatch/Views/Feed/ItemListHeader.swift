@@ -52,7 +52,7 @@ struct DesktopListHeader: View {
 }
 
 /// The list title as a menu: the sidebar's views (minus hidden ones, plus Highlights) and folders, the current one
-/// checked (none while a single source shows), then Show / Hide Sidebar. Never lists individual sources.
+/// checked (none while a single source shows), and the topics, then Show / Hide Sidebar. Never lists individual sources.
 struct ListTitleMenu: View {
     @Environment(AppModel.self) private var model
     @State private var hovered = false
@@ -77,6 +77,12 @@ struct ListTitleMenu: View {
                     Toggle(folder.title, isOn: Binding(
                         get: { model.selectedFolderID == folder.id && model.selectedSourceID == nil },
                         set: { _ in model.navigate(folderID: folder.id) }))
+                }
+            }
+            if !model.topics.isEmpty {
+                Divider()
+                ForEach(model.topics) { topic in
+                    Toggle(topic.title, isOn: Binding(get: { model.selectedSourceID == topic.id }, set: { _ in model.navigate(sourceID: topic.id) }))
                 }
             }
             if !model.showsHighlights && !model.showsHistory {

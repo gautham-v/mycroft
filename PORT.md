@@ -1120,3 +1120,16 @@ History treat it like any source. Migration `v8-topics` rebuilds `sources` (new 
   `last_error` only when every searched place failed (`TopicSearchOutcome.allFailed`).
 - Sync: the Source record gains `topicOptions` (hashed, so an edit propagates). An incoming Source with a topic feed URL is inserted as a topic with those options.
   `notify_since` stays per device. Adding the field to the Source record type needs the CloudKit Production schema to be deployed before a release carries topics.
+
+### Topics (App: model, Mac/iPad UI, sheet) — 2026-10-28
+- `TopicStore` (owned by `AppModel.topicStore`) observes `observeTopics()` and `observeUnreadCounts()`: `topics`, `ids` (changes only when a topic is added or removed), `unread`,
+  `refreshing`, `topic(matching:)` (Explore's Following state). A topic is a source, so it is selected with `navigate(sourceID:)`; `AppModel.activeSource` falls back to the topic
+  store because `sources` leaves topics out, and the sync handler keeps a selected topic. `topicFilter` (`setTopicFilter`) is the chip; it resets when the list moves on and
+  `currentQuery` sends it only for a topic's list.
+- `AppModel`: `createTopic(_:notify:select:)` (stores, selects, searches in the background, then turns notify on so the existing matches don't alert), `updateTopic(id:options:notify:)`
+  (searches again when the keyword or places changed; a changed keyword restarts notify), `deleteTopic(id:)`, `followTopic(query:)` (Explore's Follow, unselected),
+  `refreshTopic(id:)`, `markAllRead(topic:)`, `beginNewTopic(_:)` / `beginEditTopic(_:)` (set `topicEditor`, which RootView presents as `TopicEditorView` on every platform). Notify
+  is the existing `setSourceNotify`.
+- Views: `Views/Topics/TopicEditorView.swift` (the sheet), `TopicListBar.swift` (status, bell, Edit and `TopicChips` under the list header; Mac and iPad), `Views/Sidebar/SidebarTopics.swift`
+  (the "Topics" group between the view rows and the sources), `ExploreTopicButton` (Follow / Following; on the Mac's results header, reusable on the iPhone). Rows name a topic's
+  item by its origin (`ItemRowView.showsTopic` adds the keyword outside the topic's list); the reader, speech, now-playing and highlights use `FeedItem.originName`.

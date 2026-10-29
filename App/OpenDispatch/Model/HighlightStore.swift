@@ -185,7 +185,7 @@ final class HighlightStore {
         guard !anchor.text.isEmpty else { return nil }
         let h = Highlight(
             sourceFeedUrl: item.source.feedUrl, itemGuid: item.item.guid, itemUrl: item.item.url,
-            itemTitle: item.item.title, sourceTitle: item.source.title, itemAuthor: item.item.author,
+            itemTitle: item.item.title, sourceTitle: item.originName, itemAuthor: item.item.author,
             itemPublishedAt: item.item.publishedAt, text: anchor.text, prefix: anchor.prefix, suffix: anchor.suffix,
             note: note, color: color)
         guard (try? await model.database.insertHighlight(h, forReadwise: sendsToReadwise)) != nil else { return nil }

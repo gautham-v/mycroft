@@ -214,6 +214,58 @@ struct ExploreFollowButton: View {
     }
 }
 
+/// Follow / Following for the searched words as a topic: Follow stores a topic with the default options (it
+/// doesn't open it); once it exists the button reads Following and opens it. A spinner while it is stored, and
+/// Try Again if that failed.
+struct ExploreTopicButton: View {
+    let query: String
+    @Environment(AppModel.self) private var model
+    @State private var adding = false
+    @State private var failed = false
+
+    var body: some View {
+        let topic = model.topic(matching: query)
+        let following = topic != nil
+        return Button {
+            if let topic {
+                model.navigate(sourceID: topic.id)
+            } else {
+                follow()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if adding {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    (following ? OFIcon.check : OFIcon.plus).image.font(.system(size: 10, weight: .bold))
+                }
+                Text(following ? "Following" : adding ? "Adding" : failed ? "Try Again" : "Follow")
+                    .font(OFFont.ui(13, .semibold))
+            }
+            .foregroundStyle(following || adding ? Color.ofInk : Color.white)
+            .padding(.horizontal, 11)
+            .frame(height: 30)
+            .background(following || adding ? Color.ofCode : Color.ofAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
+            .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .disabled(adding)
+        .help(following ? "Open this topic" : "Follow this search as a topic, with new matches in the sidebar")
+        .accessibilityLabel(following ? "Following \(query) as a topic" : "Follow \(query) as a topic")
+        .accessibilityHint(following ? "Opens the topic" : "")
+    }
+
+    private func follow() {
+        adding = true
+        failed = false
+        Task {
+            do { try await model.followTopic(query: query) } catch { failed = true }
+            adding = false
+        }
+    }
+}
+
 /// "Search the web for “…”": hands the query to the default browser (Google's results). Not a navigation, so
 /// no spinner: it leaves the app.
 struct ExploreWebRow: View {

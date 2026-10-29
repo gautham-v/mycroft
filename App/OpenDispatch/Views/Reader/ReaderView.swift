@@ -125,7 +125,7 @@ struct ReaderItemView: View {
     /// ink, then " · 31m" muted, both at the sidebar's row size. Re-rendered every minute.
     private var titleLine: some View {
         let (author, handle) = TextFormat.isSocialPost(item.item.url) ? TextFormat.splitHandle(item.item.author) : ("", nil)
-        let name = author.isEmpty ? item.source.title : author
+        let name = author.isEmpty ? item.originName : author
         return TimelineView(.periodic(from: .now, by: 60)) { context in
             let lead = Text(verbatim: name).foregroundStyle(Color.ofInk)
             let tail = Text(verbatim: (handle.map { " @\($0)" } ?? "") + " · " + RelativeTime.format(item.item.publishedAt, now: context.date))
@@ -214,7 +214,7 @@ struct ReaderItemView: View {
     /// Source badge + source · time, as in the item's list row.
     private var metaRow: some View {
         HStack(spacing: 8) {
-            SourceBadge(host: item.source.host, title: item.source.title, size: 20)
+            SourceBadge(host: item.source.host, title: item.originName, size: 20)
             titleLine
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -378,8 +378,8 @@ struct ReaderItemView: View {
             .contextMenu { headlineMenu }
 
             ReaderFlowLayout(spacingX: 14, spacingY: 4) {
-                Text(item.source.title).fontWeight(.medium).foregroundStyle(.ofInk)
-                if let author = item.item.author, !author.isEmpty, author != item.source.title {
+                Text(item.originName).fontWeight(.medium).foregroundStyle(.ofInk)
+                if let author = item.item.author, !author.isEmpty, author != item.originName {
                     Text(author)
                 }
                 // The bar shows tabs, not source · time, so the age lives here (phones have the meta row).

@@ -97,9 +97,16 @@ struct ItemListView: View {
     /// than a safe-area inset: List clips its rows to the safe area on macOS.
     private var desktopColumn: some View {
         list
-            .topContentInset(Self.headerHeight)
+            .topContentInset(Self.headerHeight + (model.isTopicSelected ? Self.topicBarHeight : 0))
             .overlay(alignment: .top) {
-                DesktopListHeader(searchFocus: $searchFocused)
+                VStack(spacing: 0) {
+                    DesktopListHeader(searchFocus: $searchFocused)
+                    // A topic's own bar (its state, notifications, Edit and the chips) under the header.
+                    if model.isTopicSelected {
+                        TopicListBar()
+                            .padding(.top, Self.topicBarOverlap)
+                    }
+                }
             }
             .background(Color.ofSurface)
     }
@@ -112,6 +119,18 @@ struct ItemListView: View {
         Metrics.desktopHeaderHeight
         #endif
     }
+
+    /// A topic's bar sits right under the header: on the Mac it takes the header's clear gap.
+    private static var topicBarOverlap: CGFloat {
+        #if os(macOS)
+        -Metrics.listHeaderGap
+        #else
+        0
+        #endif
+    }
+
+    /// The room the topic's bar takes in the list's top inset (below the header's own gap).
+    private static var topicBarHeight: CGFloat { TopicListBar.height + 6 + topicBarOverlap }
 
     #if os(iOS)
     /// iPhone: the list with its title as the first row and the glass bubbles along the bottom (see
@@ -223,7 +242,7 @@ struct ItemListView: View {
                 Button(action: { open(item) }) {
                     ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
                                 isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
-                                isRead: marks.read, progress: marks.progress)
+                                isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id)
                         .equatable()
                 }
                 .buttonStyle(.plain)
@@ -340,6 +359,8 @@ private struct ListStateRows: View {
                 .buttonStyle(.plain)
                 .padding(.top, 12)
                 .accessibilityLabel("Add sources")
+            } else if let topic = model.activeTopic {
+                topicEmptyState(topic)
             } else {
                 Text(model.selectedView == .saved && !model.isInSourceFeed ? "Nothing saved yet" : "Nothing here yet")
                     .font(OFFont.ui(15, .medium))
@@ -350,6 +371,32 @@ private struct ListStateRows: View {
             }
         }
         .multilineTextAlignment(.center)
+    }
+
+    /// An empty topic: still searching its first time, why it found nothing, or that nothing matched yet.
+    @ViewBuilder private func topicEmptyState(_ topic: Source) -> some View {
+        if model.topicStore.refreshing.contains(topic.id) || topic.lastFetchedAt == nil {
+            Text("Searching for \u{201C}\(topic.title)\u{201D}")
+                .font(OFFont.ui(15, .medium))
+                .foregroundStyle(.ofInk)
+            Text("Matches from the last two weeks appear here")
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+        } else if let error = topic.lastError {
+            Text("Couldn\u{2019}t search for \u{201C}\(topic.title)\u{201D}")
+                .font(OFFont.ui(15, .medium))
+                .foregroundStyle(.ofInk)
+            Text(error)
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+        } else {
+            Text(model.topicFilter == .all ? "No matches yet" : "No \(model.topicFilter.title.lowercased()) yet")
+                .font(OFFont.ui(15, .medium))
+                .foregroundStyle(.ofInk)
+            Text("New matches show up here after each refresh")
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+        }
     }
 }
 
@@ -490,8 +537,13 @@ private struct RowMenu: View {
         }
         if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
             Divider()
-            Button("Go to \(item.source.title)", systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
+            Button(goToTitle, systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
         }
+    }
+
+    /// A topic's item goes to its topic (named by keyword); any other to its source.
+    private var goToTitle: String {
+        item.source.isTopic ? "Go to \(item.source.title) Topic" : "Go to \(item.source.title)"
     }
 
     @ViewBuilder private var sendMenu: some View {
@@ -539,7 +591,7 @@ private struct RowMenu: View {
         }
         if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
             Divider()
-            Button("Go to \(item.source.title)") { model.navigate(sourceID: item.source.id) }
+            Button(goToTitle) { model.navigate(sourceID: item.source.id) }
         }
     }
 
