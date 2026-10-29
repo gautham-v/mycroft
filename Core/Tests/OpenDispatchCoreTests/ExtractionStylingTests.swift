@@ -138,7 +138,8 @@ struct ExtractionStylingTests {
         let out = try await extract("\(p)<p>Path: <a href=\"#missing-id\">AppData\\protocols.json</a> and <a href=\"#here\">see</a>.</p><h2 id=\"here\">Here</h2>\(p)")
         #expect(!out.contains("missing-id"))
         #expect(out.contains("AppData\\protocols.json"))
-        #expect(out.contains("story#here"))
+        // A link to an anchor that is there stays in the page (`#here`, with the id kept), not the absolute article URL.
+        #expect(out.contains("href=\"#here\"") && out.contains("id=\"here\""))
     }
 
     @Test func emptyCanvasFigureGoes() async throws {

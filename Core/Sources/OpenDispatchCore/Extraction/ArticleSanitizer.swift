@@ -81,15 +81,17 @@ public enum ArticleSanitizer {
     public static func sanitize(_ html: String) -> String {
         // Word joiners left where a link's "opens in a new window" icon was (openai.com) only get in the way.
         DOM.withFragment(html.replacingOccurrences(of: "\u{2060}", with: "")) { body in
-            clean(children: body)
+            // An id stays only where a link in the article points (a footnote and its marker): in-page jumps.
+            let anchors = Set(DOM.select(body, "a[href^=#]").compactMap { DOM.attr($0, "href").map { String($0.dropFirst()) } })
+            clean(children: body, anchors: anchors)
             return DOM.innerHTML(body)
         } ?? ""
     }
 
-    private static func clean(children parent: Element) {
+    private static func clean(children parent: Element, anchors: Set<String>) {
         for node in parent.getChildNodes() {
             if let el = node as? Element {
-                cleanElement(el)
+                cleanElement(el, anchors: anchors)
             } else if node is TextNode {
                 continue
             } else {
@@ -99,19 +101,21 @@ public enum ArticleSanitizer {
         }
     }
 
-    private static func cleanElement(_ el: Element) {
+    private static func cleanElement(_ el: Element, anchors: Set<String>) {
         let name = DOM.tag(el)
         guard allowedTags.contains(name) else {
             if nonTextTags.contains(name) {
                 DOM.remove(el)
                 return
             }
-            clean(children: el)
+            clean(children: el, anchors: anchors)
             _ = try? el.unwrap()
             return
         }
+        let anchorID = DOM.attr(el, "id").flatMap { anchors.contains($0) ? $0 : nil }
         transform(el, name: name)
         filterAttributes(el, name: name)
+        if let anchorID { DOM.setAttr(el, "id", anchorID) }
         // exclusiveFilter: an iframe whose src was refused (or never had one) would be an empty 16:9 box.
         if name == "iframe" {
             // Inside <svg> a browser parses <iframe> as a foreign element (not an embed) whose content is markup,
@@ -125,7 +129,7 @@ public enum ArticleSanitizer {
             el.empty()
             return
         }
-        clean(children: el)
+        clean(children: el, anchors: anchors)
         // An icon drawn with <use> (not allowed) is left an empty box the width of the column (CBS News' logo).
         if name == "svg", DOM.first(el, drawable) == nil { DOM.remove(el) }
     }
@@ -178,6 +182,8 @@ public enum ArticleSanitizer {
                 DOM.removeAttr(el, k)
             }
         case "a":
+            // An in-page link (a footnote marker) jumps in the article, not to a new window.
+            if DOM.attr(el, "href")?.hasPrefix("#") == true { DOM.removeAttr(el, "target"); DOM.removeAttr(el, "rel"); break }
             DOM.setAttr(el, "target", "_blank")
             DOM.setAttr(el, "rel", "noopener noreferrer")
         case "img":

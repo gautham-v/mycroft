@@ -574,6 +574,7 @@ enum ArticlePasses {
             DOM.replace(box, with: img)
         }
         protectFigures(root, &saved)
+        protectLinkCallouts(root, &saved)
         for el in DOM.select(root, "video, audio, svg") {
             guard DOM.isConnected(el) else { continue }
             if let parent = el.parent(), DOM.closest(parent, "svg, video, audio") != nil { continue }
@@ -1166,6 +1167,7 @@ enum ArticlePasses {
             if next == nil || (label.map { rank($0) <= rank(h) } ?? false) { DOM.remove(block) }
         }
         cutAtPaywallMarker(root)
+        inPageLinks(root, base: base)
         return DOM.innerHTML(root)
     }
 
@@ -1274,6 +1276,7 @@ enum ArticlePasses {
         resolveStreamedBoundaries(root)
         prepareStructure(root)
         promoteLazyImages(root)
+        prepareContent2(root)
         absolutize(root, base: base)
         normalizeEmbeds(root)
         embeds(root, pageURL: pageURL)
