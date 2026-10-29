@@ -1121,7 +1121,8 @@ enum ArticlePasses {
         }
         // Section labels left with nothing under them: real headings, or short bold "Label:" lines.
         func isLabel(_ el: Element) -> Bool {
-            if DOM.isTag(el, DOM.headingTags) { return true }
+            // A table's column heads (SB Nation's picks) follow one another without being empty sections.
+            if DOM.isTag(el, DOM.headingTags) { return DOM.closest(el, "th, td") == nil }
             guard DOM.isTag(el, ["b", "strong", "p"]), labelText.test(DOM.text(el)) else { return false }
             return DOM.tag(el) == "p" || DOM.text(el.parent()) == DOM.text(el)
         }
@@ -1223,9 +1224,12 @@ enum ArticlePasses {
         var keys: [String] = []
         var groups: [String: [Element]] = [:]
         for el in DOM.select(root, "div[class], section[class], article[class]") {
+            var seen = Set<String>()
             for t in DOM.classTokens(el) {
                 guard contentToken.test(t), !sideToken.test(t), !utilityClass.test(t) else { continue }
                 let key = t.lowercased()
+                // class="post post" (Ghost) lists an element twice; it would then be "merged" into itself and deleted.
+                guard seen.insert(key).inserted else { continue }
                 if groups[key] == nil { keys.append(key) }
                 groups[key, default: []].append(el)
             }
@@ -1254,6 +1258,7 @@ enum ArticlePasses {
     /// Page-wide cleanup that must happen while the page's class names and structure are intact.
     static func prepare(_ root: Element, base: String, pageURL: String, videos: [ExtractionPayload.Video] = []) {
         resolveStreamedBoundaries(root)
+        prepareStructure(root)
         absolutize(root, base: base)
         normalizeEmbeds(root)
         removeScreenReaderText(root)

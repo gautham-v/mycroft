@@ -24,6 +24,7 @@ public enum PaywallDetection {
 
     private static let ldBlock = DOM.Pattern("<script[^>]*application/ld\\+json[^>]*>([\\s\\S]*?)</script>", caseInsensitive: true)
     private static let notFree = DOM.Pattern("\"isAccessibleForFree\"\\s*:\\s*(?:false|\"false\")", caseInsensitive: true)
+    private static let free = DOM.Pattern("\"isAccessibleForFree\"\\s*:\\s*(?:true|\"true\")", caseInsensitive: true)
     private static let wordCount = DOM.Pattern("\"wordCount\"\\s*:\\s*\"?(\\d+)", caseInsensitive: true)
     private static let contentTier = DOM.Pattern(
         "<meta[^>]+property=[\"']article:content_tier[\"'][^>]+content=[\"'](?:locked|metered)[\"']|<meta[^>]+content=[\"'](?:locked|metered)[\"'][^>]+property=[\"']article:content_tier[\"']",
@@ -37,10 +38,13 @@ public enum PaywallDetection {
         caseInsensitive: true)
 
     private static func hasSignal(pageHTML: String, articleHTML: String?, url: String) -> Bool {
-        if TopicPaywalls.isPaywalled(url) { return true }
-        if ldBlock.allMatches(pageHTML).contains(where: { $0[1].map(notFree.test) == true }) { return true }
-        if contentTier.test(pageHTML) { return true }
+        let blocks = ldBlock.allMatches(pageHTML).compactMap { $0[1] }
+        if blocks.contains(where: notFree.test) || contentTier.test(pageHTML) { return true }
         if let articleHTML, ArticleExtraction.isLoginWall(articleHTML) { return true }
+        // A page that declares itself free (The New Yorker's Daily Cartoon, a picture and no words) knows better than
+        // the site list and the paywall modal every page of a metered site carries.
+        if blocks.contains(where: free.test) { return false }
+        if TopicPaywalls.isPaywalled(url) { return true }
         let body = scriptOrStyle.replacing(pageHTML, with: " ")
         return markup.test(body) || phrases.test(DOM.plainText(body))
     }
