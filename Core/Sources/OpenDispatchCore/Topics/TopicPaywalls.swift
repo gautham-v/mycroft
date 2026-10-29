@@ -1,5 +1,15 @@
 import Foundation
 
+/// Large news outlets whose articles read free, searched by name in Topics alongside the plain news search
+/// (`DefaultTopicSearch.outletNews`) so a topic isn't left to the few answers Bing's own ranking gives.
+public enum MajorOutlets {
+    public static let domains: [String] = [
+        "apnews.com", "reuters.com", "theguardian.com", "npr.org", "cnbc.com", "axios.com", "politico.com", "cbsnews.com",
+        "nbcnews.com", "abcnews.go.com", "usatoday.com", "aljazeera.com", "theverge.com", "techcrunch.com", "arstechnica.com",
+        "engadget.com",
+    ]
+}
+
 /// Sites that put their articles behind a hard paywall, so a topic that skips paywalled sites leaves their
 /// articles out. A static list, matched by host suffix ("www.nytimes.com" and "cooking.nytimes.com" are
 /// "nytimes.com"). Sites that let a few articles through (metered) are not on it.

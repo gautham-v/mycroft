@@ -248,6 +248,7 @@ final class AppModel {
                 hideReadCutoff = Date()
                 Task { await loadItems(reset: true) }
             }
+            if settings.paywallTreatment != oldValue.paywallTreatment { PaywallTreatment.current = settings.paywallTreatment }
             if settings.paywallTreatment != oldValue.paywallTreatment || settings.paywalls != oldValue.paywalls { applyPaywallFilter() }
             if settings.feedOrder != oldValue.feedOrder { Task { await loadItems(reset: true) } }
         }
@@ -321,7 +322,9 @@ final class AppModel {
         sidebarCollapsed = defaults.bool(forKey: Keys.sidebarCollapsed)
         collapsedFolders = Set(defaults.stringArray(forKey: Keys.collapsedFolders) ?? [])
         hiddenSidebarViews = Set(defaults.stringArray(forKey: Keys.hiddenSidebarViews) ?? [])
-        settings = AppSettings.load()
+        let loaded = AppSettings.load()
+        settings = loaded
+        PaywallTreatment.current = loaded.paywallTreatment
         syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? true
         sync = CloudSync(database: services.database) { [weak self] event in
             await self?.handleSync(event)

@@ -15,6 +15,17 @@ public enum PaywallTreatment: String, Codable, CaseIterable, Identifiable, Senda
     }
 }
 
+extension PaywallTreatment {
+    static let key = "openfeed.paywall-treatment"
+
+    /// The setting as the App last set it, for Core code that can't see the App's settings (Topics' outlet searches).
+    /// Mark until the App has set it.
+    public static var current: PaywallTreatment {
+        get { UserDefaults.standard.string(forKey: key).flatMap(PaywallTreatment.init(rawValue:)) ?? .mark }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: key) }
+    }
+}
+
 /// How an article's site stands for this reader.
 public enum PaywallStatus: Sendable, Hashable {
     /// No paywall known.

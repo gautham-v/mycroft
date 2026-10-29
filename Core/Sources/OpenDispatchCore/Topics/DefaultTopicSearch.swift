@@ -3,9 +3,9 @@ import Foundation
 /// A topic's searches, with no key anywhere:
 ///
 /// - news: Bing News' RSS (`/news/search?format=rss`), newest first. Its links go through an `apiclick` redirect that names the
-///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`. Bing answers about ten articles
-///   and seldom from subscription outlets, so the same search is also run limited to the paywalled sites and the sites the app
-///   is signed in to (`subscriberNews`), whose articles the lists then show, mark or hide.
+///   article in its `url` parameter, which is read back out; the publisher is in `News:Source`. Bing answers about ten articles,
+///   mostly syndicated copies and small outlets, so the same search is also run limited to large outlets (`outletNews`): the
+///   sites the app is signed in to, the free major outlets, and the known paywalled sites unless the lists hide those.
 /// - Hacker News through Algolia's API.
 /// - Reddit's search page through the hidden web view (`DiscussionWeb`), newest first, with scores; when the web view can't
 ///   (the app is in the background) its JSON, falling back to its RSS when the JSON is refused, which it often is outside a
@@ -113,7 +113,7 @@ public struct DefaultTopicSearch: TopicSearching {
         typealias Provider = @Sendable () async throws -> [Candidate]
         let providers: [Provider]
         switch place {
-        case .news: providers = [{ try await self.news(o, now) }, { try await self.subscriberNews(o, now) }]
+        case .news: providers = [{ try await self.news(o, now) }, { try await self.outletNews(o, now) }]
         case .hackerNews: providers = [{ try await self.hackerNews(o, now) }]
         case .reddit: providers = [{ try await self.reddit(o, now) }]
         case .x: providers = [{ try await self.x(o, now) }]
@@ -121,7 +121,7 @@ public struct DefaultTopicSearch: TopicSearching {
         case .media: providers = [{ try await self.videos(o, now) }, { try await self.episodes(o, now) }]
         }
         var found: [ParsedItem] = []
-        // Two providers of a place can find the same article (Bing's general and subscriber searches).
+        // Two providers of a place can find the same article (Bing's plain and outlet searches).
         var seen = Set<String>()
         var errors: [any Error] = []
         var succeeded = 0
@@ -225,21 +225,22 @@ public struct DefaultTopicSearch: TopicSearching {
         return url
     }
 
-    /// Sites per subscriber search: Bing drops `site:` terms past a query of about this many.
+    /// Sites per outlet search: Bing drops `site:` terms past a query of about this many.
     static let sitesPerSearch = 8
 
-    /// The sites the subscriber searches cover: the ones the app is signed in to, then the known paywalled sites.
-    static func subscriberSites(signedIn: Set<String> = SiteSignIns.sites) -> [[String]] {
+    /// The sites the outlet searches cover, in groups of `sitesPerSearch`: the ones the app is signed in to, the free major
+    /// outlets, then the known paywalled sites, which are left out while the lists hide them (`PaywallTreatment.hide`).
+    static func outletSites(signedIn: Set<String> = SiteSignIns.sites, paywalled: Bool = PaywallTreatment.current != .hide) -> [[String]] {
         var sites = signedIn.sorted()
-        for domain in TopicPaywalls.domains where !sites.contains(domain) { sites.append(domain) }
+        for domain in MajorOutlets.domains + (paywalled ? TopicPaywalls.domains : []) where !sites.contains(domain) { sites.append(domain) }
         return stride(from: 0, to: sites.count, by: sitesPerSearch).map { Array(sites[$0..<min($0 + sitesPerSearch, sites.count)]) }
     }
 
-    /// The news search limited to subscription sites, a few sites per request; fails only when every request did.
-    func subscriberNews(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
+    /// The news search limited to large outlets, a few sites per request; fails only when every request did.
+    func outletNews(_ o: TopicOptions, _ now: Date) async throws -> [Candidate] {
         var candidates: [Candidate] = []
         var errors: [any Error] = []
-        let groups = Self.subscriberSites()
+        let groups = Self.outletSites()
         await withTaskGroup(of: Result<[Candidate], any Error>.self) { group in
             for sites in groups {
                 group.addTask {
