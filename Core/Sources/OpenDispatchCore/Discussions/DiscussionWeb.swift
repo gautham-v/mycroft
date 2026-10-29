@@ -186,12 +186,19 @@ public final class DiscussionWeb: NSObject {
 
     // MARK: X
 
-    /// The timeline cells of an X page, after waiting for posts and scrolling `scrolls` times.
-    func xCells(_ url: String, scrolls: Int) async throws -> [String] {
+    /// What an X page gave: the answers of X's own `TweetDetail` (a post) or `SearchTimeline` (a search) requests, read first,
+    /// and the timeline cells it drew, the fallback when there were none.
+    struct XPage: Sendable {
+        var answers: [Data]
+        var cells: [String]
+    }
+
+    /// An X page, after waiting for X's answer (or, without one, for posts to be drawn, scrolling `scrolls` times).
+    func xPage(_ url: String, scrolls: Int) async throws -> XPage {
         try Self.requireForeground()
         guard await WebAccount.x.isSignedIn() else { throw DiscussionError.signInRequired(.x) }
         let previous = xQueue
-        let task = Task { @MainActor () throws -> [String] in
+        let task = Task { @MainActor () throws -> XPage in
             _ = await previous?.value
             return try await self.readX(url, scrolls: scrolls)
         }
@@ -199,9 +206,32 @@ public final class DiscussionWeb: NSObject {
         return try await task.value
     }
 
-    private func readX(_ url: String, scrolls: Int) async throws -> [String] {
+    /// Keeps the answers of X's `TweetDetail` and `SearchTimeline` requests in `window.__odx` as the page makes them (the page's
+    /// own world: its requests go through the page's XMLHttpRequest and fetch).
+    private static let xCapture = """
+        (() => {
+          const ops = /\\/(TweetDetail|SearchTimeline)\\b/;
+          const keep = (u, body) => { const m = ops.exec(u); if (m) (window.__odx = window.__odx || []).push({ op: m[1], body }); };
+          const open = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function (method, u) {
+            this.addEventListener("load", () => { try { keep(String(u), this.responseText); } catch (e) {} });
+            return open.apply(this, arguments);
+          };
+          const f = window.fetch;
+          window.fetch = function (input) {
+            const u = (input && input.url) || String(input);
+            const p = f.apply(this, arguments);
+            if (ops.test(u)) p.then((r) => r.clone().text()).then((t) => keep(u, t)).catch(() => {});
+            return p;
+          };
+        })();
+        """
+
+    private func readX(_ url: String, scrolls: Int) async throws -> XPage {
         let view = await siteView(.x)
         try await view.load(URL(string: url)!)
+        let op = XPages.statusID(url) != nil ? "TweetDetail" : "SearchTimeline"
+        let answers = "return (window.__odx || []).filter((a) => a.op === op).map((a) => a.body);"
         var found: [String] = []
         var seen = Set<String>()
         let collect = """
@@ -216,13 +246,20 @@ public final class DiscussionWeb: NSObject {
             """
         var wall = false
         var empty = false
+        var bodies: [String] = []
         try await view.waitUntil(timeout: 15) { view in
+            bodies = (try? await view.call(answers, arguments: ["op": op], in: .page) as? [String]) ?? []
+            if !bodies.isEmpty { return true }
             let r = try await view.call(collect, in: Self.world) as? [String: Any]
             wall = r?["wall"] as? Bool == true
             empty = r?["empty"] as? Bool == true
-            return wall || empty || ((r?["posts"] as? NSNumber)?.intValue ?? 0) > 0
+            return wall || empty
         }
         if wall { throw DiscussionError.signInRequired(.x) }
+        if !bodies.isEmpty {
+            log.info("x \(url, privacy: .public) \(op, privacy: .public) answers \(bodies.count)")
+            return XPage(answers: bodies.map { Data($0.utf8) }, cells: [])
+        }
         // A post's page draws the post first and its replies a moment later.
         if XPages.statusID(url) != nil, !empty {
             try? await view.waitUntil(timeout: 8) { view in
@@ -246,8 +283,8 @@ public final class DiscussionWeb: NSObject {
             let href = (try? await view.call("return location.href", in: Self.world)) as? String ?? "?"
             log.info("x \(url, privacy: .public) step \(step) cells \((r?["cells"] as? [String])?.count ?? -1) posts \((r?["posts"] as? NSNumber)?.intValue ?? -1) empty \(empty) at \(href, privacy: .public)")
         }
-        log.info("x \(url, privacy: .public) kept \(found.count) cells, posts \(found.compactMap(Self.statusKey).joined(separator: " "), privacy: .public)")
-        return found
+        log.info("x \(url, privacy: .public) no \(op, privacy: .public); kept \(found.count) cells, posts \(found.compactMap(Self.statusKey).joined(separator: " "), privacy: .public)")
+        return XPage(answers: [], cells: found)
     }
 
     nonisolated private static let statusHref = ExtractionDOM.Pattern(#"href="(/[^/"]+/status/\d+)""#)
@@ -277,6 +314,9 @@ public final class DiscussionWeb: NSObject {
         #endif
         config.mediaTypesRequiringUserActionForPlayback = .all
         if let rules = await contentRules() { config.userContentController.add(rules) }
+        if account == .x {
+            config.userContentController.addUserScript(WKUserScript(source: Self.xCapture, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         let view = SiteView(configuration: config, userAgent: account == .x ? WebAccount.browserUserAgent : nil)
         switch account {
         case .x: x = view

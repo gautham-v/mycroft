@@ -173,6 +173,29 @@ struct DiscussionTests {
         #expect(text?.runs.contains { $0.link == "https://x.com/hashtag/LoveIsBlind" } == true)
     }
 
+    @Test func readsRepliesFromXsOwnAnswer() {
+        let entries = XPages.replies(inDetail: DiscussionFixtures.data("x-detail.json"), threadID: "2115613452165124133")
+        let comments = entries.compactMap(\.comment)
+        #expect(comments.count == 4)
+        #expect(!comments.contains { $0.id == "2115613452165124133" })
+        let first = comments[0]
+        #expect(first.author == "compuficial @compuficial" && first.depth == 0 && first.score == 1)
+        // The "@ThePrimeagen " a reply starts with is outside its display range.
+        #expect(first.body.plainText == "don't worry everyone I'll tell you when to buy. they call me the nancy pelosi of tpot btw.")
+        #expect(first.published == ISO8601.date(from: "2026-10-29T02:09:39Z"))
+        #expect(first.url == "https://x.com/compuficial/status/2115627091676803570")
+        #expect(first.avatarUrl?.hasPrefix("https://pbs.twimg.com/profile_images/") == true)
+    }
+
+    @Test func readsSearchFromXsOwnAnswer() {
+        let posts = XPages.posts(inTimeline: DiscussionFixtures.data("x-search-timeline.json"))
+        #expect(posts.count == 4)
+        #expect(posts[0].url == "https://x.com/MurrayHillGuy1/status/2113747873405796631")
+        #expect(posts[0].author == "Murray Hill Guy" && posts[0].score == 7189)
+        #expect(posts[0].text?.hasPrefix("Love Is Blind perfectly sums up modern dating.") == true)
+        #expect(posts.allSatisfy { $0.published != nil && $0.place == .x })
+    }
+
     @Test func readsXCounts() {
         let counts = XPages.counts("1,156 replies, 705 reposts, 7188 likes, 1 bookmark, 4808889 views")
         #expect(counts == ["repl": 1156, "repost": 705, "like": 7188, "bookmark": 1, "view": 4808889])

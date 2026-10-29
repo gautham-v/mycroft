@@ -44,7 +44,7 @@ public struct DefaultDiscussions: DiscussionLoading {
             return posts
         case .x:
             #if canImport(WebKit)
-            return XPages.searchResults(inCells: try await DiscussionWeb.shared.xCells(XPages.searchURL(q), scrolls: Self.xSearchScrolls))
+            return Self.xPosts(try await DiscussionWeb.shared.xPage(XPages.searchURL(q), scrolls: Self.xSearchScrolls))
             #else
             throw DiscussionError.unavailable
             #endif
@@ -70,8 +70,12 @@ public struct DefaultDiscussions: DiscussionLoading {
             return RedditPages.thread(try await reddit(String(canonical.dropFirst(RedditPages.origin.count))))
         case .x:
             #if canImport(WebKit)
-            let cells = try await DiscussionWeb.shared.xCells(url, scrolls: Self.xReplyScrolls)
-            return DiscussionThread(entries: XPages.replies(inCells: cells, threadURL: url))
+            let page = try await DiscussionWeb.shared.xPage(url, scrolls: Self.xReplyScrolls)
+            if !page.answers.isEmpty {
+                let id = XPages.statusID(url)
+                return DiscussionThread(entries: page.answers.flatMap { XPages.replies(inDetail: $0, threadID: id) })
+            }
+            return DiscussionThread(entries: XPages.replies(inCells: page.cells, threadURL: url))
             #else
             throw DiscussionError.unavailable
             #endif
@@ -105,6 +109,15 @@ public struct DefaultDiscussions: DiscussionLoading {
             return []
         }
     }
+
+    #if canImport(WebKit)
+    /// A search's posts from X's answer, else from the drawn cells.
+    static func xPosts(_ page: DiscussionWeb.XPage) -> [DiscussionPost] {
+        guard !page.answers.isEmpty else { return XPages.searchResults(inCells: page.cells) }
+        var seen = Set<String>()
+        return page.answers.flatMap(XPages.posts(inTimeline:)).filter { seen.insert($0.url).inserted }
+    }
+    #endif
 
     // MARK: Network
 

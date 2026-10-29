@@ -1199,7 +1199,10 @@ Explore searches posts, and the reader shows comments under a thread and under e
     elements with `view-events="search/view/post"`, adult posts left out), a post page (`shreddit-post` attributes and body, `shreddit-comment`s
     with `depth`/`score`/`created`, the `div[slot=comment]` body), and "more comments" partials (`faceplate-partial[src*=/more-comments/]`, posted
     with its `cursor` input and the `csrf_token` cookie; token = src + U+001F + cursor). Document order is reading order.
-  - X (`XPages`): timeline cells (`[data-testid=cellInnerDiv]`) as HTML: `article[data-testid=tweet]`, `User-Name`, `tweetText`, the first `time`'s link,
+  - X (`XPages`): first X's own answers, which a document-start script in the hidden view keeps as the page makes them (`TweetDetail` for a
+    post: entries `tweet-<id>` and `conversationthread-*` modules, a module's first post at depth 0 and the rest at 1; `SearchTimeline` for a search;
+    a tweet's text is its note or `full_text` within `display_text_range`, t.co links expanded): X loads a post's replies in a web view no one
+    sees but doesn't always draw them. Failing that, timeline cells (`[data-testid=cellInnerDiv]`) as HTML: `article[data-testid=tweet]`, `User-Name`, `tweetText`, the first `time`'s link,
     the `role=group` label's counts. On a post page, replies start after the post itself, an empty cell ends a group (later posts in a group are depth 1),
     and a "Discover more" heading ends them.
   - Bluesky (`BlueskyThreads`): `searchPosts` on api.bsky.app (sort=top, last 14 days; public.api refuses search), `getPostThread` (depth 6) with replies most liked first.
