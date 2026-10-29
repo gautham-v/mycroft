@@ -180,7 +180,8 @@ struct ExtractionContentLossTests {
     }
 
     @Test func aStoryTheScriptsFinishIsTakenFromTheRenderedCopy() async throws {
-        let full = Self.politicoPage(private: "<p>\(Self.para)</p><p>\(Self.para)</p><p>\(Self.para)</p>").replacingOccurrences(of: "\"isAccessibleForFree\":false", with: "\"isAccessibleForFree\":true")
+        // Distinct paragraphs: the same one in two boxes near the top reads as a teaser and its copy.
+        let full = Self.politicoPage(private: "<p>\(Self.para) Two.</p><p>\(Self.para) Three.</p><p>\(Self.para) Four.</p>").replacingOccurrences(of: "\"isAccessibleForFree\":false", with: "\"isAccessibleForFree\":true")
         ContentLossStub.reset([
             "https://e.com/p": [.init(status: 200, headers: Self.stubHTML, body: Self.politicoPage(private: "<!--[--><!--]-->"))],
             "https://r.jina.ai/https://e.com/p": [.init(status: 200, headers: Self.stubHTML, body: full)],

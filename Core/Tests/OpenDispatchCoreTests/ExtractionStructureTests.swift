@@ -181,11 +181,12 @@ struct ExtractionStructureWebKitTests {
     }
 
     @Test @MainActor func headingsSurviveTheirClassAndTheirWrapper() async throws {
+        // Distinct paragraphs: the same paragraph in two boxes near the top is a teaser and its copy.
         let html = """
-        <html><head><title>Guide</title></head><body><article><h1>Guide</h1><p>\(Self.para)</p>
-        <h2 class="header" id="h2-1"><a title="Permalink" href="#h2-1" aria-hidden="true"></a><span><strong>Governance ends in a boolean</strong></span></h2><p>\(Self.para)</p>
-        <div class="JumplinkHeader-m__jumplinkHeader" id="security"><div class="content-h2"><h2>Security</h2><a href="#security"><svg viewBox="0 0 8 8"><path d="M0 0"/></svg></a></div></div><p>\(Self.para)</p>
-        <div><div class="hkfm3h3"><h2 class="hkfm3h5">Rooq</h2><span><button aria-label="Save to a list"><svg viewBox="0 0 8 8"><path d="M0 0"/></svg></button></span></div><p>\(Self.para)</p></div>
+        <html><head><title>Guide</title></head><body><article><h1>Guide</h1><p>\(Self.para) (part 1)</p>
+        <h2 class="header" id="h2-1"><a title="Permalink" href="#h2-1" aria-hidden="true"></a><span><strong>Governance ends in a boolean</strong></span></h2><p>\(Self.para) (part 2)</p>
+        <div class="JumplinkHeader-m__jumplinkHeader" id="security"><div class="content-h2"><h2>Security</h2><a href="#security"><svg viewBox="0 0 8 8"><path d="M0 0"/></svg></a></div></div><p>\(Self.para) (part 3)</p>
+        <div><div class="hkfm3h3"><h2 class="hkfm3h5">Rooq</h2><span><button aria-label="Save to a list"><svg viewBox="0 0 8 8"><path d="M0 0"/></svg></button></span></div><p>\(Self.para) (part 4)</p></div>
         </article></body></html>
         """
         let body = try await extract(html)
