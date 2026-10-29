@@ -1,0 +1,575 @@
+{
+ "contents": {
+  "twoColumnSearchResultsRenderer": {
+   "primaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "itemSectionRenderer": {
+        "contents": [
+         {
+          "videoRenderer": {
+           "videoId": "8nZiR-vXAfw",
+           "title": {
+            "runs": [
+             {
+              "text": "I Tried Replacing All My Tech with a Used Apple Vision Pro"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "I Tried Replacing All My Tech with a Used Apple Vision Pro 15 minutes"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "15 minutes, 8 seconds"
+             }
+            },
+            "simpleText": "15:08"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "The Bald Coder",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CMQDENwwGAYiEwjO9tLpmd6XAxX9xZUCHXRdMjjKAQQJ4ywh",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@The-Bald-Coder",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCE3Q1BsHrW6FK4aSUdO32bQ",
+                "canonicalBaseUrl": "/@The-Bald-Coder"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "simpleText": "7 hours ago"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "86 views"
+             }
+            },
+            "simpleText": "86 views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CMQDENwwGAYiEwjO9tLpmd6XAxX9xZUCHXRdMjgyBnNlYXJjaFIKdmlzaW9uIHByb5oBAxD0JMoBBAnjLCE=",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=8nZiR-vXAfw&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "8nZiR-vXAfw",
+             "params": "qgMKdmlzaW9uIHByb7oDCgiMksmB2sPP8yq6AwsI5LHGj7nGzKy6AboDCginxo3sgKGDmle6AwsIlsrc4dmwp_KkAboDCwiW2-Sp8LakkvQBugMKCMX17O-Nk_7rBroDCgip46T1-82e7Xa6AwoIpNfkyP_P8_BOugMLCNbD0d-B1danrQG6AwsI15aQ5a_Vu4GAAboDCgji_uX1-ffQ3gm6AwsIn5qjjMadu43aAboDCwip6eGhx-bF9bABugMKCJXApYOjxsWzLroDCgjT3P6XuvnVrwW6AwoI3ay2wuTD2cgbugMKCLL49_aQqqvgDroDCgjFr82ovsSZmHK6AwoIpfjg1-qjj74v6gMCEAHyAwUN8iMBPw%3D%3D",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr4---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=f2766247ebd701fc&ip=71.212.192.107&initcwndbps=2397500&mt=1793241212&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "VzQNCA2DYyc",
+           "title": {
+            "runs": [
+             {
+              "text": "Vision Pro After 220 Days: 22x MORE impressive than iPhone Duo"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Vision Pro After 220 Days: 22x MORE impressive than iPhone Duo 17 minutes"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "17 minutes, 28 seconds"
+             }
+            },
+            "simpleText": "17:28"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "jEarpo Tech",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CPIDENwwGAIiEwjO9tLpmd6XAxX9xZUCHXRdMjjKAQQJ4ywh",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@jearpoTech",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UC0c4TYQme9xEZw0T4DK6AQQ",
+                "canonicalBaseUrl": "/@jearpoTech"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "simpleText": "4 days ago"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "8.3 thousand views"
+             }
+            },
+            "simpleText": "8.3K views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CPIDENwwGAIiEwjO9tLpmd6XAxX9xZUCHXRdMjgyBnNlYXJjaFIKdmlzaW9uIHByb5oBAxD0JMoBBAnjLCE=",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=VzQNCA2DYyc&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "VzQNCA2DYyc",
+             "params": "qgMKdmlzaW9uIHByb7oDCgiMksmB2sPP8yq6AwsI5LHGj7nGzKy6AboDCwiWytzh2bCn8qQBugMLCJbb5KnwtqSS9AG6AwoIxfXs742T_usGugMLCPyD3N7-yJi78gG6AwoIqeOk9fvNnu12ugMKCKTX5Mj_z_PwTroDCwjWw9HfgdXWp60BugMLCNeWkOWv1buBgAG6AwoI4v7l9fn30N4JugMLCJ-ao4zGnbuN2gG6AwsIqenhocfmxfWwAboDCgiVwKWDo8bFsy66AwoI09z-l7r51a8FugMKCN2stsLkw9nIG7oDCgiy-Pf2kKqr4A66AwoIxa_NqL7EmZhyugMKCKX44Nfqo4--L_IDBQ3yIwE_",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr1---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=57340d080d836327&ip=71.212.192.107&initcwndbps=2397500&mt=1793241192&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "Kuc-HaAySQw",
+           "title": {
+            "runs": [
+             {
+              "text": "Apple Should Be Embarrassed"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Apple Should Be Embarrassed 18 minutes"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "18 minutes, 35 seconds"
+             }
+            },
+            "simpleText": "18:35"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Snazzy Labs",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CJoEENwwGAAiEwjO9tLpmd6XAxX9xZUCHXRdMjjKAQQJ4ywh",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@snazzy",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCO2x-p9gg9TLKneXlibGR7w",
+                "canonicalBaseUrl": "/@snazzy"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "simpleText": "7 days ago"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "463 thousand views"
+             }
+            },
+            "simpleText": "463K views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CJoEENwwGAAiEwjO9tLpmd6XAxX9xZUCHXRdMjgyBnNlYXJjaFIKdmlzaW9uIHByb5oBAxD0JMoBBAnjLCE=",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=Kuc-HaAySQw&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "Kuc-HaAySQw",
+             "params": "qgMKdmlzaW9uIHByb7oDCwjkscaPucbMrLoBugMKCKfGjeyAoYOaV7oDCwiWytzh2bCn8qQBugMLCJbb5KnwtqSS9AG6AwoIxfXs742T_usGugMLCPyD3N7-yJi78gG6AwoIqeOk9fvNnu12ugMKCKTX5Mj_z_PwTroDCwjWw9HfgdXWp60BugMLCNeWkOWv1buBgAG6AwoI4v7l9fn30N4JugMLCJ-ao4zGnbuN2gG6AwsIqenhocfmxfWwAboDCgiVwKWDo8bFsy66AwoI09z-l7r51a8FugMKCN2stsLkw9nIG7oDCgiy-Pf2kKqr4A66AwoIxa_NqL7EmZhyugMKCKX44Nfqo4--L-oDAhAB8gMFDfIjAT8%3D",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr2---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=2ae73e1da032490c&ip=71.212.192.107&initcwndbps=2397500&mt=1793241192&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "jmKs28irSOE",
+           "title": {
+            "runs": [
+             {
+              "text": "Insta360 X6 Spatial Capture on Apple Vision Pro (Feels Like Time Travel)"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Insta360 X6 Spatial Capture on Apple Vision Pro (Feels Like Time Travel) 7 minutes, 33 seconds"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "7 minutes, 33 seconds"
+             }
+            },
+            "simpleText": "7:33"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Spatial Insider ᯅ",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CN8DENwwGAYiEwiT-IHqmd6XAxXCSvIAHZaqFKHKAQTHaGr5",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@spatialinsider",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UChQQI-C873A8RjnKRsLLGkw",
+                "canonicalBaseUrl": "/@spatialinsider"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "simpleText": "13 days ago"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "42 thousand views"
+             }
+            },
+            "simpleText": "42K views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CN8DENwwGAYiEwiT-IHqmd6XAxXCSvIAHZaqFKEyBnNlYXJjaFIKdmlzaW9uIHByb5oBAxD0JMoBBMdoavk=",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=jmKs28irSOE&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "jmKs28irSOE",
+             "params": "qgMKdmlzaW9uIHByb7oDCwjkscaPucbMrLoBugMKCIySyYHaw8_zKroDCwiWytzh2bCn8qQBugMKCKfGjeyAoYOaV7oDCgjdrLbC5MPZyBu6AwsIltvkqfC2pJL0AboDCgjF9ezvjZP-6wa6AwoIqeOk9fvNnu12ugMLCNbD0d-B1danrQG6AwsIn5qjjMadu43aAboDCgik1-TI_8_z8E66AwsIqenhocfmxfWwAboDCgiVwKWDo8bFsy66AwoIsvj39pCqq-AOugMKCOL-5fX599DeCboDCwicmeax8ZG38_IBugMLCNeWkOWv1buBgAG6AwoIvIrasLzKvYtCugMKCNPc_pe6-dWvBfIDBQ3yIwE_",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr1---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=8e62acdbc8ab48e1&ip=71.212.192.107&initcwndbps=2387000&mt=1793241429&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "ulkyM5HxmOQ",
+           "title": {
+            "runs": [
+             {
+              "text": "Once you ignore the HATERS, you’ll LOVE Vision Pro for Productivity"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Once you ignore the HATERS, you’ll LOVE Vision Pro for Productivity 13 minutes, 7 seconds"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "13 minutes, 7 seconds"
+             }
+            },
+            "simpleText": "13:07"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "jEarpo Tech",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CIcEENwwGAEiEwjO9tLpmd6XAxX9xZUCHXRdMjjKAQQJ4ywh",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@jearpoTech",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UC0c4TYQme9xEZw0T4DK6AQQ",
+                "canonicalBaseUrl": "/@jearpoTech"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "simpleText": "2 weeks ago"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "16 thousand views"
+             }
+            },
+            "simpleText": "16K views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CIcEENwwGAEiEwjO9tLpmd6XAxX9xZUCHXRdMjgyBnNlYXJjaFIKdmlzaW9uIHByb5oBAxD0JMoBBAnjLCE=",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=ulkyM5HxmOQ&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "ulkyM5HxmOQ",
+             "params": "qgMKdmlzaW9uIHByb7oDCgiMksmB2sPP8yq6AwoIp8aN7IChg5pXugMLCJbK3OHZsKfypAG6AwsIltvkqfC2pJL0AboDCgjF9ezvjZP-6wa6AwsI_IPc3v7ImLvyAboDCgip46T1-82e7Xa6AwoIpNfkyP_P8_BOugMLCNbD0d-B1danrQG6AwsI15aQ5a_Vu4GAAboDCgji_uX1-ffQ3gm6AwsIn5qjjMadu43aAboDCwip6eGhx-bF9bABugMKCJXApYOjxsWzLroDCgjT3P6XuvnVrwW6AwoI3ay2wuTD2cgbugMKCLL49_aQqqvgDroDCgjFr82ovsSZmHK6AwoIpfjg1-qjj74v8gMFDfIjAT8%3D",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr2---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=ba59323391f198e4&ip=71.212.192.107&initcwndbps=2397500&mt=1793241192&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "9CSRtwU5LZY",
+           "title": {
+            "runs": [
+             {
+              "text": "Apple Vision Pro: The $33B Flop That Humiliated Apple"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Apple Vision Pro: The $33B Flop That Humiliated Apple 12 minutes, 2 seconds"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "12 minutes, 2 seconds"
+             }
+            },
+            "simpleText": "12:02"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "JunkBondInvestor",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CM8DENwwGAQiEwjO9tLpmd6XAxX9xZUCHXRdMjjKAQQJ4ywh",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@JunkBondInvest",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UC6Qou-3PhL0F8IyuoJvW8pQ",
+                "canonicalBaseUrl": "/@JunkBondInvest"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "simpleText": "2 months ago"
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "30 thousand views"
+             }
+            },
+            "simpleText": "30K views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CM8DENwwGAQiEwjO9tLpmd6XAxX9xZUCHXRdMjgyBnNlYXJjaFIKdmlzaW9uIHByb5oBAxD0JMoBBAnjLCE=",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=9CSRtwU5LZY&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "9CSRtwU5LZY",
+             "params": "qgMKdmlzaW9uIHByb7oDCgiMksmB2sPP8yq6AwsI5LHGj7nGzKy6AboDCginxo3sgKGDmle6AwsIlsrc4dmwp_KkAboDCgjF9ezvjZP-6wa6AwsI_IPc3v7ImLvyAboDCgip46T1-82e7Xa6AwoIpNfkyP_P8_BOugMLCNbD0d-B1danrQG6AwsI15aQ5a_Vu4GAAboDCgji_uX1-ffQ3gm6AwsIn5qjjMadu43aAboDCwip6eGhx-bF9bABugMKCJXApYOjxsWzLroDCgjT3P6XuvnVrwW6AwoI3ay2wuTD2cgbugMKCLL49_aQqqvgDroDCgjFr82ovsSZmHK6AwoIpfjg1-qjj74v8gMFDfIjAT8%3D",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr1---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=f42491b705392d96&ip=71.212.192.107&initcwndbps=2397500&mt=1793241212&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         {
+          "videoRenderer": {
+           "videoId": "DsCtUQ7d_DI",
+           "title": {
+            "runs": [
+             {
+              "text": "Apple Vision Pro Is The BEST VR Headset in 2026?!"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "Apple Vision Pro Is The BEST VR Headset in 2026?! 11 minutes, 43 seconds"
+             }
+            }
+           },
+           "lengthText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "11 minutes, 43 seconds"
+             }
+            },
+            "simpleText": "11:43"
+           },
+           "ownerText": {
+            "runs": [
+             {
+              "text": "Viper VR & Tech",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CGAQ3DAYEyITCM720umZ3pcDFf3FlQIddF0yOMoBBAnjLCE=",
+               "commandMetadata": {
+                "webCommandMetadata": {
+                 "url": "/@viper.vr.tech1",
+                 "webPageType": "WEB_PAGE_TYPE_CHANNEL",
+                 "rootVe": 3611,
+                 "apiUrl": "/youtubei/v1/browse"
+                }
+               },
+               "browseEndpoint": {
+                "browseId": "UCKkbcEH5YknrzwUunbj-i0w",
+                "canonicalBaseUrl": "/@viper.vr.tech1"
+               }
+              }
+             }
+            ]
+           },
+           "shortViewCountText": {
+            "accessibility": {
+             "accessibilityData": {
+              "label": "2.3 thousand views"
+             }
+            },
+            "simpleText": "2.3K views"
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CGAQ3DAYEyITCM720umZ3pcDFf3FlQIddF0yODIGc2VhcmNoUgp2aXNpb24gcHJvmgEDEPQkygEECeMsIQ==",
+            "commandMetadata": {
+             "webCommandMetadata": {
+              "url": "/watch?v=DsCtUQ7d_DI&pp=ygUKdmlzaW9uIHBybw%3D%3D",
+              "webPageType": "WEB_PAGE_TYPE_WATCH",
+              "rootVe": 3832
+             }
+            },
+            "watchEndpoint": {
+             "videoId": "DsCtUQ7d_DI",
+             "params": "qgMKdmlzaW9uIHByb7oDCgiMksmB2sPP8yq6AwsI5LHGj7nGzKy6AboDCginxo3sgKGDmle6AwsIlsrc4dmwp_KkAboDCwiW2-Sp8LakkvQBugMKCMX17O-Nk_7rBroDCwj8g9ze_siYu_IBugMKCKnjpPX7zZ7tdroDCgik1-TI_8_z8E66AwsI1sPR34HV1qetAboDCwjXlpDlr9W7gYABugMKCOL-5fX599DeCboDCwifmqOMxp27jdoBugMLCKnp4aHH5sX1sAG6AwoIlcClg6PGxbMuugMKCNPc_pe6-dWvBboDCgjdrLbC5MPZyBu6AwoIxa_NqL7EmZhyugMKCKX44Nfqo4--L_IDBQ3yIwE_",
+             "playerParams": "ygUKdmlzaW9uIHBybw%3D%3D",
+             "watchEndpointSupportedOnesieConfig": {
+              "html5PlaybackOnesieConfig": {
+               "commonConfig": {
+                "url": "https://rr1---sn-jxou0gtapo3-nx5e.googlevideo.com/initplayback?source=youtube&oeis=1&c=WEB&oad=3200&ovd=3200&oaad=11000&oavd=11000&ocs=700&oewis=1&oputc=1&epbp=1&msp=1&odepv=1&id=0ec0ad510eddfc32&ip=71.212.192.107&initcwndbps=2397500&mt=1793241212&oweuc="
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

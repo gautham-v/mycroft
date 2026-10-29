@@ -29,6 +29,7 @@ public final class AppDatabase: Sendable {
         config.foreignKeysEnabled = true
         config.prepareDatabase { db in
             db.add(function: AppDatabase.isPostFunction)
+            db.add(function: AppDatabase.topicMatchFunction)
         }
         return config
     }
@@ -37,6 +38,16 @@ public final class AppDatabase: Sendable {
     public static let isPostFunction = DatabaseFunction("opendispatch_is_post", argumentCount: 1, pure: true) { values in
         guard let url = String.fromDatabaseValue(values[0]) else { return false }
         return PostSource.isPostURL(url)
+    }
+
+    /// `opendispatch_topic_matches(title, summary, keyword, excluded)` → 1 when `TopicMatcher` accepts the row. `excluded` is
+    /// the topic's "Leave out" words joined by newlines. Lets a topic's list pick matching items of the user's own sources in SQL,
+    /// so keyset paging stays correct.
+    public static let topicMatchFunction = DatabaseFunction("opendispatch_topic_matches", argumentCount: 4, pure: true) { values in
+        guard let keyword = String.fromDatabaseValue(values[2]) else { return false }
+        let excluded = (String.fromDatabaseValue(values[3]) ?? "").split(separator: "\n").map(String.init)
+        let title = String.fromDatabaseValue(values[0]) ?? ""
+        return TopicMatcher(keyword: keyword, excluded: excluded).matches(title: title, summary: String.fromDatabaseValue(values[1]))
     }
 
     /// Directory holding the database: Application Support/OpenDispatch (inside the sandbox container on macOS).
@@ -223,6 +234,43 @@ public final class AppDatabase: Sendable {
                 );
                 CREATE INDEX history_opened_idx ON history(opened_at DESC);
                 """)
+        }
+        // Topics: followed keyword searches, stored as sources of kind 'topic' with their options as JSON. SQLite can't change
+        // a CHECK constraint, so the table is rebuilt (the documented recipe; GRDB runs it with foreign keys off, so the items'
+        // ON DELETE CASCADE doesn't fire for the dropped table). The AUTOINCREMENT counter is carried over so ids aren't reused.
+        m.registerMigration("v8-topics") { db in
+            let seq = try Int64.fetchOne(db, sql: "SELECT seq FROM sqlite_sequence WHERE name = 'sources'")
+            try db.execute(sql: """
+                CREATE TABLE sources_new (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  title TEXT NOT NULL,
+                  url TEXT NOT NULL,
+                  feed_url TEXT NOT NULL UNIQUE,
+                  kind TEXT NOT NULL CHECK (kind IN ('rss', 'youtube', 'page', 'podcast', 'topic')),
+                  "group" TEXT NOT NULL,
+                  icon_url TEXT,
+                  last_fetched_at DATETIME,
+                  last_error TEXT,
+                  seen_urls TEXT,
+                  folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  pinned_at DATETIME,
+                  is_hidden BOOLEAN NOT NULL DEFAULT 0,
+                  notify_since DATETIME,
+                  topic_options TEXT
+                );
+                INSERT INTO sources_new (id, title, url, feed_url, kind, "group", icon_url, last_fetched_at, last_error, seen_urls,
+                                         folder_id, position, created_at, pinned_at, is_hidden, notify_since)
+                  SELECT id, title, url, feed_url, kind, "group", icon_url, last_fetched_at, last_error, seen_urls,
+                         folder_id, position, created_at, pinned_at, is_hidden, notify_since FROM sources;
+                DROP TABLE sources;
+                ALTER TABLE sources_new RENAME TO sources;
+                CREATE INDEX sources_folder_idx ON sources(folder_id);
+                """)
+            if let seq {
+                try db.execute(sql: "UPDATE sqlite_sequence SET seq = ? WHERE name = 'sources'", arguments: [seq])
+            }
         }
         return m
     }

@@ -70,6 +70,7 @@ public enum SyncStore {
         if let folderTitle { fields["folder"] = .string(folderTitle) }
         if let pinned = s.pinnedAt { fields["pinnedAt"] = .date(pinned) }
         if let icon = s.iconUrl { fields["iconUrl"] = .string(icon) }
+        if let options = s.topicOptions { fields["topicOptions"] = .string(options.json) }
         return SyncRecord(type: .source, name: SyncRecord.sourceName(feedUrl: s.feedUrl), fields: fields)
     }
 
@@ -323,6 +324,9 @@ public enum SyncStore {
             let position = Int(r["position"]?.intValue ?? 0)
             let pinnedAt = r["pinnedAt"]?.dateValue
             let isHidden = r["isHidden"]?.boolValue ?? false
+            // A topic's options travel with it; one that arrives without readable options keeps what this device has.
+            let isTopic = Topic.isTopicFeedURL(feedUrl)
+            let topicOptions = isTopic ? TopicOptions(json: r["topicOptions"]?.stringValue) : nil
             if var s = try Queries.source(db, feedUrl: feedUrl) {
                 let before = s
                 s.title = title
@@ -330,17 +334,24 @@ public enum SyncStore {
                 s.position = position
                 s.pinnedAt = pinnedAt
                 s.isHidden = isHidden
+                if let topicOptions, s.isTopic { s.topicOptions = topicOptions }
                 if s != before {
                     try s.update(db)
                     result.libraryChanged = true
                 }
             } else {
-                var s = Source(
-                    title: title, url: r["url"]?.stringValue ?? feedUrl, feedUrl: feedUrl,
-                    kind: r["kind"]?.stringValue.flatMap(SourceKind.init(rawValue:)) ?? .rss,
-                    group: r["group"]?.stringValue ?? SourceGroup.blogs, iconUrl: r["iconUrl"]?.stringValue,
-                    folderId: folderId, position: position, createdAt: r["createdAt"]?.dateValue ?? now,
-                    pinnedAt: pinnedAt, isHidden: isHidden)
+                // The kind of every other source comes with the record; a topic is known by its reserved feed URL.
+                var s = isTopic
+                    ? Source(
+                        title: title, url: Topic.siteURL, feedUrl: feedUrl, kind: .topic, group: SourceGroup.topics,
+                        folderId: folderId, position: position, createdAt: r["createdAt"]?.dateValue ?? now,
+                        pinnedAt: pinnedAt, isHidden: isHidden, topicOptions: topicOptions ?? TopicOptions(keyword: title))
+                    : Source(
+                        title: title, url: r["url"]?.stringValue ?? feedUrl, feedUrl: feedUrl,
+                        kind: r["kind"]?.stringValue.flatMap(SourceKind.init(rawValue:)) ?? .rss,
+                        group: r["group"]?.stringValue ?? SourceGroup.blogs, iconUrl: r["iconUrl"]?.stringValue,
+                        folderId: folderId, position: position, createdAt: r["createdAt"]?.dateValue ?? now,
+                        pinnedAt: pinnedAt, isHidden: isHidden)
                 try s.insert(db)
                 result.libraryChanged = true
                 result.addedSourceIDs.append(s.id)

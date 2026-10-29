@@ -23,7 +23,9 @@ public enum Queries {
     // MARK: Items
 
     /// WHERE conditions for view/source/folder/filter/search. `src` aliases the joined sources table.
-    static func conditions(_ q: ItemQuery, src: TableAlias<Source>) -> [SQLExpression] {
+    ///
+    /// `topic` is the topic source the query's `sourceId` names, when it does (see `topicScope`).
+    static func conditions(_ q: ItemQuery, src: TableAlias<Source>, topic: Source? = nil) -> [SQLExpression] {
         var c: [SQLExpression] = []
         let kind = src[Source.Columns.kind]
         let isPost = AppDatabase.isPostFunction(src[Source.Columns.url])
@@ -39,7 +41,21 @@ public enum Queries {
         }
         // Links opened from a new tab aren't part of the feed: they list only once saved.
         if q.view != .saved, q.sourceId == nil { c.append(!OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl])) }
-        if let s = q.sourceId { c.append(Item.Columns.sourceId == s) }
+        // Topic items stay out of the curated views: they list in their topic, Saved and History.
+        if q.view != .saved, q.sourceId == nil { c.append(kind != SourceKind.topic.rawValue) }
+        if let s = q.sourceId {
+            if let options = topic?.topicOptions, options.places.subscriptions {
+                // The topic's own matches, plus what the user's subscriptions say about the keyword.
+                let match = SQL("""
+                    opendispatch_topic_matches(\(Item.Columns.title), \(Item.Columns.summary), \(options.keyword), \(options.excluded.joined(separator: "\n")))
+                    """).sqlExpression
+                let subscribed = kind != SourceKind.topic.rawValue && !OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl]) && match
+                c.append(Item.Columns.sourceId == s || subscribed)
+            } else {
+                c.append(Item.Columns.sourceId == s)
+            }
+        }
+        if let expression = topicFilterCondition(q.topicFilter) { c.append(expression) }
         if let f = q.folderId { c.append(src[Source.Columns.folderId] == f) }
         switch q.filter {
         case .hn100?: c.append(Item.Columns.hnPoints >= 100)
@@ -73,6 +89,12 @@ public enum Queries {
         return c
     }
 
+    /// The topic a query's `sourceId` names, nil for any other source or none.
+    static func topicScope(_ db: Database, _ q: ItemQuery) throws -> Source? {
+        guard let id = q.sourceId, let s = try Source.fetchOne(db, key: id), s.isTopic else { return nil }
+        return s
+    }
+
     /// One page of items, newest first (published_at desc, id desc), each joined with its source.
     public static func items(_ db: Database, _ q: ItemQuery) throws -> ItemPage {
         let limit = min(max(q.limit, 1), 200)
@@ -80,7 +102,7 @@ public enum Queries {
         var req = Item
             .select(Item.listSelection)
             .including(required: Item.source.aliased(src))
-        for cond in conditions(q, src: src) { req = req.filter(cond) }
+        for cond in conditions(q, src: src, topic: try topicScope(db, q)) { req = req.filter(cond) }
         let rows = try req
             .order(Item.Columns.publishedAt.desc, Item.Columns.id.desc)
             .limit(limit + 1)
@@ -248,7 +270,8 @@ public enum Queries {
     // MARK: Sources
 
     /// All sources ordered by position, then title (GET /api/sources). Leaves out the OpenedLinks
-    /// holders, which aren't subscriptions, so nothing refreshes, lists, exports or syncs them.
+    /// holders, which aren't subscriptions, so nothing refreshes, lists, exports or syncs them. Topics are
+    /// included (refresh and sync need them); lists of what the user subscribes to use `subscriptions`.
     public static func sources(_ db: Database) throws -> [Source] {
         try Source
             .filter(!OpenedLinks.feedURLs.contains(Source.Columns.feedUrl))
@@ -352,14 +375,15 @@ public enum Queries {
         let through = try meta(db, MetaKey.notifiedThrough).flatMap(Int64.init) ?? 0
         guard let maxID = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM items"), maxID > through else { return [] }
         let alerts = try Row.fetchAll(db, sql: """
-            SELECT i.id, i.title, i.published_at, s.id AS source_id, s.title AS source_title
+            SELECT i.id, i.title, i.author, i.published_at, s.id AS source_id, s.title AS source_title, s.feed_url AS source_feed_url
             FROM items i JOIN sources s ON s.id = i.source_id
             WHERE i.id > ? AND i.id <= ? AND s.notify_since IS NOT NULL
               AND i.created_at >= s.notify_since AND i.published_at >= ? AND i.is_saved = 0
             ORDER BY i.published_at, i.id
             """, arguments: [through, maxID, now.addingTimeInterval(-NewPostAlert.maxAge)]).map {
             NewPostAlert(itemId: $0["id"], title: $0["title"], publishedAt: $0["published_at"],
-                         sourceId: $0["source_id"], sourceTitle: $0["source_title"])
+                         sourceId: $0["source_id"], sourceTitle: $0["source_title"], itemAuthor: $0["author"],
+                         isTopic: Topic.isTopicFeedURL($0["source_feed_url"]))
         }
         try setMeta(db, MetaKey.notifiedThrough, String(maxID))
         return alerts

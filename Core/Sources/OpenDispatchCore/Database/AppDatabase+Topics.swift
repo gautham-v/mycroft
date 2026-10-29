@@ -1,0 +1,51 @@
+import Foundation
+import GRDB
+
+/// Async wrappers over the topic queries for UI code.
+extension AppDatabase {
+
+    /// Topics in sidebar order.
+    public func topics() async throws -> [Source] {
+        try await reader.read { db in try Queries.topics(db) }
+    }
+
+    /// The topics now and again after each change to the sources table (a refresh's last-fetched stamp included),
+    /// whether made here or applied from iCloud.
+    public func observeTopics() -> AsyncValueObservation<[Source]> {
+        ValueObservation.tracking { db in try Queries.topics(db) }.values(in: reader)
+    }
+
+    /// The topic with this keyword (ignoring case and diacritics), or nil.
+    public func topic(keyword: String) async throws -> Source? {
+        try await reader.read { db in try Queries.topic(db, keyword: keyword) }
+    }
+
+    /// Follow a keyword; an existing topic with the same keyword is returned unchanged. Fill it with
+    /// `RefreshService.refreshSource(id:)`.
+    @discardableResult
+    public func createTopic(_ options: TopicOptions) async throws -> Source {
+        try await writer.write { db in try Queries.createTopic(db, options: options) }
+    }
+
+    /// Change a topic's keyword and options (the title follows the keyword).
+    @discardableResult
+    public func updateTopic(id: Int64, options: TopicOptions) async throws -> Source {
+        try await writer.write { db in try Queries.updateTopic(db, id: id, options: options) }
+    }
+
+    /// Stop following a topic and delete its items.
+    @discardableResult
+    public func deleteTopic(id: Int64) async throws -> Bool {
+        try await writer.write { db in try Queries.deleteTopic(db, id: id) }
+    }
+
+    /// Unread items per source id (topics included), counting each source's own items.
+    public func unreadCounts() async throws -> [Int64: Int] {
+        try await reader.read { db in try Queries.unreadCounts(db) }
+    }
+
+    /// The unread counts now and again after each change to items or read marks.
+    public func observeUnreadCounts() -> AsyncValueObservation<[Int64: Int]> {
+        ValueObservation.tracking { db in try Queries.unreadCounts(db) }.values(in: reader)
+    }
+}

@@ -95,7 +95,7 @@ final class ArticlePrefetcher {
         let ids = (try? await services.database.reader.read { db in
             try Int64.fetchAll(db, sql: """
                 SELECT i.id FROM items i JOIN sources s ON s.id = i.source_id
-                WHERE i.is_saved = 1 AND i.content_html IS NULL AND s.kind != 'youtube'
+                WHERE i.is_saved = 1 AND i.content_html IS NULL AND s.kind != 'youtube' AND i.video_id IS NULL
                 ORDER BY i.published_at DESC LIMIT ?
                 """, arguments: [Self.savedBatch])
         }) ?? []

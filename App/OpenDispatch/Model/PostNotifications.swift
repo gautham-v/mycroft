@@ -41,7 +41,7 @@ enum PostNotifications {
 
     private static func request(_ post: NewPostAlert, body: String) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = post.sourceTitle
+        content.title = post.heading
         content.body = body
         content.sound = .default
         // Grouped by source in Notification Center.

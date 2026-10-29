@@ -458,3 +458,164 @@ struct RefreshServiceTests {
         #expect(skippedEvents == ["finished false"])
     }
 }
+
+// MARK: Topics
+
+/// Answers a topic's search from a closure and records what it was asked.
+private struct FakeTopicSearch: TopicSearching {
+    var calls = RefreshCalls()
+    var respond: @Sendable (TopicOptions, TopicSubscriptions) -> TopicSearchOutcome
+
+    func search(_ options: TopicOptions, subscriptions: TopicSubscriptions, now: Date) async -> TopicSearchOutcome {
+        calls.add(options.keyword)
+        return respond(options, subscriptions)
+    }
+}
+
+@Suite("Topic refresh")
+struct TopicRefreshTests {
+    private func service(_ db: AppDatabase, scraper: RefreshFakeScraper = RefreshFakeScraper(), search: FakeTopicSearch,
+                         feeds: @escaping @Sendable (String) async throws -> Data = { _ in throw HTTPError.status(404) }) -> DefaultRefreshService {
+        DefaultRefreshService(
+            database: db, parser: DefaultFeedParser(), scraper: scraper, fetch: { url, _ in try await feeds(url) },
+            fallbacks: [:], feedTimeout: 15, concurrency: 4, topicSearch: search)
+    }
+
+    private func parsed(_ guid: String, _ title: String, url: String? = nil, age: TimeInterval = 3600, thumb: String? = nil,
+                        video: String? = nil, hnComments: String? = nil, points: Int? = nil) -> ParsedItem {
+        ParsedItem(guid: guid, url: url ?? "https://news.example.com/\(guid)", title: title, author: "Origin", publishedAt: Date().addingTimeInterval(-age),
+                   thumbnailUrl: thumb, videoId: video, hnPoints: points, hnCommentsUrl: hnComments)
+    }
+
+    private func outcome(_ items: [ParsedItem], failures: [TopicPlace: String] = [:]) -> TopicSearchOutcome {
+        TopicSearchOutcome(items: items, searched: TopicPlace.allCases, failures: failures)
+    }
+
+    @Test func aTopicStoresItsMatchesAndFillsImmediately() async throws {
+        let db = try Fixture.db()
+        let topic = try await db.createTopic(TopicOptions(keyword: "vision pro"))
+        let search = FakeTopicSearch { _, _ in
+            outcome([
+                parsed("a", "Vision Pro A"), parsed("hn:1", "Vision Pro on HN", url: "https://news.example.com/hn", hnComments: "https://news.ycombinator.com/item?id=1", points: 150),
+                parsed("yt:vid00000001", "Vision Pro video", url: "https://www.youtube.com/watch?v=vid00000001", thumb: "https://i.ytimg.com/vi/x/hq.jpg", video: "vid00000001"),
+                // Past retention: not stored.
+                parsed("old", "Vision Pro old", age: 20 * 86_400),
+            ])
+        }
+        let svc = service(db, search: search)
+        #expect(try await svc.refreshSource(id: topic.id) == 3)
+        #expect(search.calls.all == ["vision pro"])
+        let rows = try itemRows(db, sourceId: topic.id)
+        #expect(rows.map(\.guid) == ["a", "hn:1", "yt:vid00000001"])
+        #expect(rows.first { $0.guid == "hn:1" }?.hnPoints == 150)
+        let after = try #require(try await db.source(id: topic.id))
+        #expect(after.lastFetchedAt != nil && after.lastError == nil)
+    }
+
+    @Test func repeatsAndLinksAlreadyStoredAreNotStoredAgain() async throws {
+        let db = try Fixture.db()
+        let topic = try await db.createTopic(TopicOptions(keyword: "vision pro"))
+        let round = SharedValue<Int>(0)
+        let search = FakeTopicSearch { _, _ in
+            let n = round.mutate { $0 += 1; return $0 }
+            if n == 1 { return outcome([parsed("news-1", "Vision Pro story", url: "https://news.example.com/story?utm_source=x")]) }
+            return outcome([
+                parsed("news-1", "Vision Pro story, updated", url: "https://news.example.com/story?utm_source=x"),
+                // The same story as a Hacker News submission: the link is already here.
+                parsed("hn:5", "Vision Pro story", url: "https://www.news.example.com/story/", hnComments: "https://news.ycombinator.com/item?id=5", points: 200),
+                parsed("fresh", "Another Vision Pro story"),
+            ])
+        }
+        let svc = service(db, search: search)
+        #expect(try await svc.refreshSource(id: topic.id) == 1)
+        #expect(try await svc.refreshSource(id: topic.id) == 1)
+        let rows = try itemRows(db, sourceId: topic.id)
+        #expect(rows.map(\.guid) == ["fresh", "news-1"])
+        #expect(rows.first { $0.guid == "news-1" }?.title == "Vision Pro story, updated")
+    }
+
+    @Test func articlesWithoutAPictureGetTheirPages() async throws {
+        let db = try Fixture.db()
+        let topic = try await db.createTopic(TopicOptions(keyword: "vision pro"))
+        let search = FakeTopicSearch { _, _ in
+            outcome([parsed("a", "Vision Pro A", url: "https://news.example.com/a"), parsed("b", "Vision Pro B", url: "https://news.example.com/b", thumb: "https://cdn.example/b.jpg")])
+        }
+        let scraper = RefreshFakeScraper(images: ["https://news.example.com/a": PageImageResult(image: "https://news.example.com/a.png", final: true)])
+        _ = try await service(db, scraper: scraper, search: search).refreshSource(id: topic.id)
+        let rows = try itemRows(db, sourceId: topic.id)
+        #expect(rows.first { $0.guid == "a" }?.thumbnailUrl == "https://news.example.com/a.png")
+        #expect(rows.first { $0.guid == "b" }?.thumbnailUrl == "https://cdn.example/b.jpg")
+        #expect(scraper.calls.all.filter { $0.hasPrefix("image") } == ["image https://news.example.com/a"])
+    }
+
+    @Test func anErrorIsRecordedOnlyWhenEveryPlaceFailed() async throws {
+        let db = try Fixture.db()
+        let topic = try await db.createTopic(TopicOptions(keyword: "vision pro"))
+        let mode = SharedValue<Int>(0)
+        let search = FakeTopicSearch { _, _ in
+            switch mode.value {
+            case 0: return TopicSearchOutcome(items: [], searched: TopicPlace.allCases, failures: [.news: "HTTP 503", .discussions: "Timed out", .media: "HTTP 500"])
+            case 1: return TopicSearchOutcome(items: [], searched: TopicPlace.allCases, failures: [.news: "HTTP 503"])
+            default: return TopicSearchOutcome(items: [], searched: [])
+            }
+        }
+        let svc = service(db, search: search)
+        await #expect(throws: TopicSearchError.self) { try await svc.refreshSource(id: topic.id) }
+        #expect(try await db.source(id: topic.id)?.lastError == "HTTP 503")
+
+        // One place working is a success, and clears the error.
+        mode.mutate { $0 = 1 }
+        #expect(try await svc.refreshSource(id: topic.id) == 0)
+        #expect(try await db.source(id: topic.id)?.lastError == nil)
+
+        // Only subscriptions turned on: nothing is searched, and that isn't a failure.
+        mode.mutate { $0 = 2 }
+        #expect(try await svc.refreshSource(id: topic.id) == 0)
+        #expect(try await db.source(id: topic.id)?.lastError == nil)
+    }
+
+    @Test func refreshAllRefreshesTopicsWithTheSourcesAndTellsThemWhatIsFollowed() async throws {
+        let db = try Fixture.db()
+        let blog = try Fixture.source(db, title: "Blog", url: "https://blog.example.com", feedUrl: "https://blog.example.com/feed")
+        let topic = try await db.createTopic(TopicOptions(keyword: "vision pro"))
+        let seen = SharedValue<[Bool]>([])
+        let search = FakeTopicSearch { _, subs in
+            seen.mutate { $0.append(subs.follows(host: "blog.example.com")) }
+            return outcome([parsed("t1", "Vision Pro T1")])
+        }
+        let svc = service(db, search: search) { url in
+            #expect(url == "https://blog.example.com/feed")
+            return RefreshFixture.rss([.init(guid: "b1", link: "https://blog.example.com/b1", title: "B1")])
+        }
+        let result = try await svc.refreshAll(force: true)
+        #expect(result.results.count == 2 && result.results.allSatisfy { $0.ok })
+        #expect(result.results.first { $0.sourceId == topic.id }?.added == 1)
+        #expect(try itemRows(db, sourceId: blog.id).map(\.guid) == ["b1"])
+        #expect(try itemRows(db, sourceId: topic.id).map(\.guid) == ["t1"])
+        // The topic is told which sites the user follows (for the notable rule), and a topic isn't one of them.
+        #expect(seen.value == [true])
+        #expect(search.calls.all == ["vision pro"])
+    }
+
+    @Test func oldTopicItemsArePrunedButSavedOnesStay() async throws {
+        let db = try Fixture.db()
+        let topic = try await db.createTopic(TopicOptions(keyword: "vision pro"))
+        let rows = try Fixture.items(db, sourceId: topic.id, [
+            ParsedItem(guid: "old", url: "https://x.example/old", title: "Vision Pro old", publishedAt: Date().addingTimeInterval(-20 * 86_400)),
+            ParsedItem(guid: "kept", url: "https://x.example/kept", title: "Vision Pro kept", publishedAt: Date().addingTimeInterval(-20 * 86_400)),
+            ParsedItem(guid: "new", url: "https://x.example/new", title: "Vision Pro new", publishedAt: Date()),
+        ])
+        try await db.setSaved(itemId: rows[1].id, saved: true)
+        _ = try await db.pruneOldItems()
+        #expect(try itemRows(db, sourceId: topic.id).map(\.guid) == ["kept", "new"])
+    }
+}
+
+/// A value several concurrent fakes share.
+private final class SharedValue<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T { lock.lock(); defer { lock.unlock() }; return stored }
+    @discardableResult func mutate<R>(_ body: (inout T) -> R) -> R { lock.lock(); defer { lock.unlock() }; return body(&stored) }
+}

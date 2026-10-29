@@ -41,12 +41,26 @@ public struct DefaultExploreSearch: ExploreSearching {
     // MARK: Videos
 
     public func videos(_ query: String) async throws -> ExploreVideoResults {
+        try await search(query, params: nil, language: language)
+    }
+
+    /// The search filter that sorts by upload date and keeps the last month (innertube `params`, as the website sends
+    /// them for Filters: Upload date: This month, Sort by: Upload date).
+    static let recentParams = "CAISAggE"
+
+    public func recentVideos(_ query: String) async throws -> ExploreVideoResults {
+        // English, so "3 hours ago" can be read as a date whatever language the system speaks.
+        try await search(query, params: Self.recentParams, language: "en")
+    }
+
+    private func search(_ query: String, params: String?, language: String) async throws -> ExploreVideoResults {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return ExploreVideoResults() }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "context": ["client": ["clientName": "WEB", "clientVersion": Self.clientVersion, "hl": language, "gl": region]],
             "query": q,
         ]
+        if let params { body["params"] = params }
         let (data, res) = try await fetch(Self.searchURL, try JSONSerialization.data(withJSONObject: body))
         guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
         return try Self.results(inSearch: data)
@@ -141,16 +155,27 @@ public struct DefaultExploreSearch: ExploreSearching {
     // MARK: Episodes
 
     public func episodes(_ query: String) async throws -> [ExploreEpisode] {
+        try await episodes(query, fetchLimit: Self.episodeFetchLimit, perShow: ApplePodcastEpisode.searchPerShow, limit: Self.episodeLimit)
+    }
+
+    /// Topics keep the recent ones, so ask for the most iTunes gives and let a show have a few.
+    static let recentEpisodeFetchLimit = 200
+
+    public func recentEpisodes(_ query: String) async throws -> [ExploreEpisode] {
+        try await episodes(query, fetchLimit: Self.recentEpisodeFetchLimit, perShow: 4, limit: 80)
+    }
+
+    private func episodes(_ query: String, fetchLimit: Int, perShow: Int, limit: Int) async throws -> [ExploreEpisode] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return [] }
         var c = URLComponents(string: "https://itunes.apple.com/search")!
         c.queryItems = [
             URLQueryItem(name: "media", value: "podcast"), URLQueryItem(name: "entity", value: "podcastEpisode"),
-            URLQueryItem(name: "limit", value: String(Self.episodeFetchLimit)), URLQueryItem(name: "country", value: region),
+            URLQueryItem(name: "limit", value: String(fetchLimit)), URLQueryItem(name: "country", value: region),
             URLQueryItem(name: "term", value: q),
         ]
         let (data, res) = try await fetch(c.string!, nil)
         guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
-        return try ApplePodcastEpisode.exploreEpisodes(search: data, country: region.lowercased(), limit: Self.episodeLimit)
+        return try ApplePodcastEpisode.exploreEpisodes(search: data, country: region.lowercased(), perShow: perShow, limit: limit)
     }
 }

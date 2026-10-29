@@ -1,0 +1,47 @@
+{
+ "hits": [
+  {
+   "objectID": "50251344",
+   "title": "Three new discoveries in mathematics, computer science, and physics",
+   "url": "https://openai.com/index/building-scientific-understanding-with-academic-communities/",
+   "story_text": "Related:<p><i>The Exponential Time Hypothesis Is False [pdf]</i> - <a href=\"https:&#x2F;&#x2F;news.ycombinator.com&#x2F;item?id=50251661\">https:&#x2F;&#x2F;news.ycombinator.com&#x2F;item?id=50251661</a>",
+   "author": "jonluca",
+   "points": 1149,
+   "num_comments": 693,
+   "created_at_i": 1793050528,
+   "created_at": "2026-10-26T21:35:28Z"
+  },
+  {
+   "objectID": "50200997",
+   "title": "Ask HN: If the models are so good, why doesn't OpenAI just start 100 companies?",
+   "story_text": "Title is a bit of an exaggeration but the question is more: if the frontier models are so good, why even sell them as your primary money maker?<p>Couldn&#x27;t OpenAI or Anthropic make a lot more money by just starting companies themselves that leverage the models and building their own products?<p>Is selling tokens really the best strategy?<p>Especially with commodification and prices declining wouldn&#x27;t that indicate there is more money to be made on the application-side of the models rather than the utility side",
+   "author": "ex-aws-dude",
+   "points": 680,
+   "num_comments": 753,
+   "created_at_i": 1792703035,
+   "created_at": "2026-10-22T21:03:55Z"
+  },
+  {
+   "objectID": "50214416",
+   "title": "Securing our frontier model training environment",
+   "url": "https://openai.com/index/securing-our-frontier-model-training-environment/",
+   "author": "pretext",
+   "points": 126,
+   "num_comments": 121,
+   "created_at_i": 1792785056,
+   "created_at": "2026-10-23T19:50:56Z"
+  },
+  {
+   "objectID": "50283918",
+   "title": "OpenAI API Credits of 100/200/500 on Pro Plans",
+   "url": "https://help.openai.com/en/articles/20001626-api-credits-benefit-for-eligible-chatgpt-subscriptions#credit-amounts",
+   "author": "super_linear",
+   "points": 1,
+   "num_comments": 0,
+   "created_at_i": 1793241379,
+   "created_at": "2026-10-29T02:36:19Z"
+  }
+ ],
+ "nbHits": 4,
+ "page": 0
+}

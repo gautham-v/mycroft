@@ -1090,3 +1090,33 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
 - `openExploreVideo(_:)`: stores under the pasted link's address (`OpenedLinks.videosFeedURL`), so the same video opened either way is one row.
   The watch page is still read (6 s) because the description is only there; when it can't be, the item is built from the hit (title, channel as
   author, length, `hqdefault` thumbnail; `OpenedLinks.item(video:)`) rather than the "YouTube video" fallback. An opened video is returned as is, without a request.
+
+### Topics (Core) — 2026-10-28
+A Topic is a followed keyword search. It is a row of `sources` (kind `topic`) whose items are what a refresh found outside the
+subscriptions, so refresh, unread counts, Mark All as Read, Notify on New Matches (`notify_since`, `takeNewPostAlerts`), 14-day retention, Saved and
+History treat it like any source. Migration `v8-topics` rebuilds `sources` (new CHECK) and adds `topic_options` (JSON).
+- Identity: `feed_url` = `opendispatch:topic:<uuid>` (`Topic.newFeedURL()`, `Source.isTopic`), never derived from the keyword; `title` = the keyword as
+  typed (it follows edits); `url` = `Topic.siteURL`; `group` = `SourceGroup.topics`. Options: `Source.topicOptions: TopicOptions` (keyword, `excluded`,
+  `notableOnly`, `places: TopicPlaces` (news, discussions, media, subscriptions), `skipPaywalled`); encoded with sorted keys; missing keys decode as defaults.
+- Lists: `Queries.sources` still returns topics (refresh and sync need them). `Queries.subscriptions` / `AppDatabase.sources()` / `sourcesAndFolders()` leave
+  them out (sidebar tree, Settings, Sources tab, add-source duplicate check); `Queries.topics` / `AppDatabase.topics()` / `observeTopics()` list them.
+  `SourceList` functions skip topics (`SourceList.topics` lists them). OPML export skips them. Unread counts: `Queries.unreadCounts` / `AppDatabase.unreadCounts()` /
+  `observeUnreadCounts()` give `[sourceId: unread]` of each source's own items.
+- API: `AppDatabase.createTopic(_:)` (an existing topic with the same keyword is returned unchanged), `updateTopic(id:options:)` (title follows the keyword; unsaved items
+  that no longer match are removed), `deleteTopic(id:)`, `topic(keyword:)`. Notify: the existing `setSourceNotify`. `NewPostAlert` carries `itemAuthor`/`isTopic`;
+  `heading` is "<keyword> · <origin>" for a topic.
+- Items: a topic's items never appear in All / Articles / Posts / Video / Podcasts / folder views or searches; they list in `ItemQuery(sourceId: topic.id)`, Saved and
+  History. With `places.subscriptions` on, that list also includes items of the user's own sources whose title or summary match (`opendispatch_topic_matches`, same rule as
+  `TopicMatcher`), keyset paging unchanged. `ItemQuery.topicFilter` (`TopicContentFilter`: all / articles / discussions / videos / episodes) drives the chips.
+- Reading: `Source.shown(for:)` (already used by `FeedItem` rows) rewrites a topic row's `kind` per item: a video id makes it `.youtube`, audio `.podcast`, else `.rss`, and
+  `url` becomes the item's site. So `item.source.kind` / `.type`, History's `sourceKind`, transcripts and Copy as Markdown follow the item; use `source.isTopic` (not `kind == .topic`)
+  and `item.originName` (the author: Hacker News, publisher, channel, show) for the origin. `Source.holdsStandaloneItems` marks sources whose items aren't entries of their own feed.
+- Search (`Topics/`): `TopicSearching` / `DefaultTopicSearch` (injectable fetch and `ExploreSearching`), no keys. News: Bing News RSS (`qft=sortbydate`; article URL from the
+  `apiclick` link's `url`; publisher from `News:Source`; Google News links need JavaScript so it is not used). Discussions: Hacker News via Algolia (points, comments, discussion
+  URL) and Reddit (`search.json`, falling back to `search.rss`, which has no score). Media: YouTube (innertube `params` = last month by upload date, English so "3 hours ago"
+  reads as a date) and the iTunes episode search (up to 200 hits, 4 per show), items identical to Explore's opened videos and episodes. Everything is filtered by recency,
+  `TopicMatcher` (all keyword words, none of the excluded; a word matches at word starts, short ones whole; the site host counts as a mention for news and Hacker News),
+  `TopicPaywalls` (host suffix or publisher name), notable when asked, and capped at 30 per provider. A place fails when each of its providers did; the topic records
+  `last_error` only when every searched place failed (`TopicSearchOutcome.allFailed`).
+- Sync: the Source record gains `topicOptions` (hashed, so an edit propagates). An incoming Source with a topic feed URL is inserted as a topic with those options.
+  `notify_since` stays per device. Adding the field to the Source record type needs the CloudKit Production schema to be deployed before a release carries topics.

@@ -137,7 +137,14 @@ extension Source {
 
     /// The source an item names in lists and the reader: this one, or for an opened link the item's own
     /// site (a video's channel, an episode's show), so it reads like an article from any other source.
+    ///
+    /// A topic holds a mix, so its kind is decided per item here, and everything that reads `source.kind` or
+    /// `source.type` of a list row (the player to use, transcripts, Copy as Markdown, History) follows the
+    /// item: a video id makes it a `.youtube` item, audio a `.podcast` one, anything else an `.rss` article.
+    /// The title stays the keyword (use `isTopic` and the item's author for the origin) and the URL becomes the
+    /// item's own site, so the badge shows its favicon.
     public func shown(for item: Item) -> Source {
+        if isTopic { return shownAsTopicItem(item) }
         guard isOpenedLinks else { return self }
         var s = self
         if kind == .youtube {
@@ -153,6 +160,31 @@ extension Source {
         }
         return s
     }
+}
+
+extension Source {
+    private func shownAsTopicItem(_ item: Item) -> Source {
+        var s = self
+        if item.videoId != nil {
+            s.kind = .youtube
+            s.url = "https://www.youtube.com"
+        } else {
+            s.kind = item.audioUrl != nil ? .podcast : .rss
+            if let c = URLComponents(string: item.url), let scheme = c.scheme, let h = c.host { s.url = "\(scheme)://\(h)" }
+        }
+        return s
+    }
+
+    /// What to call where an item came from in text with no room for the topic's keyword (Copy as Markdown, a webhook): the
+    /// source's title, or for a topic's item its own origin (Hacker News, a publisher, a channel, a show).
+    public func originName(of item: Item) -> String {
+        guard isTopic, let author = item.author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty else { return title }
+        return author
+    }
+
+    /// The items aren't entries of this source's own feed: an opened link's holder or a topic. Content for
+    /// them is never taken from the feed, and an episode is looked up through its Apple Podcasts address.
+    public var holdsStandaloneItems: Bool { isOpenedLinks || isTopic }
 }
 
 extension OpenedLinks {

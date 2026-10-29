@@ -8,6 +8,7 @@ Single-user RSS/YouTube/podcast reader, native for macOS 15+ and iOS/iPadOS 26+.
   - `Models/`, `Database/` (schema migrations, queries, seed + default folders, `meta`), `Support/` (HTTP with the `OpenDispatch/1.0` UA, time/text/URL helpers).
   - Services behind protocols, wired once in `OpenDispatchServices.live(database:)`: `FeedParser` (RSS/Atom/RDF, YouTube, HN, podcasts), `FeedDetector` + `OPMLCoding`, `PageScraper` (feedless listing pages), `ContentExtractor` (article text), `RefreshService` (refresh pipeline), `IntegrationService` (Readwise/webhook), `ContentService` (cached reader content).
 - **App (`App/OpenDispatch`)**: `AppModel` (`@MainActor @Observable`, the single source of UI state, calls the services with `await`), `AppSettings` (UserDefaults JSON), design tokens in `Design/`, views in `Views/` (Sidebar, Feed, Reader, Sources, Settings, Shared).
+- Topics: a followed keyword search is a source of kind `topic` (`feed_url` `opendispatch:topic:<uuid>`, options in `topic_options`) whose refresh searches news (Bing News RSS), Hacker News, Reddit, YouTube and the iTunes episode search, with no keys, and stores the matches as items. See `PORT.md` (Topics).
 - Concurrency: services are `Sendable`; network and parsing work runs off the main actor; WebKit work runs on the main actor.
 
 ## Design (from approved mockup)

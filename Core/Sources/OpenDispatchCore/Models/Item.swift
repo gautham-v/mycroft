@@ -179,6 +179,8 @@ public struct FeedItem: Sendable, Hashable, Identifiable {
 
     public var id: Int64 { item.id }
     public var isSaved: Bool { item.isSaved }
+    /// Where the item came from: its source's title, or for a topic's item its author (a publisher, channel, show, "Hacker News").
+    public var originName: String { source.originName(of: item) }
     public var cursor: ItemCursor { ItemCursor(publishedAt: item.publishedAt, id: item.id) }
 }
 

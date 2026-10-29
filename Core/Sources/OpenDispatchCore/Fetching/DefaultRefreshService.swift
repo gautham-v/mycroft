@@ -19,6 +19,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     public static let thumbBudget: TimeInterval = 20
     /// Items considered per source per refresh (`fresh.slice(0, 100)`).
     public static let maxItemsPerFetch = 100
+    /// Items considered per topic per refresh: up to 30 from each of the five providers.
+    public static let maxTopicItemsPerFetch = 150
     /// Sources fetched at once. The web started all of them; URLSession caps per-host connections anyway.
     public static let sourceConcurrency = 12
 
@@ -29,16 +31,19 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     let fallbacks: [String: [String]]
     let feedTimeout: TimeInterval
     let concurrency: Int
+    let topicSearch: any TopicSearching
 
-    public init(database: AppDatabase, parser: any FeedParser, scraper: any PageScraper) {
-        self.init(database: database, parser: parser, scraper: scraper, fetch: Self.liveFetch)
+    /// `topicSearch` finds a topic's matches outside the subscriptions; tests pass a fake.
+    public init(database: AppDatabase, parser: any FeedParser, scraper: any PageScraper,
+                topicSearch: any TopicSearching = DefaultTopicSearch()) {
+        self.init(database: database, parser: parser, scraper: scraper, fetch: Self.liveFetch, topicSearch: topicSearch)
     }
 
     /// Tests: inject the feed transport, fallbacks, timeout and concurrency.
     init(
         database: AppDatabase, parser: any FeedParser, scraper: any PageScraper, fetch: @escaping RefreshFeedFetch,
         fallbacks: [String: [String]] = Seed.feedFallbacks, feedTimeout: TimeInterval = Self.feedTimeout,
-        concurrency: Int = Self.sourceConcurrency
+        concurrency: Int = Self.sourceConcurrency, topicSearch: any TopicSearching = DefaultTopicSearch()
     ) {
         self.database = database
         self.parser = parser
@@ -47,6 +52,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         self.fallbacks = fallbacks
         self.feedTimeout = feedTimeout
         self.concurrency = max(1, concurrency)
+        self.topicSearch = topicSearch
     }
 
     /// fetchFeedText: GET with the feed Accept header; non-2xx throws "HTTP <status>".
@@ -122,6 +128,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     /// refreshSource(src): fetch, dedupe, upsert, record the attempt, then backfill thumbnails. Returns items
     /// added. On failure records last_error and rethrows.
     func refresh(_ src: Source) async throws -> Int {
+        if src.kind == .topic { return try await refreshTopic(src) }
         do {
             let stored = try await database.reader.read { try Queries.storedItemKeys($0, sourceId: src.id) }
             let (parsed, update) = try await sourceItems(src, stored: stored)
@@ -143,6 +150,37 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             if src.kind == .rss || src.kind == .podcast {
                 _ = try? await backfillThumbnails(sourceId: src.id, fresh: Self.newThumbTargets(rows))
             }
+            return rows.filter(\.inserted).count
+        } catch {
+            let message = HTTP.message(error)
+            try? await database.writer.write { db in
+                try Queries.markSourceFetched(db, sourceId: src.id, at: Date(), error: message)
+            }
+            throw error
+        }
+    }
+
+    /// A topic's refresh: search the places it follows, then store the matches like a source's items. Matches repeating a
+    /// stored item's link under another guid (a news article that was a Hacker News story) are dropped, the cut-off keeps pruned
+    /// items from coming back, and article items without a picture get their page's. Errors are recorded only when every
+    /// place failed; a place that worked makes the refresh a success.
+    func refreshTopic(_ src: Source) async throws -> Int {
+        do {
+            guard let options = src.topicOptions else { throw QueryError.invalid("Topic has no options") }
+            let (stored, subscribed) = try await database.reader.read { db in
+                (try Queries.storedItemKeys(db, sourceId: src.id), try Queries.subscriptions(db))
+            }
+            let outcome = await topicSearch.search(options, subscriptions: TopicSubscriptions(sources: subscribed), now: Date())
+            if outcome.allFailed { throw TopicSearchError(outcome.errorMessage ?? "Nothing could be searched") }
+            let cutoff = Retention.cutoff()
+            let fresh = outcome.items.filter { $0.publishedAt >= cutoff }
+            let unique = FeedDedupe.dedupe(Array(fresh.prefix(Self.maxTopicItemsPerFetch)), stored: stored, linkOnly: true)
+            let rows = try await database.writer.write { db in
+                let rows = try Queries.upsertItems(db, sourceId: src.id, items: unique)
+                try Queries.markSourceFetched(db, sourceId: src.id, at: Date(), error: nil)
+                return rows
+            }
+            _ = try? await backfillThumbnails(sourceId: src.id, fresh: Self.newThumbTargets(rows))
             return rows.filter(\.inserted).count
         } catch {
             let message = HTTP.message(error)

@@ -14,7 +14,9 @@ public struct DefaultOPMLCoder: OPMLCoding {
 
     /// Folders (in the order given, empty ones left out) as nested outlines, then unfiled sources at
     /// the top level. Sources whose folder isn't in `folders` are exported unfiled rather than dropped.
-    public func serialize(folders: [Folder], sources: [Source], now: Date) -> String {
+    public func serialize(folders: [Folder], sources allSources: [Source], now: Date) -> String {
+        // Topics are searches, not feeds: they aren't exported.
+        let sources = allSources.filter { !$0.isTopic }
         var lines = [
             #"<?xml version="1.0" encoding="UTF-8"?>"#,
             #"<opml version="2.0" xmlns:openfeed="\#(Self.namespace)">"#,
