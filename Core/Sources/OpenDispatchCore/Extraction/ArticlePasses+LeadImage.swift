@@ -63,7 +63,7 @@ public enum LeadImage {
 
     // MARK: Image identity
 
-    private static let sizeSegment = P("^[a-z]{0,3}\\d+(?:x\\d*)?(?:[-_][a-z]{0,3}\\d+(?:x\\d*)?)*$", caseInsensitive: true)
+    private static let sizeSegment = P("^s\\d{3,4}[a-z]$|^[a-z]{0,3}\\d+(?:x\\d*)?(?:[-_][a-z]{0,3}\\d+(?:x\\d*)?)*$", caseInsensitive: true)
     private static let hostSegment = P("^(?:[a-z0-9-]+\\.)+[a-z]{2,}$", caseInsensitive: true)
     private static let imageExt = P("\\.(?:jpe?g|png|gif|webp|avif|svg|bmp|heic)$", caseInsensitive: true)
     private static let sizeSuffix = P("(?:[-_]\\d{1,5}x\\d{1,5}|[-_]\\d{3,5}-(?:[5-9]\\d|100)|-e\\d{6,}|-scaled)$")

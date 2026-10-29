@@ -145,7 +145,7 @@ public enum EmbeddedPosts {
             }
         }
         let media = mediaItems(json["mediaDetails"] as? [[String: Any]] ?? [])
-        let body = T.bodyHTML(T.withoutMediaLinks(text, links: links), links: links)
+        let body = T.bodyHTML(T.withoutMediaLinks(decodedEntities(text), links: links), links: links)
         let who = T.whoHTML(T.User(name: name, handle: handle, avatar: avatar), date: nil)
             .replacingOccurrences(of: "</div>", with: "<span class=\"x-net\"></span></div>")
         let date = (json["created_at"] as? String).flatMap(ISO8601.date(from:))
@@ -153,7 +153,7 @@ public enum EmbeddedPosts {
         if let likes = json["favorite_count"] as? Int, likes > 0 { foot.append(count(likes, "like")) }
         if let replies = json["conversation_count"] as? Int, replies > 0 { foot.append(count(replies, "reply", plural: "replies")) }
         let footHTML = "<div class=\"x-foot\">\(foot.map { "<span>\($0)</span>" }.joined())<a class=\"x-link\" href=\"\(DOM.escapeAttr(canonical))\">Open on X</a></div>"
-        let html = "<div class=\"x-post x-embed\">\(who)\(body)\(T.mediaHTML(media))\(footHTML)</div>"
+        let html = "<div class=\"x-post x-embed\">\(who)\(body)\(T.mediaHTML(media))\(quotedHTML(json["quoted_tweet"] as? [String: Any]))\(footHTML)</div>"
         return ArticleSanitizer.sanitize(html)
     }
 

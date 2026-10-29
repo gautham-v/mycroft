@@ -52,6 +52,6 @@ public enum SiteAudio {
             }
             DOM.remove(module)
         }
-        return found
+        return found ?? ArticlePasses.podcastAudio(document)
     }
 }
