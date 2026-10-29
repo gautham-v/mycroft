@@ -5,12 +5,14 @@ import SwiftUI
 /// Save; each configured target has a test button and Remove. The token never comes back from the
 /// Keychain: the field starts empty and the status shows its hint ("Token …abcd"). Below them, the
 /// Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field. Last, the sites
-/// the app is signed in to (X for Explore's posts and their replies, Reddit optionally), each with Sign In… or Sign Out.
+/// the app is signed in to (X for Explore's posts and their replies, Reddit optionally), each with Sign In… or Sign Out. After
+/// them, paywalled articles: what the lists do with sites you aren't signed in to (Show, Mark, Hide), the sites the app knows
+/// have a paywall (and any it is signed in to) with Sign In… or Sign Out, and a field to sign in to a site by its domain.
 struct SettingsIntegrationsPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
 
-    private enum Field: Hashable { case token, webhook, copyPrompt }
+    private enum Field: Hashable { case token, webhook, copyPrompt, newSite }
     private enum TestState: Equatable {
         case running
         case ok(String)
@@ -28,7 +30,9 @@ struct SettingsIntegrationsPane: View {
     @State private var tests: [SendTarget: TestState] = [:]
     @State private var savedFlash: Task<Void, Never>?
     /// The sign-in sheet opened from here (Settings is itself a sheet on iOS, so RootView's can't show over it).
-    @State private var signingIn: WebAccount?
+    @State private var signingIn: SignInTarget?
+    /// The domain typed to add a site.
+    @State private var newSite = ""
     @FocusState private var focus: Field?
 
     private var state: IntegrationsState { model.integrations }
@@ -50,9 +54,10 @@ struct SettingsIntegrationsPane: View {
             footer
             copySection
             accountsSection
+            paywallSection
         }
-        .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { account in
-            WebSignInView(account: account)
+        .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
+            WebSignInView(target: target, onDone: { if case .site(let site, _) = target { model.accounts.signIn(site: site) } })
         }
         .task { await model.accounts.refresh() }
         .onChange(of: focus) { old, _ in if old == .copyPrompt { commitPrompt() } }
@@ -211,7 +216,7 @@ struct SettingsIntegrationsPane: View {
                 let on = model.accounts.isSignedIn(account)
                 SettingsRow(label: account.name, hint: accountHint(account, signedIn: on)) {
                     Button(on ? "Sign Out" : "Sign In\u{2026}") {
-                        if on { Task { await model.accounts.signOut(account) } } else { signingIn = account }
+                        if on { Task { await model.accounts.signOut(account) } } else { signingIn = .account(account) }
                     }
                     .buttonStyle(SettingsSmallButtonStyle(quiet: on))
                 }
@@ -219,6 +224,107 @@ struct SettingsIntegrationsPane: View {
         }
         .padding(.top, compact ? 0 : 12)
         .settingsSectionChrome()
+    }
+
+    // MARK: Paywalls
+
+    private var paywallSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Paywalled articles")
+                .font(OFFont.ui(compact ? 17 : 14))
+                .foregroundStyle(.ofInk)
+            SettingsRow(label: "Articles from sites you don\u{2019}t subscribe to",
+                        hint: "Sites you\u{2019}re signed in to always show in full.", stacked: compact) {
+                SettingsSegmented(label: "Paywalled articles", selection: Bindable(model).settings.paywallTreatment,
+                                  options: PaywallTreatment.allCases.map { ($0, $0.label) })
+            }
+            .padding(.top, 4)
+
+            Text("Sites with a paywall")
+                .font(OFFont.ui(compact ? 17 : 14))
+                .foregroundStyle(.ofInk)
+                .padding(.top, 16)
+            Text("Found as you read, plus the ones you sign in to. Signing in lets the reader open their articles as you.")
+                .font(OFFont.ui(compact ? 13.5 : 12))
+                .foregroundStyle(.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+            ForEach(paywallSites, id: \.self) { site in
+                let on = model.accounts.signedInSites.contains(site)
+                SettingsRow(label: site, hint: siteHint(site, signedIn: on)) {
+                    Button(on ? "Sign Out" : "Sign In\u{2026}") {
+                        if on { Task { await model.accounts.signOut(site: site) } } else { signingIn = .opening(site) }
+                    }
+                    .buttonStyle(SettingsSmallButtonStyle(quiet: on))
+                    .accessibilityLabel(on ? "Sign out of \(site)" : "Sign in to \(site)")
+                }
+            }
+            addSiteRow
+        }
+        .padding(.top, compact ? 0 : 12)
+        .settingsSectionChrome()
+    }
+
+    /// Sites the book has seen walled an article and the sites signed in to, most walled first.
+    private var paywallSites: [String] {
+        let sites = model.settings.paywalls.sites
+        return Set(sites.keys).union(model.accounts.signedInSites).sorted {
+            let a = sites[$0]?.walled ?? 0, b = sites[$1]?.walled ?? 0
+            return a != b ? a > b : $0 < $1
+        }
+    }
+
+    /// "14 paywalled articles · signed in", "· lets some through" when some read in full, "· not asking" once declined.
+    private func siteHint(_ site: String, signedIn: Bool) -> String {
+        let record = model.settings.paywalls.sites[site]
+        var parts: [String] = []
+        if let walled = record?.walled, walled > 0 { parts.append("\(walled) paywalled \(walled == 1 ? "article" : "articles")") }
+        if signedIn {
+            parts.append("signed in")
+        } else {
+            if (record?.full ?? 0) > 0 { parts.append("lets some through") }
+            if record?.declined == true { parts.append("not asking") }
+        }
+        guard !parts.isEmpty else { return "Paywall" }
+        return parts.joined(separator: " \u{00B7} ").prefix(1).uppercased() + parts.joined(separator: " \u{00B7} ").dropFirst()
+    }
+
+    /// A field for a site by its domain ("ft.com", or any address on it) and Sign In… to it.
+    private var addSiteRow: some View {
+        let site = Self.siteKey(newSite)
+        return HStack(spacing: 8) {
+            TextField("Site", text: $newSite, prompt: Text("Add a site, e.g. ft.com"))
+                .focused($focus, equals: .newSite)
+                .settingsFieldChrome(focused: focus == .newSite)
+                .textContentType(.URL)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                #endif
+                .onSubmit { addSite(site) }
+                .accessibilityLabel("Site to sign in to")
+            Button("Sign In\u{2026}") { addSite(site) }
+                .buttonStyle(SettingsSmallButtonStyle())
+                .disabled(site == nil)
+        }
+        .padding(.top, 10)
+    }
+
+    private func addSite(_ site: String?) {
+        guard let site else { return }
+        newSite = ""
+        signingIn = .opening(site)
+    }
+
+    /// The site key a typed domain or address stands for: "https://www.ft.com/x" and "ft.com" are "ft.com". nil for
+    /// text that is no domain.
+    static func siteKey(_ text: String) -> String? {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !t.contains(" ") else { return nil }
+        if !t.contains("://") { t = "https://" + t }
+        let site = Paywalls.site(of: t)
+        return site.contains(".") ? site : nil
     }
 
     private func accountHint(_ account: WebAccount, signedIn: Bool) -> String {

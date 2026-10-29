@@ -2,16 +2,24 @@ import OpenDispatchCore
 import SwiftUI
 import WebKit
 
-/// The sheet that signs the app in to a site (X, Reddit): the site's own sign-in page in a web view that shares the app's
-/// data store (`WebAccount.dataStore`) with the hidden views that read posts and replies, so the session carries over.
+/// The sheet that signs the app in to a site: the site's own sign-in page in a web view that shares the app's
+/// data store (`WebAccount.dataStore`) with the hidden views that read posts, replies and paywalled articles, so the session
+/// carries over.
 /// "Sign in with Google" or Apple opens a pop-up window that reports back to the page that opened it, so a pop-up is a real
 /// web view of its own, laid over the page until it closes itself (Back closes it by hand). The sheet closes by itself once
-/// the site's session cookie appears; Done closes it any time.
+/// the site's session cookie appears (X, Reddit); Done closes it any time. Any other site has no cookie to look for: the sheet
+/// has Cancel and Done, and Done is what records the sign-in (`onDone`).
 struct WebSignInView: View {
-    let account: WebAccount
+    let target: SignInTarget
+    /// Done on a site's sheet (not Cancel, nor an account's, which finds its own session).
+    var onDone: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @State private var signedIn = false
     @State private var browser = WebSignInBrowser()
+
+    private var account: WebAccount? {
+        if case .account(let account) = target { account } else { nil }
+    }
 
     var body: some View {
         #if os(macOS)
@@ -20,7 +28,7 @@ struct WebSignInView: View {
                 if browser.popups > 0 {
                     Button("Back") { browser.closePopup() }
                 }
-                Text("Sign in to \(account.name)")
+                Text("Sign in to \(target.name)")
                     .font(OFFont.ui(14, .semibold))
                     .foregroundStyle(.ofInk)
                 if signedIn {
@@ -30,8 +38,14 @@ struct WebSignInView: View {
                 }
                 Spacer()
                 // Esc, not Return: Return belongs to the page's fields (it submitted the username and closed the sheet).
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                if account == nil {
+                    Button("Cancel") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Done") { done() }
+                } else {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -43,25 +57,35 @@ struct WebSignInView: View {
         NavigationStack {
             page
                 .ignoresSafeArea(edges: .bottom)
-                .navigationTitle("Sign in to \(account.name)")
+                .navigationTitle("Sign in to \(target.name)")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     if browser.popups > 0 {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Back") { browser.closePopup() }
                         }
+                    } else if account == nil {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { dismiss() }
+                        }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                        Button("Done") { account == nil ? done() : dismiss() }
                     }
                 }
         }
         #endif
     }
 
+    private func done() {
+        onDone()
+        dismiss()
+    }
+
     private var page: some View {
-        WebSignInPage(account: account, browser: browser)
+        WebSignInPage(url: target.startURL, browser: browser)
             .task {
+                guard let account else { return }
                 // Checked every second: the page signs in with its own requests, which no navigation event marks.
                 while !Task.isCancelled {
                     if await account.isSignedIn() {
@@ -78,16 +102,16 @@ struct WebSignInView: View {
 
 #if os(macOS)
 private struct WebSignInPage: NSViewRepresentable {
-    let account: WebAccount
+    let url: URL
     let browser: WebSignInBrowser
-    func makeNSView(context: Context) -> NSView { browser.makeView(account) }
+    func makeNSView(context: Context) -> NSView { browser.makeView(url) }
     func updateNSView(_ view: NSView, context: Context) {}
 }
 #else
 private struct WebSignInPage: UIViewRepresentable {
-    let account: WebAccount
+    let url: URL
     let browser: WebSignInBrowser
-    func makeUIView(context: Context) -> UIView { browser.makeView(account) }
+    func makeUIView(context: Context) -> UIView { browser.makeView(url) }
     func updateUIView(_ view: UIView, context: Context) {}
 }
 #endif
@@ -108,7 +132,7 @@ final class WebSignInBrowser: NSObject, WKUIDelegate {
     @ObservationIgnored private var container: PlatformView?
     @ObservationIgnored private var stack: [WKWebView] = []
 
-    func makeView(_ account: WebAccount) -> PlatformView {
+    func makeView(_ url: URL) -> PlatformView {
         if let container { return container }
         let view = PlatformView()
         container = view
@@ -116,7 +140,7 @@ final class WebSignInBrowser: NSObject, WKUIDelegate {
         config.websiteDataStore = WebAccount.dataStore
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         let page = add(WKWebView(frame: .zero, configuration: config))
-        page.load(URLRequest(url: account.signInURL))
+        page.load(URLRequest(url: url))
         return view
     }
 

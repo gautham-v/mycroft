@@ -196,7 +196,7 @@ struct ExploreSignInNote: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button { model.accounts.signingIn = account } label: {
+            Button { model.accounts.signingIn = .account(account) } label: {
                 Text("Sign In")
                     .font(OFFont.ui(13, .semibold))
                     .foregroundStyle(.white)

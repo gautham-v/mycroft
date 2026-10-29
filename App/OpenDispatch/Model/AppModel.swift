@@ -217,7 +217,10 @@ final class AppModel {
 
     // MARK: Data
 
+    /// The list as shown: `loadedItems` without the articles from paywalled sites when the list hides them (`hidesPaywalled`).
     private(set) var items: [FeedItem] = []
+    /// How many of the loaded items the list leaves out for their paywall, for the list's footer.
+    private(set) var hiddenPaywalledCount = 0
     private(set) var nextCursor: ItemCursor?
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
@@ -245,6 +248,7 @@ final class AppModel {
                 hideReadCutoff = Date()
                 Task { await loadItems(reset: true) }
             }
+            if settings.paywallTreatment != oldValue.paywallTreatment || settings.paywalls != oldValue.paywalls { applyPaywallFilter() }
         }
     }
 
@@ -268,6 +272,12 @@ final class AppModel {
     // MARK: Private
 
     @ObservationIgnored private var loadGeneration = 0
+    /// Every item the query returned so far, paywalled ones included; `items` is this as the list shows it.
+    @ObservationIgnored private var loadedItems: [FeedItem] = []
+    /// Show on the list's footer: the hidden paywalled items are shown until you go to another list.
+    @ObservationIgnored private var showsPaywalled = false
+    /// Items whose article was read for the paywall book this launch, so each counts once.
+    @ObservationIgnored private var learnedPaywalls: Set<Int64> = []
     /// The query `nextCursor` belongs to; paging a different query from it would append wrong rows.
     @ObservationIgnored private var cursorQuery: ItemQuery?
     /// Every item open in a tab, so a tab keeps its item when the list moves on (another feed, a
@@ -317,6 +327,7 @@ final class AppModel {
         }
         prefetcher = ArticlePrefetcher(services: services)
         prefetcher.onFetched = { [weak self] id, result in self?.didFetchContent(id, result) }
+        accounts.onSitesChange = { [weak self] in self?.applyPaywallFilter() }
     }
 
     /// Opens the on-disk database; falls back to an in-memory one if that fails (the app still runs).
@@ -545,7 +556,10 @@ final class AppModel {
         showsHighlights = false
         showsHistory = false
         showsExplore = false
-        if changed { hideReadCutoff = Date() }
+        if changed {
+            hideReadCutoff = Date()
+            showsPaywalled = false
+        }
         selectedView = view
         if source != selectedSourceID { topicFilter = .all }
         selectedSourceID = source
@@ -555,8 +569,9 @@ final class AppModel {
         resetSearchState()
         guard changed else { return }
         if !rows.isEmpty {
-            items = rows
+            loadedItems = rows
             nextCursor = nil
+            applyPaywallFilter()
         }
         Task { await loadItems(reset: true) }
     }
@@ -573,7 +588,8 @@ final class AppModel {
         do {
             let page = try await database.items(query)
             guard gen == loadGeneration else { return }
-            items = page.items
+            loadedItems = page.items
+            applyPaywallFilter()
             nextCursor = page.nextCursor
             cursorQuery = query
             loadError = nil
@@ -592,8 +608,9 @@ final class AppModel {
         do {
             let page = try await database.items(currentQuery.after(cursor))
             guard gen == loadGeneration else { return }
-            let seen = Set(items.map(\.id))
-            items.append(contentsOf: page.items.filter { !seen.contains($0.id) })
+            let seen = Set(loadedItems.map(\.id))
+            loadedItems.append(contentsOf: page.items.filter { !seen.contains($0.id) })
+            applyPaywallFilter()
             nextCursor = page.nextCursor
         } catch {
             // Keep the cursor; the sentinel retries.
@@ -741,6 +758,7 @@ final class AppModel {
 
     private func patchLocal(_ id: Int64, _ change: (inout FeedItem) -> Void) {
         if let i = items.firstIndex(where: { $0.id == id }) { change(&items[i]) }
+        if let i = loadedItems.firstIndex(where: { $0.id == id }) { change(&loadedItems[i]) }
         if var p = openItems[id] {
             change(&p)
             openItems[id] = p
@@ -758,16 +776,76 @@ final class AppModel {
         } else {
             result = try await services.content.content(forItem: item.id, refresh: refresh)
         }
-        didFetchContent(item.id, result)
+        didFetchContent(item.id, result, url: item.item.url)
         if item.id == selectedItemID, !showsHighlights, !showsHistory, !showsExplore { prefetcher.readAhead(from: item.id, in: items, step: readingStep) }
         return result
     }
 
-    private func didFetchContent(_ id: Int64, _ result: ExtractResult) {
+    private func didFetchContent(_ id: Int64, _ result: ExtractResult, url: String? = nil) {
         guard result.contentHtml != nil || result.leadImage != nil else { return }
+        if result.contentHtml != nil { learnPaywall(id, url: url, result) }
         patchLocal(id) { row in
             if result.contentHtml != nil { row.hasContent = true }
             if row.item.thumbnailUrl == nil, let lead = result.leadImage { row.item.thumbnailUrl = lead }
+        }
+    }
+
+    // MARK: Paywalls
+
+    /// Hide applies to this list: the setting is Hide, and the list isn't Saved (kept on purpose) or a search, nor revealed
+    /// by the footer's Show.
+    var hidesPaywalled: Bool {
+        settings.paywallTreatment == .hide && !showsPaywalled && !(selectedView == .saved && !isInSourceFeed) && searchQuery.isEmpty
+    }
+
+    /// How the item's site stands for the list's mark (a lock and "Subscribers"); `.free` when the setting is Show. A topic's
+    /// news item names its publisher in the author (an aggregator carries the article under its own address), and a story
+    /// row stands for its lead.
+    func paywallStatus(of item: FeedItem) -> PaywallStatus {
+        guard settings.paywallTreatment != .show else { return .free }
+        return status(url: item.item.url, publisher: item.source.isTopic ? item.item.author : nil)
+    }
+
+    private func status(url: String, publisher: String?) -> PaywallStatus {
+        Paywalls.status(url: url, publisher: publisher, signedIn: accounts.signedInSites, book: settings.paywalls)
+    }
+
+    /// The list leaves the item out: its site is walled, and for a story row, so is every outlet's.
+    private func isHiddenForPaywall(_ item: FeedItem) -> Bool {
+        guard paywallStatus(of: item) == .walled else { return false }
+        return item.story?.outlets.allSatisfy { status(url: $0.url, publisher: $0.name) == .walled } ?? true
+    }
+
+    /// Rebuilds `items` from `loadedItems`, leaving out what the list hides. An item open in a tab stays, so reading it
+    /// (which can teach the book its site is walled) doesn't pull it out from under the reader.
+    private func applyPaywallFilter() {
+        var shown = loadedItems
+        if hidesPaywalled {
+            let open = openItemIDs
+            shown = loadedItems.filter { open.contains($0.id) || !isHiddenForPaywall($0) }
+        }
+        if shown != items { items = shown }
+        let hidden = loadedItems.count - shown.count
+        if hidden != hiddenPaywalledCount { hiddenPaywalledCount = hidden }
+    }
+
+    /// The list's footer Show: the hidden items appear until you go to another list.
+    func showHiddenPaywalled() {
+        showsPaywalled = true
+        applyPaywallFilter()
+    }
+
+    /// Teaches the book what this article was: cut short, or read in full. Once per item per launch.
+    private func learnPaywall(_ id: Int64, url: String?, _ result: ExtractResult) {
+        guard learnedPaywalls.insert(id).inserted else { return }
+        if let url = url ?? loadedItems.first(where: { $0.id == id })?.item.url ?? openItems[id]?.item.url {
+            settings.paywalls.record(url: url, walled: result.paywalled)
+        } else {
+            // A saved article fetched in the background, outside the list.
+            Task {
+                guard let url = try? await database.feedItem(id: id)?.item.url else { return }
+                settings.paywalls.record(url: url, walled: result.paywalled)
+            }
         }
     }
 

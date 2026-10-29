@@ -132,6 +132,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     /// The comments under a post, a video or an article's Hacker News discussion, and the reader's Discussion link.
     /// Off, the reader builds none of them, so nothing is fetched.
     var showComments: Bool = true
+    /// What the lists do with articles from paywalled sites you aren't signed in to (Settings → Integrations).
+    var paywallTreatment: PaywallTreatment = .mark
+    /// The sites that have walled an article, and which ones stopped being asked about; synced with the settings.
+    var paywalls = PaywallBook()
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -167,6 +171,8 @@ struct AppSettings: Codable, Equatable, Sendable {
         sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
         hideReadItems = (try? c.decode(Bool.self, forKey: .hideReadItems)) ?? false
         showComments = (try? c.decode(Bool.self, forKey: .showComments)) ?? true
+        paywallTreatment = (try? c.decode(PaywallTreatment.self, forKey: .paywallTreatment)) ?? .mark
+        paywalls = (try? c.decode(PaywallBook.self, forKey: .paywalls)) ?? PaywallBook()
     }
 
     init() {}

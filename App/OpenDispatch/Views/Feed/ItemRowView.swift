@@ -36,8 +36,11 @@ struct ItemRowView: View, Equatable {
     /// A topic's item leads its meta line with the topic's keyword ("OpenAI · The Verge"), as in Saved and
     /// History; inside the topic's own list that is dropped and only the origin shows.
     var showsTopic = true
+    /// The article's site wants a subscription (Settings → Integrations → Paywalled articles): a lock and "Subscribers" end
+    /// the meta line, and the title is a little quieter. `.free` for no mark.
+    var paywall: PaywallStatus = .free
 
-    private var titleColor: Color { isRead ? .ofRead : .ofInk }
+    private var titleColor: Color { isRead ? .ofRead : paywall.markLabel != nil ? .ofBody : .ofInk }
 
     var body: some View {
         Group {
@@ -155,7 +158,8 @@ struct ItemRowView: View, Equatable {
     private func metaText(name: String, handle: String?) -> Text {
         let line = name + (handle.map { " @\($0)" } ?? "") + " · " + (timeText ?? RelativeTime.format(item.item.publishedAt))
         let base = Text(verbatim: line)
-        let text = DiscussionStats.text(item: item.item, isTopicItem: item.source.isTopic).map { Text("\(base)\(Text(verbatim: " \u{00B7} "))\($0)") } ?? base
+        var text = DiscussionStats.text(item: item.item, isTopicItem: item.source.isTopic).map { Text("\(base)\(Text(verbatim: " \u{00B7} "))\($0)") } ?? base
+        if let mark = paywall.markText { text = Text("\(text)\(Text(verbatim: " \u{00B7} "))\(mark)") }
         return text.font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
     }
 
@@ -177,11 +181,28 @@ struct ItemRowView: View, Equatable {
         if item.source.kind == .podcast { parts.append("Podcast episode") }
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
         if let stats = DiscussionStats.spoken(item: item.item, isTopicItem: item.source.isTopic) { parts.append(stats) }
+        if let label = paywall.markLabel { parts.append(label) }
         if item.isSaved { parts.append("Saved") }
         if isRead { parts.append(item.source.kind == .youtube ? "Watched" : "Read") }
         if let progress { parts.append("\(Int(progress * 100))% played") }
         if isOpenInTab { parts.append("Open in a tab") }
         return parts.joined(separator: ", ")
+    }
+}
+
+extension PaywallStatus {
+    /// The words of a list row's mark; nil for a site with no mark (free, or signed in).
+    var markLabel: String? {
+        switch self {
+        case .walled: "Subscribers"
+        case .metered: "May need sign-in"
+        case .free, .signedIn: nil
+        }
+    }
+
+    /// The mark for a meta line: a lock and its words, drawn with an SF Symbol.
+    var markText: Text? {
+        markLabel.map { Text("\(Text(Image(systemName: OFIcon.lock.rawValue)).font(.system(size: 10)))\(Text(verbatim: " " + $0))") }
     }
 }
 

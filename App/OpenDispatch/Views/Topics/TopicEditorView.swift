@@ -20,7 +20,8 @@ struct TopicEditorView: View {
     @State private var bluesky: Bool
     @State private var media: Bool
     @State private var subscriptions: Bool
-    @State private var skipPaywalled: Bool
+    /// Not edited here any more (the lists mark or hide paywalled articles); kept as it was so synced topics round-trip.
+    private let skipPaywalled: Bool
     @State private var notify: Bool
     @State private var saving = false
     @State private var error: String?
@@ -48,7 +49,7 @@ struct TopicEditorView: View {
         _bluesky = State(initialValue: options.places.bluesky)
         _media = State(initialValue: options.places.media)
         _subscriptions = State(initialValue: options.places.subscriptions)
-        _skipPaywalled = State(initialValue: options.skipPaywalled)
+        skipPaywalled = options.skipPaywalled
     }
 
     private var existing: Source? {
@@ -169,7 +170,6 @@ struct TopicEditorView: View {
                 Toggle("Your subscriptions", isOn: $subscriptions)
             }
             Section {
-                Toggle("Skip paywalled sites", isOn: $skipPaywalled)
                 Toggle("Notify on new matches", isOn: $notify)
             }
             #if os(iOS)

@@ -67,6 +67,8 @@ struct ReaderItemView: View {
     #endif
 
     @State private var content: ReaderContentState = .loading
+    /// The article came back as the site's teaser only (`ExtractResult.paywalled`).
+    @State private var paywalled = false
     /// Read aloud's hold on this article's web view.
     @State private var speechPage = ReaderSpeechPage()
     /// The reader's visible height under the toolbar, which sizes a Short's player (videos only).
@@ -217,6 +219,10 @@ struct ReaderItemView: View {
         .task { await load(refresh: false) }
         // Reload Article (⇧⌘R, or the article's right-click menu).
         .onChange(of: model.articleReloads[item.id]) { _, _ in Task { await load(refresh: true) } }
+        // Done on the site's sign-in sheet: the teaser loads again as you.
+        .onChange(of: model.accounts.siteSignIns[Paywalls.site(of: item.item.url)]) { _, _ in
+            if paywalled { Task { await load(refresh: true) } }
+        }
     }
 
     /// Source badge + source · time, as in the item's list row.
@@ -369,6 +375,12 @@ struct ReaderItemView: View {
             }
         }
         .padding(.top, isPost ? (wide ? 32 : 24) : 28)
+
+        if paywalled, !isPost, case .ok = content {
+            ReaderPaywallBanner(item: item)
+                .readerColumn(wide: wide)
+                .padding(.bottom, 32)
+        }
     }
 
     private var headlineSize: CGFloat { OFFont.headlineSize(settings.textSize, wide: wide) }
@@ -528,12 +540,15 @@ struct ReaderItemView: View {
             let result = try await model.content(for: item, refresh: refresh)
             guard !Task.isCancelled else { return }
             if let html = result.contentHtml, !html.isEmpty {
+                paywalled = result.paywalled
                 content = .ok(html: html, leadImage: result.leadImage, rendered: result.rendered)
             } else {
+                paywalled = false
                 content = .failed
             }
         } catch {
             guard !Task.isCancelled else { return }
+            paywalled = false
             content = .failed
         }
     }
