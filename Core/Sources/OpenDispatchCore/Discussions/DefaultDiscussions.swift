@@ -151,9 +151,16 @@ enum DiscussionContent {
         switch DiscussionPlace.thread(of: url) {
         case .reddit:
             #if canImport(WebKit)
-            guard let canonical = RedditPages.canonicalURL(url),
-                  let html = try? await DiscussionWeb.shared.redditHTML(String(canonical.dropFirst(RedditPages.origin.count))),
-                  let post = RedditPages.post(inThread: html) else { return nil }
+            guard let canonical = RedditPages.canonicalURL(url) else { return nil }
+            // Reddit's challenge page answers now and then, most when several posts are read at once; once more is
+            // enough to pass it (a post that read as nothing left the reader with a title and no body).
+            var found: RedditPages.Post?
+            for _ in 0..<2 where found == nil {
+                if let html = try? await DiscussionWeb.shared.redditHTML(String(canonical.dropFirst(RedditPages.origin.count))) {
+                    found = RedditPages.post(inThread: html)
+                }
+            }
+            guard let post = found else { return nil }
             let lead = post.kind == .image ? post.contentHref : post.images.first
             return ExtractResult(contentHtml: RedditPages.contentHTML(post) ?? emptyBody, leadImage: lead)
             #else

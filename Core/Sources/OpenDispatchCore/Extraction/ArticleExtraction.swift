@@ -37,6 +37,7 @@ public struct ArticleExtraction: Sendable {
         let lead = Passes.usableLead(DOM.absURL(og, base: base))
         Passes.prepare(document, base: base, pageURL: pageURL, videos: ExtractionPayload.videos(in: html))
         Self.removePreHeadlineMeta(document)
+        let picture = Passes.pictureStory(document)
         let audio = SiteAudio.take(document)
         let pagePlayer = SiteVideo.hasPagePlayer(document)
         let heroes = Self.findHeroVideos(document)
@@ -54,6 +55,9 @@ public struct ArticleExtraction: Sendable {
             let alt = try await runReadability(scoped, media: media, base: base)
             let n = DOM.plainText(alt).count
             if let alt, n >= Self.regionMinText, Double(n) >= 0.5 * Double(DOM.plainText(clean).count) { clean = alt }
+        }
+        if let picture, clean.map({ !Passes.containsPicture($0, of: picture) }) ?? true {
+            clean = Self.finish(readabilityContent: picture, media: [], base: base)
         }
         if SiteVideo.isVideoPage(document, pageURL: pageURL, pagePlayer: pagePlayer, content: clean, poster: lead) {
             return ExtractResult(contentHtml: SiteVideo.content(document), leadImage: lead)
