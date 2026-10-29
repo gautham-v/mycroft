@@ -32,6 +32,7 @@ public struct ArticleExtraction: Sendable {
     public func extract(html: String, pageURL: String) async throws -> ExtractResult {
         guard let document = DOM.parseDocument(html, baseURI: pageURL) else { return ExtractResult(contentHtml: nil, leadImage: nil) }
         let base = DOM.absURL(DOM.first(document, "base[href]").flatMap { DOM.attr($0, "href") }, base: pageURL) ?? pageURL
+        Passes.placeGalleryItems(document, base: base)
         let lead = Passes.chooseLead(document, base: base)
         Passes.prepare(document, base: base, pageURL: pageURL, videos: ExtractionPayload.videos(in: html))
         Passes.placeApolloImages(document, html: html)
@@ -42,7 +43,11 @@ public struct ArticleExtraction: Sendable {
         let heroes = Self.findHeroVideos(document)
         let media = Passes.protectMedia(document)
         Passes.neutralizeReadabilityClasses(document)
+        Passes.keepCodeClasses(document)
+        Passes.keepHeaderOpening(document)
+        Passes.shieldTitleWords(document)
         Passes.shieldFigures(document)
+        Passes.shieldBlurbLinks(document)
         Passes.mergeSplitContainers(document)
         Passes.keepArticleContent(document)
         let regionHTML = Self.headlineRegion(document).map(DOM.outerHTML)
@@ -64,11 +69,12 @@ public struct ArticleExtraction: Sendable {
         if SiteVideo.isVideoPage(document, pageURL: pageURL, pagePlayer: pagePlayer, content: clean, poster: lead) {
             return ExtractResult(contentHtml: SiteVideo.content(document), leadImage: lead)
         }
-        let titles = [DOM.first(document, "meta[property=og:title]").flatMap { DOM.attr($0, "content") }, title]
-        clean = clean.map { Self.dropTitleHeading($0, titles: titles.compactMap { $0 }) }
+        let titles = [DOM.first(document, "meta[property=og:title]").flatMap { DOM.attr($0, "content") }, title, Self.headline(document).map { DOM.text($0) }]
         let description = DOM.first(document, "meta[property=og:description]").flatMap { DOM.attr($0, "content") }
             ?? DOM.first(document, "meta[name=description]").flatMap { DOM.attr($0, "content") }
         clean = clean.map { Passes.dropRepeatedHeader($0, titles: titles.compactMap { $0 }, description: description) }
+        // After the repeated header: that one takes the line of names under the title with it.
+        clean = clean.map { Self.dropTitleHeading($0, titles: titles.compactMap { $0 }) }
         if let audio {
             // The story is the audio; the text beside it may be a line or nothing.
             let text = clean ?? SiteVideo.description(document).map { ArticleSanitizer.sanitize($0) } ?? ""
@@ -86,7 +92,7 @@ public struct ArticleExtraction: Sendable {
 
     /// Readability output → restored media → cleanArticle → sanitize. Nil when nothing is left.
     static func finish(readabilityContent content: String, media: [String], base: String) -> String? {
-        let out = ArticleSanitizer.sanitize(Passes.cleanArticle(Passes.restoreMedia(content, media), base: base))
+        let out = ArticleSanitizer.sanitize(Passes.cleanArticle(Passes.restoreHeadings(Passes.restoreMedia(content, media)), base: base))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // Wrappers with nothing in them (a page whose only "article" was a related-posts grid) are no article.
         return out.isEmpty || !(DOM.withFragment(out) { Passes.hasMediaOrText($0) } ?? true) ? nil : out
