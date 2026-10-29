@@ -36,6 +36,7 @@ public struct ArticleExtraction: Sendable {
             ?? DOM.first(document, "meta[name=twitter:image]").flatMap { DOM.attr($0, "content") }
         let lead = Passes.usableLead(DOM.absURL(og, base: base))
         Passes.prepare(document, base: base, pageURL: pageURL, videos: ExtractionPayload.videos(in: html))
+        Passes.placeApolloImages(document, html: html)
         Self.removePreHeadlineMeta(document)
         let picture = Passes.pictureStory(document)
         let audio = SiteAudio.take(document)
@@ -43,6 +44,7 @@ public struct ArticleExtraction: Sendable {
         let heroes = Self.findHeroVideos(document)
         let media = Passes.protectMedia(document)
         Passes.neutralizeReadabilityClasses(document)
+        Passes.shieldFigures(document)
         Passes.mergeSplitContainers(document)
         Passes.keepArticleContent(document)
         let regionHTML = Self.headlineRegion(document).map(DOM.outerHTML)
