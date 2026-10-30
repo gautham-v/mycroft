@@ -601,6 +601,26 @@ struct ExtractionTweetTests {
         #expect(html.contains("https://x.com/josephfcox/status/7"))
     }
 
+    @Test func linkCardKeepsItsImage() throws {
+        func page(_ image: String) -> String {
+            let data = Self.escaped(#"{"card":{"legacy":{"binding_values":[{"key":"thumbnail_image_large","value":{"image_value":"# + image + #","type":"IMAGE"}},{"key":"vanity_url","value":{"string_value":"nbcsports.com","type":"STRING"}},{"key":"title","value":{"string_value":"Kerby Joseph is back","type":"STRING"}},{"key":"card_url","value":{"string_value":"https://t.co/card","type":"STRING"}}]}},"core":{"name":"PFT","screen_name":"pft"},"details":{"full_text":"Kerby Joseph is back https://t.co/card"},"media_entities2":[]}"#)
+            return "<html><body><script>window.x=\"\(data)\"</script></body></html>"
+        }
+        let src = "src=\"https://pbs.twimg.com/card_img/1/A?format=jpg&amp;name=800x320_1\""
+        let url = #""url":"https://pbs.twimg.com/card_img/1/A?format=jpg&name=800x320_1","width":569}"#
+        // An image with alt text (a quote and a brace in it too), with none, and with only its URL.
+        for image in [#"{"alt":"NFL: \"Lions\" {at} Bengals","height":320,"# + url,
+                      #"{"height":320,"# + url,
+                      "{" + url,
+                      // Alt text long enough to push the card's title and link far from where it starts.
+                      #"{"alt":""# + String(repeating: "A long caption. ", count: 500) + #"","height":320,"# + url] {
+            let html = try #require(TweetExtraction.fromPage(raw: page(image), canonical: "https://x.com/pft/status/1", user: "pft")?.contentHtml)
+            #expect(html.contains("class=\"x-card-img\""))
+            #expect(html.contains(src))
+            #expect(html.contains("Kerby Joseph is back</span>"))
+        }
+    }
+
     @Test func mediaLinkDroppedButRealLinkKept() {
         let links: TweetExtraction.Links = ["https://t.co/real": ("e.com", "https://e.com")]
         #expect(TweetExtraction.withoutMediaLinks("Look https://t.co/real https://t.co/m1", links: links) == "Look https://t.co/real")

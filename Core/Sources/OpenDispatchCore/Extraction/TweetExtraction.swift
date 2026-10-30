@@ -12,7 +12,8 @@ enum TweetExtraction {
     private static let datePattern = P(#"\\"created_at_ms\\":(\d{10,})"#)
     private static let linkPattern = P(#"\\"display_url\\":\\"([^"\\]*)\\",\\"expanded_url\\":\\"([^"\\]*)\\",\\"indices\\":\[\d+,\d+\],\\"url\\":\\"([^"\\]*)\\""#)
     private static let ogTitle = P(#"<meta property="og:title" content="([^"]*?)(?: \(@[^)]*\))?(?: on X)?""#)
-    private static let cardImage = P(#"\\"key\\":\\"thumbnail_image_large\\",\\"value\\":\{\\"image_value\\":\{\\"height\\":\d+,\\"url\\":\\"([^"\\]*)\\""#)
+    /// The fields sort by name, so `alt` comes first on an image that has it, and `height` is not always there.
+    private static let cardImage = P(#"\\"key\\":\\"thumbnail_image_large\\",\\"value\\":\{\\"image_value\\":\{(?:\\"alt\\":\\"(?:\\\\.|[^\\])*?\\",)?(?:\\"height\\":\d+,)?\\"url\\":\\"([^"\\]*)\\""#)
     private static let restID = P(#"\\"rest_id\\":\\"(\d+)\\""#)
     private static let normalAvatar = P(#"_normal(\.\w+)$"#)
     private static let inlineToken = P(#"https?://\S+|@[A-Za-z0-9_]{1,15}"#)
@@ -312,10 +313,10 @@ enum TweetExtraction {
         // Link card (main post only: its data comes before the quoted post's).
         var card = ""
         var cardURL: String?
-        let ciRange = rawNS.range(of: #"\"binding_values\""#)
+        let ciRange = rawNS.range(of: #"\"binding_values\":["#)
         if ciRange.location != NSNotFound, ciRange.location < end {
             let ci = ciRange.location
-            let region = slice(raw, ci, min(ci + 6000, end))
+            let region = slice(raw, ci, min(closing(rawNS, open: ci + ciRange.length - 1) ?? end, end))
             let title = cardString(region, key: "title")
             let domain = cardString(region, key: "vanity_url") ?? cardString(region, key: "domain")
             cardURL = cardString(region, key: "card_url")

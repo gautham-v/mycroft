@@ -291,6 +291,15 @@ public final class AppDatabase: Sendable {
                 WHERE content_html LIKE '%class="x-quote"%' AND (url LIKE '%://x.com/%' OR url LIKE '%twitter.com/%')
                 """)
         }
+        // X link cards read before 1.0.38 lost their image when it had alt text; drop their cached copy so the reader
+        // reads them again.
+        m.registerMigration("v11-reread-x-card-images") { db in
+            try db.execute(sql: """
+                UPDATE items SET content_html = NULL, content_rendered = 0
+                WHERE content_html LIKE '%class="x-card"%' AND content_html NOT LIKE '%x-card-img%'
+                  AND (url LIKE '%://x.com/%' OR url LIKE '%twitter.com/%')
+                """)
+        }
         return m
     }
 }
