@@ -227,12 +227,18 @@ extension AppSettings {
     func isDefaultTheme(dark: Bool) -> Bool { theme(dark: dark).id == AppTheme.defaultID }
 
     /// CSS that recolors the reader page for the themes and accent (after reader.css, same selectors);
-    /// nil when both modes are on Default with the theme's accent, so the page keeps its own values.
+    /// nil when both modes are on Default with the theme's accent, so the page keeps its own values. On iOS the
+    /// Default palette always goes in: its surface is off-white, and the page's white would show as a band behind
+    /// the article, its edge right over a post's author row.
     var readerThemeCSS: String? {
         func vars(dark: Bool) -> String? {
+            #if os(iOS)
+            return palette(dark: dark).readerCSS
+            #else
             if !isDefaultTheme(dark: dark) { return palette(dark: dark).readerCSS }
             guard accent != .theme else { return nil }
             return "--accent: \(ThemePalette.css(palette(dark: dark).accent));"
+            #endif
         }
         let light = vars(dark: false), dark = vars(dark: true)
         guard light != nil || dark != nil else { return nil }

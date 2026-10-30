@@ -213,8 +213,9 @@ struct ReaderComments: View {
 
 /// One comment: its author line (avatar, name, age, score) over its text, indented by a rail per level. Clicking the
 /// author line folds it and its replies. A YouTube comment is cut to four lines with "Read more" under it; YouTube's
-/// comments are plain text, so the cut version is one Text with the paragraphs a blank line apart. In a narrow reader the
-/// type is smaller and the author line wraps.
+/// comments are plain text, so the cut version is one Text with the paragraphs a blank line apart. The text is set like a
+/// post's (sans at the reader's text size and line spacing settings), the author line like a post's author row. In a
+/// narrow reader the type is smaller and the author line wraps.
 private struct ReaderCommentRow: View {
     let comment: DiscussionComment
     let place: DiscussionPlace
@@ -226,15 +227,18 @@ private struct ReaderCommentRow: View {
     let toggle: () -> Void
     let open: () -> Void
 
+    @Environment(AppModel.self) private var model
     @Environment(\.readerNarrow) private var narrow
     @State private var cut = false
 
-    private var size: CGFloat { narrow ? 13.5 : 15 }
+    private var type: ReaderCommentType { ReaderCommentType(settings: model.settings, narrow: narrow) }
+    private var size: CGFloat { type.size }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            ReaderCommentRails(depth: comment.depth)
-            VStack(alignment: .leading, spacing: 5) {
+            ReaderCommentRails(depth: comment.depth, avatar: type.avatar)
+                .padding(.vertical, 12)
+            VStack(alignment: .leading, spacing: 8) {
                 Button(action: toggle) { header }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(comment.author), \(folded ? "folded" : "")")
@@ -243,22 +247,22 @@ private struct ReaderCommentRow: View {
                     if place == .youtube, !opened {
                         Text(clampedBody)
                             .font(OFFont.ui(size))
-                            .lineSpacing(size * 0.3)
+                            .lineSpacing(type.lineSpacing)
                             .foregroundStyle(.ofInk)
                             .tint(.ofAccent)
                             .textSelection(.enabled)
                             .readerClamped(4, truncated: $cut)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        ReaderRichText(text: comment.body, size: size)
+                        ReaderRichText(text: comment.body, size: size, lineSpacing: type.lineSpacing)
                     }
                     if place == .youtube, cut || opened {
-                        ReaderDisclosureButton(title: opened ? "Show less" : "Read more", open: opened, size: 13, action: open)
+                        ReaderDisclosureButton(title: opened ? "Show less" : "Read more", open: opened, size: type.meta, action: open)
                             .padding(.top, 1)
                     }
                 }
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -273,14 +277,14 @@ private struct ReaderCommentRow: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             if let avatar = comment.avatarUrl, let url = URL(string: avatar) {
-                CachedAsyncImage(url: url, maxPixelSize: 54) { image in
+                CachedAsyncImage(url: url, maxPixelSize: 72) { image in
                     image.resizable().scaledToFill()
                 } placeholder: { _ in
                     Color.ofCode
                 }
-                .frame(width: narrow ? 15 : 18, height: narrow ? 15 : 18)
+                .frame(width: type.avatar, height: type.avatar)
                 .clipShape(Circle())
                 .accessibilityHidden(true)
             }
@@ -295,7 +299,7 @@ private struct ReaderCommentRow: View {
                 }
                 if folded { tail += replies > 0 ? " \u{00B7} \(replies) more" : " \u{00B7} folded" }
                 return Text("\(name)\(Text(verbatim: tail).foregroundStyle(Color.ofMuted))")
-                    .font(OFFont.ui(narrow ? 12 : 13))
+                    .font(OFFont.ui(type.meta))
                     .lineLimit(narrow ? 3 : 1)
                     .fixedSize(horizontal: false, vertical: narrow)
             }
@@ -312,12 +316,16 @@ private struct ReaderMoreCommentsRow: View {
     let failed: Bool
     let action: () -> Void
 
+    @Environment(AppModel.self) private var model
+    @Environment(\.readerNarrow) private var narrow
+
     var body: some View {
+        let type = ReaderCommentType(settings: model.settings, narrow: narrow)
         HStack(alignment: .center, spacing: 0) {
-            ReaderCommentRails(depth: more.depth)
+            ReaderCommentRails(depth: more.depth, avatar: type.avatar)
             if loading { ProgressView().controlSize(.small).padding(.trailing, 6) }
-            ReaderDisclosureButton(title: label, size: 13.5, tint: failed ? .ofDanger : nil, action: action)
-                .padding(.vertical, 8)
+            ReaderDisclosureButton(title: label, size: type.meta, tint: failed ? .ofDanger : nil, action: action)
+                .padding(.vertical, 10)
                 .disabled(loading)
             Spacer(minLength: 0)
         }
@@ -331,9 +339,27 @@ private struct ReaderMoreCommentsRow: View {
     }
 }
 
-/// A thin line per level of nesting (at most eight, so deep threads keep their width).
+/// The comments' type: the text at the reader's text size and line spacing (as a post's text in reader.css), the author
+/// line and the "Read more" / "More replies" rows a step smaller, as a post's author row is.
+struct ReaderCommentType {
+    let size: CGFloat
+    let lineSpacing: CGFloat
+    let meta: CGFloat
+    let avatar: CGFloat
+
+    init(settings: AppSettings, narrow: Bool) {
+        let body = OFFont.bodySize(settings.textSize)
+        size = narrow ? (body * 0.8).rounded() : body
+        lineSpacing = size * (settings.lineSpacing.lineHeight - 1.2)
+        meta = (size * 0.82 * 2).rounded() / 2
+        avatar = narrow ? 18 : 24
+    }
+}
+
+/// A thin line per level of nesting, under the parent's avatar (at most eight, so deep threads keep their width).
 private struct ReaderCommentRails: View {
     let depth: Int
+    var avatar: CGFloat = 24
 
     var body: some View {
         HStack(spacing: 0) {
@@ -341,8 +367,8 @@ private struct ReaderCommentRails: View {
                 Rectangle()
                     .fill(Color.ofHairline)
                     .frame(width: 1)
-                    .padding(.leading, 5)
-                    .padding(.trailing, 10)
+                    .padding(.leading, avatar / 2 - 0.5)
+                    .padding(.trailing, avatar / 2 + 7.5)
             }
         }
         .accessibilityHidden(true)
@@ -354,9 +380,10 @@ private struct ReaderCommentRails: View {
 struct ReaderRichText: View {
     let text: RichText
     var size: CGFloat = 15
+    var lineSpacing: CGFloat?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: size * 0.5) {
+        VStack(alignment: .leading, spacing: size * 0.7) {
             ForEach(Array(text.paragraphs.enumerated()), id: \.offset) { _, paragraph in
                 switch paragraph.style {
                 case .plain:
@@ -385,7 +412,7 @@ struct ReaderRichText: View {
     private func line(_ paragraph: RichText.Paragraph) -> some View {
         Text(Self.attributed(paragraph))
             .font(OFFont.ui(size))
-            .lineSpacing(size * 0.3)
+            .lineSpacing(lineSpacing ?? size * 0.3)
             .foregroundStyle(.ofInk)
             .tint(.ofAccent)
             .textSelection(.enabled)

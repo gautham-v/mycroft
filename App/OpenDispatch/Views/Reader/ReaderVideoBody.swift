@@ -203,16 +203,17 @@ struct ReaderVideoBody: View {
             }
 
             if !summaryText.isEmpty {
-                let size: CGFloat = narrow ? 13.5 : 14.5
+                // Set like the comments under it, at the reader's text size and line spacing.
+                let type = ReaderCommentType(settings: model.settings, narrow: narrow)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(ReaderText.linkified(item.item.summary ?? ""))
-                        .font(OFFont.ui(size))
-                        .lineSpacing(size * 0.4)
+                        .font(OFFont.ui(type.size))
+                        .lineSpacing(type.lineSpacing)
                         .foregroundStyle(.ofInk)
                         .textSelection(.enabled)
                         .readerClamped(expanded ? nil : (narrow ? 2 : 3), truncated: $summaryCut)
                     if summaryCut || expanded {
-                        ReaderDisclosureButton(title: expanded ? "Show less" : "Show more", open: expanded, size: 13) {
+                        ReaderDisclosureButton(title: expanded ? "Show less" : "Show more", open: expanded, size: type.meta) {
                             expanded.toggle()
                         }
                     }

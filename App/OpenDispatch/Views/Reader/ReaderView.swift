@@ -392,7 +392,7 @@ struct ReaderItemView: View {
                     .padding(.bottom, 32)
             }
         }
-        .padding(.top, isPost ? (wide ? 32 : 24) : 28)
+        .padding(.top, isPost ? (wide ? 40 : 36) : 28)
 
         if paywalled, !isPost, case .ok = content {
             ReaderPaywallBanner(item: item)
