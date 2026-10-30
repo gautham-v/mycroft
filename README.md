@@ -46,7 +46,7 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 - The webhook gets a JSON POST with `id`, `url`, `title`, `author`, `published_at`, `summary` and `source { title, host }`. Each target has a test button: the webhook gets a sample payload marked `"test": true`, and the Readwise token is only checked.
 
 **Sync**
-- iCloud sync is on by default and needs no sign-up: it uses the device's iCloud account and your private CloudKit database. It carries sources (with their folder, order, pin and hidden state), folders, saved items, highlights and notes, appearance and playback settings, the webhook URL and the Readwise token (as an end-to-end encrypted field). Feed items are not synced; each device fetches its own.
+- iCloud sync is on by default and needs no sign-up: it uses the device's iCloud account and your private CloudKit database. It carries sources (with their folder, order, pin, hidden and mute state), folders (with their mute state), saved items, highlights and notes, appearance and playback settings, the webhook URL and the Readwise token (as an end-to-end encrypted field). Feed items are not synced; each device fetches its own.
 - A new device takes the library already in iCloud: if it still only has the starter sources it was seeded with, the ones iCloud doesn't have are dropped. A device that was already in use merges its library with iCloud's instead, so nothing on it is lost.
 - Turn it off per device in Settings → Data. Turning it off keeps the local library; turning it back on picks up what changed on both sides.
 

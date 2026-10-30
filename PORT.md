@@ -1151,7 +1151,7 @@ History treat it like any source. Migration `v8-topics` rebuilds `sources` (new 
   `TopicPaywalls` (host suffix or publisher name), notable when asked, and capped at 30 per provider. A place fails when each of its providers did; the topic records
   `last_error` only when every searched place failed (`TopicSearchOutcome.allFailed`).
 - Sync: the Source record gains `topicOptions` (hashed, so an edit propagates). An incoming Source with a topic feed URL is inserted as a topic with those options.
-  `notify_since` stays per device. Adding the field to the Source record type needs the CloudKit Production schema to be deployed before a release carries topics.
+  `notify_since` stays per device. Adding the field to the Source record type needs the CloudKit Production schema to be deployed before a release carries topics. `isMuted` on Source and Folder is the same, but it is written only when true and hashed only when set (`SyncRecordType.hashedWhenSet`), so records that aren't muted keep their hashes and aren't sent up again; until the field is deployed only muted records are refused, and mute stays on that device.
 
 ### Topics, second pass (Core) — 2026-10-29
 Matching got stricter and news coverage groups into stories. Migration `v9-topic-stories` adds `items.story_id` and `items.story_at` (no foreign key).

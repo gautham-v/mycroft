@@ -28,6 +28,9 @@ public struct Source: Sendable, Hashable, Identifiable {
     public var pinnedAt: Date?
     /// Left out of the sidebar tree (still subscribed; its items still show in All and the other views).
     public var isHidden: Bool
+    /// Left out of All, Articles, Posts, Video and Podcasts (still in the sidebar, its folder's list and its own).
+    /// A muted folder (`Folder.isMuted`) does the same for every source in it. The opposite of `isHidden`.
+    public var isMuted: Bool
     /// When notifications for new posts were turned on; nil = off. Only items stored after this notify.
     /// Per device: not synced.
     public var notifySince: Date?
@@ -38,7 +41,7 @@ public struct Source: Sendable, Hashable, Identifiable {
         id: Int64 = 0, title: String, url: String, feedUrl: String, kind: SourceKind, group: String,
         iconUrl: String? = nil, lastFetchedAt: Date? = nil, lastError: String? = nil, seenUrls: [String]? = nil,
         folderId: Int64? = nil, position: Int = 0, createdAt: Date = Date(),
-        pinnedAt: Date? = nil, isHidden: Bool = false, notifySince: Date? = nil, topicOptions: TopicOptions? = nil
+        pinnedAt: Date? = nil, isHidden: Bool = false, isMuted: Bool = false, notifySince: Date? = nil, topicOptions: TopicOptions? = nil
     ) {
         self.id = id
         self.title = title
@@ -55,12 +58,19 @@ public struct Source: Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.pinnedAt = pinnedAt
         self.isHidden = isHidden
+        self.isMuted = isMuted
         self.notifySince = notifySince
         self.topicOptions = topicOptions
     }
 
     public var isPinned: Bool { pinnedAt != nil }
     public var notifies: Bool { notifySince != nil }
+
+    /// The title without an X profile's "(@handle) on X" ending, for menus and messages that name the source.
+    public var shortTitle: String {
+        let name = TextFormat.splitHandle(title.hasSuffix(" on X") ? String(title.dropLast(5)) : title).name
+        return name.isEmpty ? title : name
+    }
 
     /// A followed keyword search (`Topic`). Tells by the reserved feed URL, not `kind`: in a list row `kind`
     /// is rewritten per item (`shown(for:)`).
@@ -93,6 +103,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         public static let createdAt = Column("created_at")
         public static let pinnedAt = Column("pinned_at")
         public static let isHidden = Column("is_hidden")
+        public static let isMuted = Column("is_muted")
         public static let notifySince = Column("notify_since")
         public static let topicOptions = Column("topic_options")
     }
@@ -116,6 +127,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         createdAt = row["created_at"]
         pinnedAt = row["pinned_at"]
         isHidden = row["is_hidden"]
+        isMuted = row["is_muted"]
         notifySince = row["notify_since"]
         topicOptions = TopicOptions(json: row["topic_options"])
     }
@@ -136,6 +148,7 @@ extension Source: FetchableRecord, MutablePersistableRecord {
         container["created_at"] = createdAt
         container["pinned_at"] = pinnedAt
         container["is_hidden"] = isHidden
+        container["is_muted"] = isMuted
         container["notify_since"] = notifySince
         container["topic_options"] = topicOptions?.json
     }

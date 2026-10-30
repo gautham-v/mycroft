@@ -291,6 +291,7 @@ struct SidebarView: View {
             title: folder.title,
             open: open,
             active: active,
+            isMuted: folder.isMuted,
             hasMenu: true,
             isEditing: editing == .renameFolder(folder.id),
             onTitle: {
@@ -339,6 +340,7 @@ struct SidebarView: View {
         let row = SidebarSourceRow(
             source: source,
             active: model.selectedSourceID == source.id,
+            isMuted: model.isMuted(source),
             isEditing: editing == .renameSource(source.id),
             onOpen: { model.navigate(sourceID: source.id) },
             onRename: { newTitle in
@@ -451,6 +453,8 @@ struct SidebarView: View {
         Divider()
         CopyDigestButtons(scope: .folder(folder))
         Divider()
+        MuteFolderMenuItem(folder: folder)
+        Divider()
         Button(model.allSources(inFolder: folder.id).isEmpty ? "Delete Folder" : "Delete Folder (Keep Sources)", role: .destructive) {
             deleteFolder(folder.id)
         }
@@ -471,6 +475,7 @@ struct SidebarView: View {
         Divider()
         Button(source.isPinned ? "Unpin" : "Pin to Sidebar") { setPinned(source, !source.isPinned) }
         Button(source.isHidden ? "Unhide" : "Hide from Sidebar") { setHidden(source, !source.isHidden) }
+        MuteSourceMenuItem(source: source)
         Divider()
         Button("Rename") { editing = .renameSource(source.id) }
         Menu("Move to") {
@@ -578,6 +583,8 @@ struct SidebarView: View {
 private struct SidebarSourceRow<MenuContent: View>: View {
     let source: Source
     let active: Bool
+    /// Out of the feeds: the title goes quiet.
+    let isMuted: Bool
     let isEditing: Bool
     let onOpen: () -> Void
     let onRename: (String) -> Void
@@ -593,7 +600,7 @@ private struct SidebarSourceRow<MenuContent: View>: View {
                 // A tap gesture, not a Button: on macOS a Button keeps the mouse-down, so the row's .onDrag never starts.
                 Text(source.title)
                     .font(OFFont.sidebarRow)
-                    .foregroundStyle(.ofInk)
+                    .foregroundStyle(isMuted ? Color.ofRead : Color.ofInk)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -630,6 +637,8 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
     let title: String
     let open: Bool
     let active: Bool
+    /// A muted folder: the title goes quiet.
+    var isMuted = false
     let hasMenu: Bool
     let isEditing: Bool
     let onTitle: () -> Void
@@ -676,7 +685,7 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
         }
         .font(SidebarStyle.sectionFont)
         .tracking(SidebarStyle.sectionTracking)
-        .foregroundStyle(active || hovered ? Color.ofInk : Color.ofMuted)
+        .foregroundStyle(active || hovered ? Color.ofInk : isMuted ? Color.ofRead : Color.ofMuted)
         .padding(.leading, SidebarStyle.rowPadding)
         .padding(.trailing, 4)
         .frame(height: SidebarStyle.headerHeight)

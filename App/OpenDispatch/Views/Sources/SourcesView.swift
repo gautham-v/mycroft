@@ -278,6 +278,7 @@ struct SourcesView: View {
             }
             Divider()
             CopyDigestButtons(scope: .folder(folder), icons: true)
+            MuteFolderMenuItem(folder: folder, icons: true)
             Divider()
             Button(role: .destructive) {
                 pendingFolderDelete = folder
@@ -294,6 +295,7 @@ struct SourcesView: View {
             GroupedRow(title: source.title, subtitle: source.host) {
                 SourceBadge(source: source, size: 30)
             }
+            .opacity(model.isMuted(source) ? 0.55 : 1)
         }
         .buttonStyle(GroupedRowButtonStyle())
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -336,6 +338,7 @@ struct SourcesView: View {
             Label(source.notifies ? "Stop notifications" : "Notify on new posts",
                   systemImage: (source.notifies ? OFIcon.bellOff : OFIcon.bell).rawValue)
         }
+        MuteSourceMenuItem(source: source, icons: true)
         Divider()
         CopyDigestButtons(scope: .source(source), icons: true)
         Divider()

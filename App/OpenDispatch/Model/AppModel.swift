@@ -83,6 +83,28 @@ struct CopyToast: Equatable, Identifiable, Sendable {
     var note: String?
 }
 
+/// A source or folder to mute or unmute, from a toast's Undo or the muted list's banner.
+enum MuteTarget: Equatable, Sendable {
+    case source(Int64)
+    case folder(Int64)
+}
+
+/// The confirmation at the bottom of the window after muting or unmuting, with Undo (`MuteToastOverlay`).
+struct MuteToast: Equatable, Identifiable, Sendable {
+    let id = UUID()
+    var message: String
+    var target: MuteTarget
+    /// What Undo sets it back to.
+    var undoTo: Bool
+}
+
+/// What the banner over a muted source's or folder's list says (`MutedListBanner`).
+struct MutedListNote: Equatable, Sendable {
+    var text: String
+    var actionTitle: String?
+    var unmute: MuteTarget?
+}
+
 /// One add from the Add sources sheet.
 enum SourceAddState: Equatable {
     case adding
@@ -246,6 +268,7 @@ final class AppModel {
     private(set) var articleReloads: [Int64: Int] = [:]
     /// The Copy as Markdown confirmation while it shows; nil otherwise.
     private(set) var copyToast: CopyToast?
+    private(set) var muteToast: MuteToast?
 
     /// Reader settings, theme, playback. Persisted on change, and mirrored into the database for iCloud sync.
     var settings: AppSettings {
@@ -301,6 +324,7 @@ final class AppModel {
     /// The copy in flight and the timer that clears its toast; a newer copy replaces both.
     @ObservationIgnored private var copyTask: Task<Void, Never>?
     @ObservationIgnored private var toastTimer: Task<Void, Never>?
+    @ObservationIgnored private var muteToastTimer: Task<Void, Never>?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var applyingSyncedSettings = false
     @ObservationIgnored private var syncToggle: Task<Void, Never>?
@@ -608,7 +632,8 @@ final class AppModel {
 
     /// Reload the first page for the current query (reset) or load the next page. `keepingDepth` (a refresh) reloads
     /// as many rows as were paged in, up to 200, so the list doesn't shrink under someone reading further down.
-    func loadItems(reset: Bool = true, keepingDepth: Bool = false) async {
+    /// `countsNewRows` is false when rows join the list without being new (muting moves older ones up), so the pill stays away.
+    func loadItems(reset: Bool = true, keepingDepth: Bool = false, countsNewRows: Bool = true) async {
         guard reset else { return await loadMore() }
         loadGeneration += 1
         let gen = loadGeneration
@@ -620,7 +645,7 @@ final class AppModel {
             let page = try await database.items(request)
             guard gen == loadGeneration else { return }
             let before = Set(loadedItems.map(\.id))
-            let arrived = cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
+            let arrived = countsNewRows && cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
                 ? Set(page.items.map(\.id)).subtracting(before) : []
             if arrived != arrivedItemIDs { arrivedItemIDs = arrived }
             loadedItems = page.items
@@ -1266,6 +1291,101 @@ final class AppModel {
     func setSourceHidden(id: Int64, hidden: Bool) async throws {
         try await database.setSourceHidden(id: id, hidden: hidden)
         await loadSources()
+    }
+
+    /// The muted folder a source is filed in, if it is: muted with the folder, whatever its own setting says.
+    func mutingFolder(of source: Source) -> Folder? {
+        source.folderId.flatMap { id in folders.first { $0.id == id && $0.isMuted } }
+    }
+
+    /// Out of the feeds, by its own setting or its folder's.
+    func isMuted(_ source: Source) -> Bool { source.isMuted || mutingFolder(of: source) != nil }
+
+    /// The banner over the current list when it is a muted source or a folder with muted sources in it.
+    var mutedListNote: MutedListNote? {
+        guard !showsHighlights, !showsHistory else { return nil }
+        if let id = selectedSourceID, let source = sources.first(where: { $0.id == id }), !source.isTopic {
+            if let folder = mutingFolder(of: source) {
+                return MutedListNote(text: "Muted with \(folder.title). Not in your feeds.", actionTitle: "Unmute Folder", unmute: .folder(folder.id))
+            }
+            return source.isMuted ? MutedListNote(text: "Muted. Not in your feeds.", actionTitle: "Unmute", unmute: .source(id)) : nil
+        }
+        guard let id = selectedFolderID, let folder = folders.first(where: { $0.id == id }) else { return nil }
+        if folder.isMuted { return MutedListNote(text: "Muted. Not in your feeds.", actionTitle: "Unmute Folder", unmute: .folder(id)) }
+        let list = allSources(inFolder: id)
+        let muted = list.filter(\.isMuted).count
+        return muted > 0 ? MutedListNote(text: "\(muted) of \(list.count) sources muted. All show here.") : nil
+    }
+
+    /// Mute in Feeds: the source's items leave All, Articles, Posts, Video and Podcasts and it stays in the sidebar.
+    func setSourceMuted(id: Int64, muted: Bool, showsToast: Bool = true) async {
+        do {
+            let source = try await database.setSourceMuted(id: id, muted: muted)
+            await reloadAfterMute()
+            guard showsToast else { return }
+            let place = source.isHidden ? "under Hidden" : source.folderId.flatMap { f in folders.first { $0.id == f }?.title }.map { "in \($0)" } ?? "in the sidebar"
+            showMuteToast(MuteToast(
+                message: muted ? "Muted \(source.shortTitle). Still \(place)." : "Unmuted \(source.shortTitle). Back in your feeds.",
+                target: .source(id), undoTo: !muted))
+        } catch {
+            showMuteFailure(error)
+        }
+    }
+
+    /// Mute Folder in Feeds: the same for every source filed in it, including ones added later.
+    func setFolderMuted(id: Int64, muted: Bool, showsToast: Bool = true) async {
+        do {
+            let folder = try await database.setFolderMuted(id: id, muted: muted)
+            await reloadAfterMute()
+            guard showsToast else { return }
+            let count = allSources(inFolder: id).count
+            showMuteToast(MuteToast(
+                message: muted
+                    ? "Muted \(folder.title). \(count == 1 ? "Its source stays" : "Its \(count) sources stay") in the sidebar."
+                    : "Unmuted \(folder.title). Back in your feeds.",
+                target: .folder(id), undoTo: !muted))
+        } catch {
+            showMuteFailure(error)
+        }
+    }
+
+    /// The banner's Unmute.
+    func unmute(_ target: MuteTarget) async {
+        switch target {
+        case .source(let id): await setSourceMuted(id: id, muted: false)
+        case .folder(let id): await setFolderMuted(id: id, muted: false)
+        }
+    }
+
+    /// The toast's Undo.
+    func undoMute() async {
+        guard let toast = muteToast else { return }
+        muteToastTimer?.cancel()
+        muteToast = nil
+        switch toast.target {
+        case .source(let id): await setSourceMuted(id: id, muted: toast.undoTo, showsToast: false)
+        case .folder(let id): await setFolderMuted(id: id, muted: toast.undoTo, showsToast: false)
+        }
+    }
+
+    private func reloadAfterMute() async {
+        await loadSources()
+        await loadItems(reset: true, keepingDepth: true, countsNewRows: false)
+    }
+
+    private func showMuteToast(_ toast: MuteToast) {
+        muteToastTimer?.cancel()
+        muteToast = toast
+        announce(toast.message)
+        let id = toast.id
+        muteToastTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled, self?.muteToast?.id == id { self?.muteToast = nil }
+        }
+    }
+
+    private func showMuteFailure(_ error: Error) {
+        showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t change mute: \(HTTP.message(error))"), for: .seconds(3.5))
     }
 
     /// Move a source to a folder (nil = Unfiled), at the end of it.

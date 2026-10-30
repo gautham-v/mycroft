@@ -935,6 +935,7 @@ private struct PhoneDrawer: View {
             title: folder.title,
             count: count,
             isCurrent: model.selectedFolderID == folder.id && model.selectedSourceID == nil,
+            isMuted: folder.isMuted,
             isExpanded: expandable ? expanded.contains(key) : nil,
             open: { pick { model.navigate(folderID: folder.id) } },
             toggle: expandable ? { toggleExpanded(key) } : nil
@@ -961,7 +962,7 @@ private struct PhoneDrawer: View {
     }
 
     private func sourceRow(_ source: Source, detail: String?, indented: Bool) -> some View {
-        DrawerSourceRow(source: source, detail: detail, isIndented: indented, isCurrent: model.selectedSourceID == source.id) {
+        DrawerSourceRow(source: source, detail: detail, isIndented: indented, isCurrent: model.selectedSourceID == source.id, isMuted: model.isMuted(source)) {
             pick { model.navigate(sourceID: source.id) }
         }
         .contextMenu {
@@ -1030,6 +1031,7 @@ private struct PhoneDrawer: View {
             Label("Add Source to \(folder.title)\u{2026}", systemImage: "plus")
         }
         CopyDigestButtons(scope: .folder(folder), icons: true)
+        MuteFolderMenuItem(folder: folder, icons: true)
         Divider()
         Button(role: .destructive) {
             pendingFolderDelete = folder
@@ -1070,6 +1072,7 @@ private struct PhoneDrawer: View {
             Label(source.notifies ? "Stop Notifications" : "Notify on New Posts",
                   systemImage: (source.notifies ? OFIcon.bellOff : OFIcon.bell).rawValue)
         }
+        MuteSourceMenuItem(source: source, icons: true)
         Divider()
         Button(role: .destructive) {
             pendingSourceDelete = source
@@ -1493,6 +1496,8 @@ private struct DrawerFolderRow: View {
     let title: String
     let count: Int
     var isCurrent = false
+    /// A muted folder: its icon and name go quiet.
+    var isMuted = false
     /// Whether its sources are showing; nil when the row has no chevron.
     var isExpanded: Bool?
     let open: () -> Void
@@ -1507,10 +1512,10 @@ private struct DrawerFolderRow: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 24, height: 24)
-                        .foregroundStyle(.ofInk)
+                        .foregroundStyle(isMuted ? Color.ofRead : Color.ofInk)
                     Text(title)
                         .font(OFFont.ui(17, .medium))
-                        .foregroundStyle(.ofInk)
+                        .foregroundStyle(isMuted ? Color.ofRead : Color.ofInk)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Text("\(count)")
@@ -1589,15 +1594,18 @@ private struct DrawerSourceRow: View {
     var detail: String?
     var isIndented = true
     var isCurrent = false
+    /// Out of the feeds: the badge and title go quiet.
+    var isMuted = false
     let action: () -> Void
 
     var body: some View {
         Button(action: { if !PhoneDrawerTouch.blocksRowTap { action() } }) {
             HStack(spacing: 12) {
                 SourceBadge(source: source, size: 20)
+                    .opacity(isMuted ? 0.55 : 1)
                 Text(source.title)
                     .font(OFFont.ui(15.5))
-                    .foregroundStyle(.ofInk)
+                    .foregroundStyle(isMuted ? Color.ofRead : Color.ofInk)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 if let detail {

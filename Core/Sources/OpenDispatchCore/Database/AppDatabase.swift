@@ -318,6 +318,12 @@ public final class AppDatabase: Sendable {
                 WHERE content_html LIKE '%class="x-card"%' AND (url LIKE '%://x.com/%' OR url LIKE '%twitter.com/%')
                 """)
         }
+        m.registerMigration("v14-mute") { db in
+            try db.execute(sql: """
+                ALTER TABLE sources ADD COLUMN is_muted BOOLEAN NOT NULL DEFAULT 0;
+                ALTER TABLE folders ADD COLUMN is_muted BOOLEAN NOT NULL DEFAULT 0;
+                """)
+        }
         return m
     }
 }

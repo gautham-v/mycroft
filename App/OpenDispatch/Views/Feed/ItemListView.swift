@@ -110,7 +110,7 @@ struct ItemListView: View {
     /// than a safe-area inset: List clips its rows to the safe area on macOS.
     private var desktopColumn: some View {
         list
-            .topContentInset(Self.headerHeight)
+            .modifier(MutedListContentInset(base: Self.headerHeight))
             .overlay(alignment: .top) {
                 DesktopListHeader(searchFocus: $searchFocused)
             }
@@ -246,6 +246,7 @@ struct ItemListView: View {
                     withAnimation(.smooth(duration: 0.35)) { scrollToTop(proxy, firstID: model.items.first?.id) }
                 }
                 .padding(.top, pillTop)
+                .modifier(MutedListPillInset(isPhone: isPhone))
             }
             .background { HighlightFollower(proxy: proxy) }
         }
@@ -683,6 +684,7 @@ private struct RowMenu: View {
             Divider()
             Button(goToTitle, systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
         }
+        MuteRowMenuItem(item: item, icons: true)
     }
 
     /// A topic's item goes to its topic (named by keyword); any other to its source.
@@ -736,6 +738,10 @@ private struct RowMenu: View {
         if model.selectedSourceID != item.source.id, !item.source.isOpenedLinks {
             Divider()
             Button(goToTitle) { model.navigate(sourceID: item.source.id) }
+        }
+        if !item.source.isTopic, !item.source.isOpenedLinks {
+            Divider()
+            MuteRowMenuItem(item: item)
         }
     }
 

@@ -93,6 +93,16 @@ extension AppDatabase {
     }
 
     @discardableResult
+    public func setSourceMuted(id: Int64, muted: Bool) async throws -> Source {
+        try await writer.write { db in try Queries.setSourceMuted(db, id: id, muted: muted) }
+    }
+
+    @discardableResult
+    public func setFolderMuted(id: Int64, muted: Bool) async throws -> Folder {
+        try await writer.write { db in try Queries.setFolderMuted(db, id: id, muted: muted) }
+    }
+
+    @discardableResult
     public func setSourceNotify(id: Int64, on: Bool) async throws -> Source {
         try await writer.write { db in try Queries.setSourceNotify(db, id: id, on: on) }
     }

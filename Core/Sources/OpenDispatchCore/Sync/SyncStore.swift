@@ -50,10 +50,12 @@ public enum SyncStore {
     }
 
     static func folderRecord(_ f: Folder) -> SyncRecord {
-        SyncRecord(type: .folder, name: SyncRecord.folderName(title: f.title), fields: [
+        var fields: [String: SyncField] = [
             "title": .string(f.title),
             "position": .int(Int64(f.position)),
-        ])
+        ]
+        if f.isMuted { fields["isMuted"] = .bool(true) }
+        return SyncRecord(type: .folder, name: SyncRecord.folderName(title: f.title), fields: fields)
     }
 
     static func sourceRecord(_ s: Source, folderTitle: String?) -> SyncRecord {
@@ -67,6 +69,7 @@ public enum SyncStore {
             "isHidden": .bool(s.isHidden),
             "createdAt": .date(s.createdAt),
         ]
+        if s.isMuted { fields["isMuted"] = .bool(true) }
         if let folderTitle { fields["folder"] = .string(folderTitle) }
         if let pinned = s.pinnedAt { fields["pinnedAt"] = .date(pinned) }
         if let icon = s.iconUrl { fields["iconUrl"] = .string(icon) }
@@ -303,15 +306,17 @@ public enum SyncStore {
         case .folder:
             guard let title = r["title"]?.stringValue else { return false }
             let position = Int(r["position"]?.intValue ?? 0)
+            let isMuted = r["isMuted"]?.boolValue ?? false
             if var f = try folder(db, titled: title) {
-                if f.title != title || f.position != position {
+                if f.title != title || f.position != position || f.isMuted != isMuted {
                     f.title = title
                     f.position = position
+                    f.isMuted = isMuted
                     try f.update(db)
                     result.libraryChanged = true
                 }
             } else {
-                var f = Folder(title: title, position: position, createdAt: now)
+                var f = Folder(title: title, position: position, createdAt: now, isMuted: isMuted)
                 try f.insert(db)
                 result.libraryChanged = true
             }
@@ -324,6 +329,7 @@ public enum SyncStore {
             let position = Int(r["position"]?.intValue ?? 0)
             let pinnedAt = r["pinnedAt"]?.dateValue
             let isHidden = r["isHidden"]?.boolValue ?? false
+            let isMuted = r["isMuted"]?.boolValue ?? false
             // A topic's options travel with it; one that arrives without readable options keeps what this device has.
             let isTopic = Topic.isTopicFeedURL(feedUrl)
             let topicOptions = isTopic ? TopicOptions(json: r["topicOptions"]?.stringValue) : nil
@@ -347,6 +353,7 @@ public enum SyncStore {
                 s.position = position
                 s.pinnedAt = pinnedAt
                 s.isHidden = isHidden
+                s.isMuted = isMuted
                 if let topicOptions, s.isTopic { s.topicOptions = topicOptions }
                 if s != before {
                     try s.update(db)
@@ -364,7 +371,7 @@ public enum SyncStore {
                         kind: r["kind"]?.stringValue.flatMap(SourceKind.init(rawValue:)) ?? .rss,
                         group: r["group"]?.stringValue ?? SourceGroup.blogs, iconUrl: r["iconUrl"]?.stringValue,
                         folderId: folderId, position: position, createdAt: r["createdAt"]?.dateValue ?? now,
-                        pinnedAt: pinnedAt, isHidden: isHidden)
+                        pinnedAt: pinnedAt, isHidden: isHidden, isMuted: isMuted)
                 try s.insert(db)
                 result.libraryChanged = true
                 result.addedSourceIDs.append(s.id)
@@ -539,8 +546,8 @@ public enum SyncStore {
         let savedHere = try savedItems(db).contains { item, feedUrl in
             !shadowed.contains(SyncRecord.savedItemName(sourceFeedUrl: feedUrl, guid: item.guid))
         }
-        let pristine = !savedHere && sources.allSatisfy { seedFeeds.contains($0.feedUrl) && !$0.isPinned && !$0.isHidden }
-            && folders.allSatisfy { seedFolders.contains(SyncRecord.folderKey($0.title)) }
+        let pristine = !savedHere && sources.allSatisfy { seedFeeds.contains($0.feedUrl) && !$0.isPinned && !$0.isHidden && !$0.isMuted }
+            && folders.allSatisfy { seedFolders.contains(SyncRecord.folderKey($0.title)) && !$0.isMuted }
         guard pristine else { return false }
         var changed = false
         for s in sources {

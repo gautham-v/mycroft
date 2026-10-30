@@ -21,6 +21,7 @@ DEFINE SCHEMA
         "___recordID"   REFERENCE QUERYABLE,
         "title"    STRING,
         "position" INT64,
+        "isMuted"  INT64,
         GRANT WRITE TO "_creator",
         GRANT CREATE TO "_icloud",
         GRANT READ TO "_world"
@@ -43,6 +44,7 @@ DEFINE SCHEMA
         "position"  INT64,
         "pinnedAt"  TIMESTAMP,
         "isHidden"  INT64,
+        "isMuted"   INT64,
         "createdAt" TIMESTAMP,
         "topicOptions" STRING,
         GRANT WRITE TO "_creator",

@@ -24,6 +24,7 @@ struct RootView: View {
         @Bindable var model = model
         layout
             .copyToastOverlay()
+            .muteToastOverlay()
             .tint(.ofAccent)
             .environment(\.listLayout, model.settings.listLayout)
             .preferredColorScheme(model.settings.theme.colorScheme)

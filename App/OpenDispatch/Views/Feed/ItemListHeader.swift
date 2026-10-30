@@ -9,6 +9,17 @@ struct DesktopListHeader: View {
     var searchFocus: FocusState<Bool>.Binding
 
     var body: some View {
+        VStack(spacing: 0) {
+            titleRow
+            MutedListBanner()
+        }
+        .frostedBar()
+        #if os(macOS)
+        .padding(.bottom, Metrics.listHeaderGap)
+        #endif
+    }
+
+    private var titleRow: some View {
         HStack(spacing: 8) {
             if model.sidebarCollapsed {
                 Button(action: { model.toggleSidebar() }) {
@@ -45,11 +56,8 @@ struct DesktopListHeader: View {
         // stays clear: rows show through it unblurred.
         .frame(height: Metrics.topBarHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
-        .frostedBar()
-        .padding(.bottom, Metrics.listHeaderGap)
         #else
         .frame(height: Metrics.desktopHeaderHeight)
-        .frostedBar()
         #endif
     }
 }
@@ -202,20 +210,23 @@ struct PhoneTitleRow: View {
     static let id = "phone-title"
 
     var body: some View {
-        Text(title ?? model.listHeading)
-            .font(OFFont.ui(32, .semibold))
-            .tracking(-0.7)
-            .foregroundStyle(.ofInk)
-            .lineLimit(2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .id(Self.id)
-            .accessibilityAddTraits(.isHeader)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title ?? model.listHeading)
+                .font(OFFont.ui(32, .semibold))
+                .tracking(-0.7)
+                .foregroundStyle(.ofInk)
+                .lineLimit(2)
+                .accessibilityAddTraits(.isHeader)
+            if title == nil { MutedListBanner(isPhone: true) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .id(Self.id)
     }
 }
 

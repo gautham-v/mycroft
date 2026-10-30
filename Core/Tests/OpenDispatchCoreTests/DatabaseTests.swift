@@ -413,6 +413,77 @@ struct PinHideTests {
         #expect(SourceList.inFolder(try await db.sources(), nil).map(\.id) == [a.id, b.id])
     }
 
+    @Test func mutedSourcesLeaveTheFeedsButKeepTheirLists() async throws {
+        let db = try Fixture.db()
+        let folder = try await db.createFolder(title: "NFL")
+        let muted = try Fixture.source(db, title: "Muted", folderId: folder.id)
+        let other = try Fixture.source(db, title: "Other", folderId: folder.id)
+        let kept = try Fixture.items(db, sourceId: muted.id, Fixture.parsed(2, prefix: "zq"))
+        try Fixture.items(db, sourceId: other.id, Fixture.parsed(1, prefix: "o"))
+        try await db.setSaved(itemId: kept[0].id, saved: true)
+
+        let row = try await db.setSourceMuted(id: muted.id, muted: true)
+        #expect(row.isMuted && !row.isHidden)
+        for view in [FeedView.all, .articles] {
+            #expect(try await db.items(ItemQuery(view: view)).items.map(\.source.id) == [other.id])
+        }
+        #expect(try await db.items(ItemQuery(order: .balanced)).items.map(\.source.id) == [other.id])
+        // Its own list, its folder's, Saved and a search still have it, and it stays in the sidebar.
+        #expect(try await db.items(ItemQuery(sourceId: muted.id)).items.count == 2)
+        #expect(try await db.items(ItemQuery(folderId: folder.id)).items.count == 3)
+        #expect(try await db.items(ItemQuery(view: .saved)).items.count == 1)
+        #expect(try await db.items(ItemQuery(search: "zq")).items.count == 2)
+        #expect(SourceList.inFolder(try await db.sources(), folder.id).count == 2)
+
+        try await db.setSourceMuted(id: muted.id, muted: false)
+        #expect(try await db.items(ItemQuery()).items.count == 3)
+        await #expect(throws: QueryError.notFound("Source")) { try await db.setSourceMuted(id: 999, muted: true) }
+    }
+
+    @Test func mutedFolderCoversWhatIsFiledInIt() async throws {
+        let db = try Fixture.db()
+        let folder = try await db.createFolder(title: "NFL")
+        let inside = try Fixture.source(db, title: "Inside", folderId: folder.id)
+        let unfiled = try Fixture.source(db, title: "Unfiled")
+        try Fixture.items(db, sourceId: inside.id, Fixture.parsed(1, prefix: "i"))
+        try Fixture.items(db, sourceId: unfiled.id, Fixture.parsed(1, prefix: "u"))
+
+        let row = try await db.setFolderMuted(id: folder.id, muted: true)
+        #expect(row.isMuted)
+        #expect(try await db.items(ItemQuery()).items.map(\.source.id) == [unfiled.id])
+        #expect(try await db.items(ItemQuery(folderId: folder.id)).items.map(\.source.id) == [inside.id])
+        #expect(try await db.items(ItemQuery(sourceId: inside.id)).items.count == 1)
+        // What moves in follows the folder, and what moves out is back in the feeds.
+        try await db.moveSource(id: unfiled.id, toFolder: folder.id)
+        #expect(try await db.items(ItemQuery()).items.isEmpty)
+        try await db.moveSource(id: inside.id, toFolder: nil)
+        #expect(try await db.items(ItemQuery()).items.map(\.source.id) == [inside.id])
+        // Deleting the folder leaves its sources unfiled and unmuted.
+        try await db.deleteFolder(id: folder.id)
+        #expect(try await db.items(ItemQuery()).items.count == 2)
+        await #expect(throws: QueryError.notFound("Folder")) { try await db.setFolderMuted(id: folder.id, muted: true) }
+    }
+
+    @Test func aMutedSourceKeepsItsOwnSettingUnderAMutedFolder() async throws {
+        let db = try Fixture.db()
+        let folder = try await db.createFolder(title: "NFL")
+        let s = try Fixture.source(db, title: "S", folderId: folder.id)
+        try Fixture.items(db, sourceId: s.id, Fixture.parsed(1))
+        try await db.setSourceMuted(id: s.id, muted: true)
+        try await db.setFolderMuted(id: folder.id, muted: true)
+        try await db.setFolderMuted(id: folder.id, muted: false)
+        #expect(try await db.items(ItemQuery()).items.isEmpty)
+    }
+
+    @Test func shortTitleDropsAnXProfilesEnding() {
+        func short(_ title: String) -> String {
+            Source(title: title, url: "https://x.com/a", feedUrl: "https://x.com/a", kind: .page, group: "blogs").shortTitle
+        }
+        #expect(short("Adam Schefter (@AdamSchefter) on X") == "Adam Schefter")
+        #expect(short("Claude(@claudeai)") == "Claude")
+        #expect(short("World news | The Guardian") == "World news | The Guardian")
+    }
+
     @Test func pinningUnhidesAndHidingUnpins() async throws {
         let db = try Fixture.db()
         let s = try Fixture.source(db)

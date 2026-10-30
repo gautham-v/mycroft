@@ -1,0 +1,210 @@
+import OpenDispatchCore
+import SwiftUI
+
+/// "Mute in Feeds" in a source's menu, or a disabled "Muted with <Folder>" while its folder is muted.
+struct MuteSourceMenuItem: View {
+    let source: Source
+    /// Menus that show an icon on every item (iPhone).
+    var icons = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let folder = model.mutingFolder(of: source) {
+            MuteMenuToggle(title: "Muted with \(folder.title)", isOn: true, icons: icons) {}
+                .disabled(true)
+        } else {
+            MuteMenuToggle(title: source.isMuted && icons ? "Unmute in Feeds" : "Mute in Feeds", isOn: source.isMuted, icons: icons) {
+                Task { await model.setSourceMuted(id: source.id, muted: !source.isMuted) }
+            }
+        }
+    }
+}
+
+/// "Mute Folder in Feeds" in a folder's menu.
+struct MuteFolderMenuItem: View {
+    let folder: Folder
+    var icons = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        MuteMenuToggle(title: folder.isMuted && icons ? "Unmute Folder in Feeds" : "Mute Folder in Feeds", isOn: folder.isMuted, icons: icons) {
+            Task { await model.setFolderMuted(id: folder.id, muted: !folder.isMuted) }
+        }
+    }
+}
+
+/// "Mute Adam Schefter" in a feed row's menu, for a source that can be muted.
+struct MuteRowMenuItem: View {
+    let item: FeedItem
+    var icons = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        // The row's copy of the source dates from when the list loaded.
+        if !item.source.isTopic, !item.source.isOpenedLinks {
+            let source = model.sources.first { $0.id == item.source.id } ?? item.source
+            if let folder = model.mutingFolder(of: source) {
+                MuteMenuButton(title: "Muted with \(folder.title)", icons: icons) {}
+                    .disabled(true)
+            } else {
+                MuteMenuButton(title: "\(source.isMuted ? "Unmute" : "Mute") \(source.shortTitle)", icons: icons, isOn: source.isMuted) {
+                    Task { await model.setSourceMuted(id: source.id, muted: !source.isMuted) }
+                }
+            }
+        }
+    }
+}
+
+/// A checkable item on the Mac and iPad sidebar's plain menus; with icons, a button whose words say what it does.
+private struct MuteMenuToggle: View {
+    let title: String
+    let isOn: Bool
+    var icons = false
+    let action: () -> Void
+
+    var body: some View {
+        if icons {
+            MuteMenuButton(title: title, icons: true, isOn: isOn, action: action)
+        } else {
+            Toggle(title, isOn: Binding(get: { isOn }, set: { _ in action() }))
+        }
+    }
+}
+
+private struct MuteMenuButton: View {
+    let title: String
+    var icons = false
+    var isOn = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if icons {
+                Label(title, systemImage: isOn ? "speaker.wave.2" : "speaker.slash")
+            } else {
+                Text(title)
+            }
+        }
+    }
+}
+
+/// Over a muted source's or folder's list: that it isn't in the feeds, and Unmute. In the header's bar on the Mac and
+/// iPad (`desktopHeight`, which the list's top inset makes room for), under the title on iPhone.
+struct MutedListBanner: View {
+    static let desktopHeight: CGFloat = 30
+    var isPhone = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let note = model.mutedListNote {
+            let line = HStack(spacing: 8) {
+                Text(note.text)
+                    .font(OFFont.ui(isPhone ? 14 : 12.5))
+                    .foregroundStyle(.ofMuted)
+                    .lineLimit(isPhone ? 2 : 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let title = note.actionTitle, let target = note.unmute {
+                    Button(title) { Task { await model.unmute(target) } }
+                        .buttonStyle(.plain)
+                        .font(OFFont.ui(isPhone ? 14 : 12.5, .medium))
+                        .foregroundStyle(.ofAccent)
+                        .fixedSize()
+                }
+            }
+            if isPhone {
+                line
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color.ofNavHover, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                line
+                    .padding(.horizontal, 18)
+                    .frame(height: Self.desktopHeight)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
+            }
+        }
+    }
+}
+
+/// The list's top inset on the Mac and iPad, with room for the banner. Its own modifier so the list's body doesn't read
+/// what the banner depends on.
+struct MutedListContentInset: ViewModifier {
+    let base: CGFloat
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content.topContentInset(base + (model.mutedListNote == nil ? 0 : MutedListBanner.desktopHeight))
+    }
+}
+
+/// Keeps the new-rows pill under the banner on the Mac and iPad.
+struct MutedListPillInset: ViewModifier {
+    let isPhone: Bool
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content.padding(.top, !isPhone && model.mutedListNote != nil ? MutedListBanner.desktopHeight : 0)
+    }
+}
+
+/// The confirmation after muting or unmuting: what happened and Undo, at the bottom of the window for 6 s. On iPhone it
+/// sits above the list's bubbles. With Reduce Motion it fades instead of sliding up.
+struct MuteToastOverlay: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    private var bottomInset: CGFloat {
+        #if os(iOS)
+        horizontalSizeClass == .compact ? 84 : 24
+        #else
+        24
+        #endif
+    }
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            ZStack {
+                if let toast = model.muteToast {
+                    MuteToastView(toast: toast)
+                        .id(toast.id)
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, bottomInset)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.muteToast)
+        }
+    }
+}
+
+extension View {
+    func muteToastOverlay() -> some View { modifier(MuteToastOverlay()) }
+}
+
+private struct MuteToastView: View {
+    let toast: MuteToast
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(toast.message)
+                .font(OFFont.ui(13.5, .medium))
+                .foregroundStyle(.ofInk)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Undo") { Task { await model.undoMute() } }
+                .buttonStyle(.plain)
+                .font(OFFont.ui(13.5, .semibold))
+                .foregroundStyle(.ofAccent)
+                .fixedSize()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 420)
+        .background(Color.ofSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.ofBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+    }
+}

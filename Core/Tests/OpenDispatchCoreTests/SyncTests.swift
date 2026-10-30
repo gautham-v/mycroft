@@ -278,6 +278,41 @@ struct SyncTests {
         #expect(try server.pull(b) == SyncStore.ApplyResult())
     }
 
+    @Test func muteSyncs() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let folder = try await a.createFolder(title: "NFL")
+        let s = try Fixture.source(a, title: "S", url: "https://s.example", feedUrl: "https://s.example/feed")
+        try server.join(a)
+        let b = try Fixture.db()
+        try server.join(b)
+
+        try await a.setSourceMuted(id: s.id, muted: true)
+        try await a.setFolderMuted(id: folder.id, muted: true)
+        #expect(try diff(a).saves.count == 2)
+        try server.push(a)
+        #expect(try server.pull(b).libraryChanged)
+        #expect(try await b.sources().first { $0.feedUrl == s.feedUrl }?.isMuted == true)
+        #expect(try await b.folders().first?.isMuted == true)
+        #expect(try diff(b).isEmpty)
+
+        // Unmuting clears it on the other device too.
+        let bFolder = try #require(try await b.folders().first)
+        try await b.setFolderMuted(id: bFolder.id, muted: false)
+        try server.push(b)
+        #expect(try server.pull(a).libraryChanged)
+        #expect(try await a.folders().first?.isMuted == false)
+    }
+
+    @Test func aRecordThatIsNotMutedKeepsItsHash() {
+        // The hashes records had before the field existed, so adding it sends nothing up.
+        let plain = SyncRecord(type: .folder, name: "folder-x", fields: ["title": .string("NFL"), "position": .int(1)])
+        #expect(plain.hash == SyncRecord.hex("position=i:1\ntitle=s:NFL"))
+        var muted = plain
+        muted.fields["isMuted"] = .bool(true)
+        #expect(muted.hash != plain.hash)
+    }
+
     @Test func ckRecordRoundTrip() throws {
         let r = SyncRecord(type: .source, name: SyncRecord.sourceName(feedUrl: "https://a.example/feed"), fields: [
             "feedUrl": .string("https://a.example/feed"), "title": .string("A"), "url": .string("https://a.example"),

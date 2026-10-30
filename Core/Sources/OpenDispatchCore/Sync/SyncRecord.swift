@@ -56,11 +56,11 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
     /// Every field and its kind. Fields not listed here are neither sent nor read.
     var schema: [String: SyncFieldKind] {
         switch self {
-        case .folder: ["title": .string, "position": .int]
+        case .folder: ["title": .string, "position": .int, "isMuted": .bool]
         case .source: [
             "feedUrl": .string, "title": .string, "url": .string, "kind": .string, "group": .string,
             "iconUrl": .string, "folder": .string, "position": .int, "pinnedAt": .date, "isHidden": .bool,
-            "createdAt": .date, "topicOptions": .string,
+            "isMuted": .bool, "createdAt": .date, "topicOptions": .string,
         ]
         case .savedItem: [
             "sourceFeedUrl": .string, "guid": .string, "url": .string, "title": .string, "summary": .string,
@@ -91,8 +91,8 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
     /// devices forever.
     var hashedKeys: Set<String> {
         switch self {
-        case .folder: ["title", "position"]
-        case .source: ["feedUrl", "title", "folder", "position", "pinnedAt", "isHidden", "topicOptions"]
+        case .folder: ["title", "position", "isMuted"]
+        case .source: ["feedUrl", "title", "folder", "position", "pinnedAt", "isHidden", "isMuted", "topicOptions"]
         case .savedItem: ["sourceFeedUrl", "guid"]
         // What the user edits, plus readwiseId so every device knows which Readwise highlight this is.
         // The article snapshot (title, source, URL) is fixed when the highlight is made.
@@ -104,6 +104,10 @@ public enum SyncRecordType: String, Sendable, CaseIterable {
         case .integrations: ["webhookURL", "readwiseToken"]
         }
     }
+
+    /// Hashed fields added after records were already in iCloud. They count only when set, so a record without one keeps
+    /// the hash it had and adding the field doesn't send every record up again. Such a field is written only when set.
+    static let hashedWhenSet: Set<String> = ["isMuted"]
 }
 
 enum SyncFieldKind: Sendable {
@@ -174,7 +178,7 @@ public struct SyncRecord: Sendable, Hashable {
 
     /// SHA-256 of the hashed fields (SyncRecordType.hashedKeys), keys sorted.
     public var hash: String {
-        let keys = type.hashedKeys.sorted()
+        let keys = type.hashedKeys.sorted().filter { fields[$0] != nil || !SyncRecordType.hashedWhenSet.contains($0) }
         let text = keys.map { k in "\(k)=\(fields[k]?.canonical ?? "-")" }.joined(separator: "\n")
         return SyncRecord.hex(text)
     }

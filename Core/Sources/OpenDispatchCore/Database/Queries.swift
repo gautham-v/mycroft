@@ -43,6 +43,13 @@ public enum Queries {
         if q.view != .saved, q.sourceId == nil { c.append(!OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl])) }
         // Topic items stay out of the curated views: they list in their topic, Saved and History.
         if q.view != .saved, q.sourceId == nil { c.append(kind != SourceKind.topic.rawValue) }
+        // Muted sources and folders stay out of the feeds; their own lists, Saved and a search still show them.
+        if q.view != .saved, q.sourceId == nil, q.folderId == nil, q.searchTerms.isEmpty {
+            c.append(src[Source.Columns.isMuted] == false)
+            c.append(SQL("""
+                NOT EXISTS (SELECT 1 FROM folders f WHERE f.id = \(src[Source.Columns.folderId]) AND f.is_muted = 1)
+                """).sqlExpression)
+        }
         if let s = q.sourceId {
             // A topic lists one row per story: the articles behind a lead, the Hacker News thread about it and the posts sharing it
             // list with the lead.
@@ -411,6 +418,16 @@ public enum Queries {
         return s
     }
 
+    /// Keep a source out of the feeds (All, Articles, Posts, Video, Podcasts) or put it back. It stays in the sidebar.
+    @discardableResult
+    public static func setSourceMuted(_ db: Database, id: Int64, muted: Bool) throws -> Source {
+        guard var s = try Source.fetchOne(db, key: id) else { throw QueryError.notFound("Source") }
+        if muted == s.isMuted { return s }
+        s.isMuted = muted
+        try s.update(db)
+        return s
+    }
+
     /// Turn notifications for a source's new posts on (from `now`) or off. Turning them on again restarts
     /// the clock, so posts stored while they were off never notify.
     @discardableResult
@@ -488,6 +505,16 @@ public enum Queries {
         guard !t.isEmpty else { throw QueryError.emptyTitle }
         guard var f = try Folder.fetchOne(db, key: id) else { throw QueryError.notFound("Folder") }
         f.title = t
+        try f.update(db)
+        return f
+    }
+
+    /// Keep every source in a folder out of the feeds, or put them back. Sources that have their own mute stay muted.
+    @discardableResult
+    public static func setFolderMuted(_ db: Database, id: Int64, muted: Bool) throws -> Folder {
+        guard var f = try Folder.fetchOne(db, key: id) else { throw QueryError.notFound("Folder") }
+        if muted == f.isMuted { return f }
+        f.isMuted = muted
         try f.update(db)
         return f
     }
