@@ -390,6 +390,8 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-card { display: grid; grid-template-columns: 96px minmax(0, 1fr); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; text-decoration: none; color: inherit; }
 .prose-opendispatch .x-card:not(:has(.x-card-img)) { grid-template-columns: 1fr; }
 .prose-opendispatch .x-card-img { width: 100%; height: 100%; aspect-ratio: 1; object-fit: cover; margin: 0; border-radius: 0; }
+.prose-opendispatch .x-card-large { grid-template-columns: 1fr; }
+.prose-opendispatch .x-card-large .x-card-img { height: auto; aspect-ratio: 800 / 419; }
 .prose-opendispatch .x-card-text { display: grid; gap: 2px; align-content: center; padding: 10px 14px; font-size: 14px; line-height: 1.35; }
 .prose-opendispatch .x-card-domain { color: var(--muted); font-size: 13px; }
 .prose-opendispatch .x-card-title { color: var(--ink); font-weight: 500; }

@@ -310,6 +310,14 @@ public final class AppDatabase: Sendable {
                     AND substr(lower(i.url), 1, length(s.feed_url) + 8) != lower(s.feed_url) || '/status/')
                 """)
         }
+        // X link cards read before 1.0.40 have the small image and may repeat the post's text; drop their cached copy so
+        // the reader reads them again.
+        m.registerMigration("v13-reread-x-large-cards") { db in
+            try db.execute(sql: """
+                UPDATE items SET content_html = NULL, content_rendered = 0
+                WHERE content_html LIKE '%class="x-card"%' AND (url LIKE '%://x.com/%' OR url LIKE '%twitter.com/%')
+                """)
+        }
         return m
     }
 }

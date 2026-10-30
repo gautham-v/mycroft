@@ -12,8 +12,6 @@ enum TweetExtraction {
     private static let datePattern = P(#"\\"created_at_ms\\":(\d{10,})"#)
     private static let linkPattern = P(#"\\"display_url\\":\\"([^"\\]*)\\",\\"expanded_url\\":\\"([^"\\]*)\\",\\"indices\\":\[\d+,\d+\],\\"url\\":\\"([^"\\]*)\\""#)
     private static let ogTitle = P(#"<meta property="og:title" content="([^"]*?)(?: \(@[^)]*\))?(?: on X)?""#)
-    /// The fields sort by name, so `alt` comes first on an image that has it, and `height` is not always there.
-    private static let cardImage = P(#"\\"key\\":\\"thumbnail_image_large\\",\\"value\\":\{\\"image_value\\":\{(?:\\"alt\\":\\"(?:\\\\.|[^\\])*?\\",)?(?:\\"height\\":\d+,)?\\"url\\":\\"([^"\\]*)\\""#)
     private static let restID = P(#"\\"rest_id\\":\\"(\d+)\\""#)
     private static let normalAvatar = P(#"_normal(\.\w+)$"#)
     private static let inlineToken = P(#"https?://\S+|@[A-Za-z0-9_]{1,15}"#)
@@ -148,6 +146,24 @@ enum TweetExtraction {
         return unescapeTwice(v)
     }
 
+    /// An image binding of the post's link card. The fields sort by name, so `alt` comes first on an image that has
+    /// it, and `height` is not always there.
+    static func cardImage(_ card: String, key: String) -> String? {
+        let p = P(#"\\"key\\":\\""# + NSRegularExpression.escapedPattern(for: key) + #"\\",\\"value\\":\{\\"image_value\\":\{(?:\\"alt\\":\\"(?:\\\\.|[^\\])*?\\",)?(?:\\"height\\":\d+,)?\\"url\\":\\"([^"\\]*)\\""#)
+        return p.firstMatch(card)?[1] ?? nil
+    }
+
+    /// Whether a card's headline says what the post already says, as when a site's post is its headline. By words,
+    /// because the two are often worded a little differently ("you all", "y'all"). A short headline or a much longer
+    /// post can share most of its words by chance, so those don't count.
+    static func repeatsPost(headline: String, text: String) -> Bool {
+        func words(_ s: String) -> [String] { s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) }
+        let title = words(headline), post = words(inlineToken.replacing(text, with: " "))
+        guard title.count >= 4, post.count <= title.count * 2 else { return false }
+        let known = Set(post)
+        return Double(title.filter(known.contains).count) >= Double(title.count) * 0.8
+    }
+
     /// The post's photos, videos and GIFs: the first `media_entities2` array in [from, to). Every post in the page
     /// data carries one (empty when it has no media), sorted before `quoted_tweet_results`.
     static func tweetMedia(_ raw: String, from: Int, to: Int) -> [Media] {
@@ -207,11 +223,13 @@ enum TweetExtraction {
         return "<div class=\"x-who\">\(av)<span class=\"x-name\">\(DOM.escapeHTML(u.name))</span>\(handle)\(when)</div>"
     }
 
-    /// A link card: lead image, domain, title.
-    static func cardHTML(href: String, title: String, domain: String?, image: String?) -> String {
+    /// A link card: lead image, domain, title. `large` puts a full-width image above the text; otherwise it is a
+    /// thumbnail beside it.
+    static func cardHTML(href: String, title: String, domain: String?, image: String?, large: Bool = false, showsTitle: Bool = true) -> String {
         let pic = image.map { "<img class=\"x-card-img\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
         let shownDomain = domain ?? DOM.hostname(href) ?? ""
-        return "<a class=\"x-card\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span><span class=\"x-card-title\">\(DOM.escapeHTML(title))</span></span></a>"
+        let shownTitle = showsTitle ? "<span class=\"x-card-title\">\(DOM.escapeHTML(title))</span>" : ""
+        return "<a class=\"x-card\(large ? " x-card-large" : "")\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span>\(shownTitle)</span></a>"
     }
 
     /// The footer: when the post went up. (The reader's toolbar opens the post on its network.)
@@ -320,9 +338,14 @@ enum TweetExtraction {
             let title = cardString(region, key: "title")
             let domain = cardString(region, key: "vanity_url") ?? cardString(region, key: "domain")
             cardURL = cardString(region, key: "card_url")
-            let img = cardImage.firstMatch(region)?[1] ?? nil
+            // X has the large image only on a card it shows large; a small card keeps its thumbnail.
+            let large = cardImage(region, key: "summary_photo_image_large")
+            let img = large ?? cardImage(region, key: "thumbnail_image_large")
             let href = cardURL.flatMap { links[$0]?.expanded } ?? cardURL
-            if let title, let href { card = cardHTML(href: href, title: title, domain: domain, image: img) }
+            if let title, let href {
+                let repeated = large != nil && repeatsPost(headline: title, text: text)
+                card = cardHTML(href: href, title: title, domain: domain, image: img, large: large != nil, showsTitle: !repeated)
+            }
         }
 
         var quoted = ""

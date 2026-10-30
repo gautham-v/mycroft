@@ -621,6 +621,38 @@ struct ExtractionTweetTests {
         }
     }
 
+    @Test func linkCardGoesLargeWhenXHasTheLargeImage() throws {
+        func html(text: String, title: String, keys: [String]) throws -> String {
+            let images = keys.map { #"{"key":"\#($0)","value":{"image_value":{"alt":"A photo","height":419,"url":"https://pbs.twimg.com/card_img/1/\#($0)","width":800},"type":"IMAGE"}}"# }.joined(separator: ",")
+            let data = Self.escaped(#"{"card":{"legacy":{"binding_values":[\#(images),{"key":"vanity_url","value":{"string_value":"nbcsports.com","type":"STRING"}},{"key":"title","value":{"string_value":"\#(title)","type":"STRING"}},{"key":"card_url","value":{"string_value":"https://t.co/card","type":"STRING"}}]}},"core":{"name":"PFT","screen_name":"pft"},"details":{"full_text":"\#(text) https://t.co/card"},"media_entities2":[]}"#)
+            let raw = "<html><body><script>window.x=\"\(data)\"</script></body></html>"
+            return try #require(TweetExtraction.fromPage(raw: raw, canonical: "https://x.com/pft/status/1", user: "pft")?.contentHtml)
+        }
+        let both = ["thumbnail_image_large", "summary_photo_image_large"]
+        // X's large image; the headline goes when it only repeats the post.
+        let repeated = try html(text: "Kerby Joseph after return to practice: I'm still him; I hope you all ain't forgot.",
+                                title: "Kerby Joseph after return to practice: I'm still him; I hope y'all ain't forgot", keys: both)
+        #expect(repeated.contains("class=\"x-card x-card-large\""))
+        #expect(repeated.contains("src=\"https://pbs.twimg.com/card_img/1/summary_photo_image_large\""))
+        #expect(repeated.contains("x-card-domain"))
+        #expect(!repeated.contains("x-card-title"))
+        // A headline that adds something stays.
+        let added = try html(text: "Quenton Nelson spoke about his time with Colts.", title: "Nelson: 'it's awesome' to play for Seahawks", keys: both)
+        #expect(added.contains("x-card-large") && added.contains("x-card-title"))
+        // A card with only a thumbnail keeps the small layout and its headline, even a repeated one.
+        let small = try html(text: "Read the API overview for our new limits", title: "Read the API overview for our new limits", keys: ["thumbnail_image_large"])
+        #expect(small.contains("class=\"x-card\""))
+        #expect(small.contains("x-card-title"))
+    }
+
+    @Test func headlineRepeatsPostByItsWords() {
+        #expect(TweetExtraction.repeatsPost(headline: "Saquon Barkley set to play, DeVonta Smith ruled out", text: "Saquon Barkley set to play, DeVonta Smith ruled out. https://t.co/a"))
+        #expect(!TweetExtraction.repeatsPost(headline: "API overview", text: "API overview"))
+        #expect(!TweetExtraction.repeatsPost(headline: "Nelson: 'it's awesome' to play for Seahawks", text: "In the week of his trade, Pro-Bowl guard Quenton Nelson spoke about his time with Colts but looked ahead to playing for the Seahawks."))
+        let long = "Kerby Joseph is back at practice. " + String(repeating: "A long take about the Lions secondary and what it means. ", count: 5)
+        #expect(!TweetExtraction.repeatsPost(headline: "Kerby Joseph is back at practice", text: long))
+    }
+
     @Test func mediaLinkDroppedButRealLinkKept() {
         let links: TweetExtraction.Links = ["https://t.co/real": ("e.com", "https://e.com")]
         #expect(TweetExtraction.withoutMediaLinks("Look https://t.co/real https://t.co/m1", links: links) == "Look https://t.co/real")
