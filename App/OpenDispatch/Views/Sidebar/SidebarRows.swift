@@ -5,8 +5,10 @@ import SwiftUI
 enum SidebarStyle {
     /// Folder header / "New folder" label: 13pt regular, like Claude's "Recents".
     static let sectionFont = OFFont.ui(13)
-    /// Group header ("Topics", "Folders"): semibold, so it reads above the folder headers under it.
-    static let groupFont = OFFont.ui(13, .semibold)
+    /// Group header ("Topics", "Folders"): 11pt semibold in `groupColor`, like Finder's "Favorites", so it reads
+    /// above the 13pt folder headers under it by size rather than weight.
+    static let groupFont = OFFont.ui(11, .semibold)
+    static var groupColor: Color { .ofRead }
     static let sectionTracking: CGFloat = 0
     static let headerHeight: CGFloat = 26
     /// Row horizontal padding (px-2) and icon column width (w-[20px]).

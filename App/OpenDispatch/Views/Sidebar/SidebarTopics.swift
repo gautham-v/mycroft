@@ -76,7 +76,7 @@ struct SidebarTopicsSection: View {
         }
         .font(SidebarStyle.groupFont)
         .tracking(SidebarStyle.sectionTracking)
-        .foregroundStyle(Color.ofMuted)
+        .foregroundStyle(SidebarStyle.groupColor)
         .padding(.leading, SidebarStyle.rowPadding)
         .padding(.trailing, 4)
         .frame(height: SidebarStyle.headerHeight)
