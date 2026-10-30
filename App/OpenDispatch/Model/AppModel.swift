@@ -212,6 +212,10 @@ final class AppModel {
     var pendingAddSourceFolderID: Int64?
     /// Adds started from the Add sources sheet, by the URL added (a feed or a site).
     private(set) var sourceAdds: [String: SourceAddState] = [:]
+    /// The folder each add in `sourceAdds` goes into, when one was picked.
+    private var sourceAddFolders: [String: Int64] = [:]
+    /// The source each add in `sourceAdds` made or found, once it has.
+    private var sourceAddIDs: [String: Int64] = [:]
     var isShortcutsPresented = false
     /// Settings: the sheet on iOS/iPad, the in-window overlay on macOS. `settingsTab` picks the pane.
     var isSettingsPresented = false
@@ -1178,31 +1182,46 @@ final class AppModel {
 
     /// "Add sources": start adding without waiting. Detect the feed and store it (it shows in the sidebar),
     /// then fetch it in the background. Progress and errors land in `sourceAdds[url]`, so the sheet can
-    /// stay open for more and closing it doesn't stop an add. A new source goes into `folderID` when given.
+    /// stay open for more and closing it doesn't stop an add. The source goes into `folderID` when given, even
+    /// if it was already in the library.
     func beginAddSource(url: String, folderID: Int64? = nil) {
         switch sourceAdds[url] {
         case .adding, .added: return
         case .failed, nil: break
         }
         sourceAdds[url] = .adding
+        sourceAddFolders[url] = folderID
         Task {
             do {
                 let (source, existed) = try await services.addSource(url: url, fetch: false)
+                sourceAddIDs[url] = source.id
+                if let folder = sourceAddFolders[url] {
+                    try await moveSource(id: source.id, toFolder: folder)
+                } else {
+                    await loadSources()
+                }
                 sourceAdds[url] = .added
-                if !existed, let folderID { try? await database.moveSource(id: source.id, toFolder: folderID) }
-                await loadSources()
                 guard !existed else { return }
                 _ = try? await services.refresh.refreshSource(id: source.id)
                 await reloadAll()
             } catch {
                 sourceAdds[url] = .failed(HTTP.message(error))
+                await loadSources()
             }
         }
+    }
+
+    /// Change where an add from the sheet goes, whether it is still running or done.
+    func moveSourceAdd(url: String, toFolder folderID: Int64) async {
+        sourceAddFolders[url] = folderID
+        if let id = sourceAddIDs[url] { try? await moveSource(id: id, toFolder: folderID) }
     }
 
     /// Forget finished adds when the sheet closes; ones still running keep their entry.
     func clearFinishedSourceAdds() {
         sourceAdds = sourceAdds.filter { $0.value == .adding }
+        sourceAddFolders = sourceAddFolders.filter { sourceAdds[$0.key] != nil }
+        sourceAddIDs = sourceAddIDs.filter { sourceAdds[$0.key] != nil }
     }
 
     func deleteSource(id: Int64) async throws {

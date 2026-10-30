@@ -9,7 +9,8 @@ import SwiftUI
 /// progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
 /// With nothing typed, the sheet explains what works and offers OPML import. "Add to" under the field picks the
 /// folder new sources go into (Unfiled by default; a folder's "Add Source to <Folder>…" preselects it through
-/// `AppModel.pendingAddSourceFolderID`), and its New Folder… makes one and picks it.
+/// `AppModel.pendingAddSourceFolderID`), and its New Folder… makes one and picks it. Picking a folder also moves
+/// what this sheet already added to Unfiled.
 struct AddSourceView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -75,6 +76,9 @@ struct AddSourceView: View {
             fieldFocused = true
         }
         .onDisappear { model.clearFinishedSourceAdds() }
+        .onChange(of: folderID) { _, folder in
+            if let folder { moveUnfiledAdds(to: folder) }
+        }
         .task(id: trimmed) { await search() }
         .alert("New Folder", isPresented: $namingFolder) {
             TextField("Name", text: $newFolderName)
@@ -335,6 +339,15 @@ struct AddSourceView: View {
     private func add(_ url: String) {
         addedTo[url] = folderID
         model.beginAddSource(url: url, folderID: folderID)
+    }
+
+    /// Unfiled is where the menu starts, not a choice, and Return adds before the menu under the field has been
+    /// looked at, so the first folder picked takes what went to Unfiled. What went to a folder stays there.
+    private func moveUnfiledAdds(to folder: Int64) {
+        for (url, target) in addedTo where target == nil {
+            addedTo[url] = folder
+            Task { await model.moveSourceAdd(url: url, toFolder: folder) }
+        }
     }
 
     /// Return adds what was pasted; a name just searches (results update as you type).
