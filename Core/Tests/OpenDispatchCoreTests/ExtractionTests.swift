@@ -589,6 +589,18 @@ struct ExtractionTweetTests {
         #expect(html.contains("https://x.com/tkl/status/9"))
     }
 
+    @Test func quotedPostKeepsItsOwnText() throws {
+        // A long post quoting a short one, with the long post's data repeated later in the page: the quoted card
+        // must read the quoted post's text, not the first long text after it. Its text holds a brace too.
+        let note = #"{"note_tweet":{"note_tweet_results":{"result":{"__typename":"NoteTweet","entity_set":{"urls":[]},"text":"we will need to rebuild much of software."}}}}"#
+        let data = Self.escaped(#"{"core":{"name":"lauren","screen_name":"poteto"},"details":{"full_text":"we will need"},"media_entities2":[],"note_tweet":{"note_tweet_results":{"result":{"__typename":"NoteTweet","entity_set":{"urls":[]},"text":"we will need to rebuild much of software."}}},"quoted_tweet_results":{"rest_id":"7","result":{"core":{"name":"Joseph Cox","screen_name":"josephfcox"},"details":{"full_text":"New: a memo {leaked}"},"media_entities2":[]}},"rest_id":"1"}"#)
+        let raw = "<html><body><script>window.x=\"\(data)\";window.y=\"\(Self.escaped(note))\"</script></body></html>"
+        let html = try #require(TweetExtraction.fromPage(raw: raw, canonical: "https://x.com/poteto/status/1", user: "poteto")?.contentHtml)
+        #expect(html.contains("<p>New: a memo {leaked}</p>"))
+        #expect(html.components(separatedBy: "rebuild much of software").count == 2)
+        #expect(html.contains("https://x.com/josephfcox/status/7"))
+    }
+
     @Test func mediaLinkDroppedButRealLinkKept() {
         let links: TweetExtraction.Links = ["https://t.co/real": ("e.com", "https://e.com")]
         #expect(TweetExtraction.withoutMediaLinks("Look https://t.co/real https://t.co/m1", links: links) == "Look https://t.co/real")

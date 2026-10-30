@@ -103,6 +103,46 @@ enum ReaderHTML {
     })();
     """
 
+    /// iPhone: a tap on an image in the article sends it, with every other image in the article, to the app,
+    /// which opens them full screen (ReaderImageViewer.swift). Avatars, emoji and link-card images are left
+    /// alone, as is an image inside a link to a page; one linked to a bigger copy of itself opens that copy.
+    static let imageTapScript = """
+    (function () {
+      var article = document.querySelector('article');
+      if (!article) return;
+      var imageLink = /\\.(jpe?g|png|gif|webp|avif|heic)([?#]|$)/i;
+      function zoomable(img) {
+        if (img.closest('.x-who, .x-card, .x-avatar, .x-emoji')) return false;
+        var a = img.closest('a[href]');
+        if (a && !imageLink.test(a.href)) return false;
+        var r = img.getBoundingClientRect();
+        return r.width >= 60 && r.height >= 60;
+      }
+      function source(img) {
+        var a = img.closest('a[href]');
+        if (a) return a.href;
+        var best = img.currentSrc || img.src, widest = 0;
+        (img.getAttribute('srcset') || '').split(',').forEach(function (part) {
+          var bits = part.trim().split(/\\s+/), w = parseInt(bits[1], 10);
+          if (bits[0] && /w$/.test(bits[1] || '') && w > widest) {
+            try { best = new URL(bits[0], document.baseURI).href; widest = w; } catch (e) {}
+          }
+        });
+        return best;
+      }
+      article.addEventListener('click', function (e) {
+        var img = e.target && e.target.closest ? e.target.closest('img') : null;
+        if (!img || !zoomable(img)) return;
+        var sel = window.getSelection();
+        if (sel && !sel.isCollapsed) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var all = Array.prototype.filter.call(article.querySelectorAll('img'), zoomable);
+        window.webkit.messageHandlers.openDispatchImage.postMessage({ urls: all.map(source), index: Math.max(0, all.indexOf(img)) });
+      }, true);
+    })();
+    """
+
     static func applyAppearanceScript(_ a: Appearance) -> String {
         let theme: String = switch a.theme {
         case .system: "null"
@@ -148,6 +188,8 @@ struct ReaderArticleWebView: View {
     @Environment(HighlightStore.self) private var highlights
     @Environment(\.highlightArticle) private var article
     @State private var height: CGFloat = 0
+    /// The images opened full screen from a tap (iPhone).
+    @State private var gallery: ReaderImageGallery?
     @State private var bridge = ReaderHighlightBridge()
     /// Where the scroll marker sits in the article, for scrolling the reader to a highlight.
     @State private var markerY: CGFloat = 0
@@ -163,7 +205,8 @@ struct ReaderArticleWebView: View {
             html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post, onReload: onReload,
             onCopyMarkdown: onCopyMarkdown, bridge: bridge,
             highlight: article.map { ReaderHighlightState(store: highlights, article: $0, highlights: highlights.highlights(forKey: $0.key)) },
-            speechPage: speechPage
+            speechPage: speechPage,
+            onImage: { gallery = $0 }
         ) { h in
             if abs(h - height) > 0.5 { height = h }
         }
@@ -206,6 +249,9 @@ struct ReaderArticleWebView: View {
         // It is anchored to a spot in the page: scrolling the reader or resizing the pane moves that.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { _ in highlights.closePopover() }
         .accessibilityLabel("Article")
+        #if os(iOS)
+        .fullScreenCover(item: $gallery) { ReaderImageViewer(gallery: $0) }
+        #endif
     }
 }
 
@@ -217,6 +263,7 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     var documentURL: URL?
     var onReload: (() -> Void)?
     var onCopyMarkdown: (() -> Void)?
+    var onImage: ((ReaderImageGallery) -> Void)?
     let bridge: ReaderHighlightBridge
     var speechPage: ReaderSpeechPage?
 
@@ -226,6 +273,10 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "openDispatchImage" {
+            if let gallery = ReaderImageGallery(message: message.body) { onImage?(gallery) }
+            return
+        }
         guard message.name == "openDispatchHeight" else { return }
         let value: CGFloat? = (message.body as? NSNumber).map { CGFloat($0.doubleValue) }
         if let h = value, h.isFinite, h >= 0 { onHeight(h) }
@@ -276,6 +327,9 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         webView.extraMenuItems = { [weak self] in self?.menuItems() ?? [] }
         webView.topMenuItems = { [weak bridge] in bridge?.macMenuItems() ?? [] }
         #else
+        controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchImage")
+        controller.addUserScript(WKUserScript(source: ReaderHTML.imageTapScript, injectionTime: .atDocumentEnd,
+                                              forMainFrameOnly: true, in: world))
         webView.highlightMenu = { [weak bridge] in bridge?.editMenuElements() ?? [] }
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
@@ -345,6 +399,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let bridge: ReaderHighlightBridge
     let highlight: ReaderHighlightState?
     let speechPage: ReaderSpeechPage?
+    let onImage: (ReaderImageGallery) -> Void
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge) }
@@ -358,6 +413,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
         context.coordinator.onCopyMarkdown = onCopyMarkdown
+        context.coordinator.onImage = onImage
         if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post)
@@ -382,6 +438,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let bridge: ReaderHighlightBridge
     let highlight: ReaderHighlightState?
     let speechPage: ReaderSpeechPage?
+    let onImage: (ReaderImageGallery) -> Void
     let onHeight: (CGFloat) -> Void
 
     func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge) }
@@ -395,6 +452,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
         context.coordinator.onHeight = onHeight
         context.coordinator.onReload = onReload
         context.coordinator.onCopyMarkdown = onCopyMarkdown
+        context.coordinator.onImage = onImage
         if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
         context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post)

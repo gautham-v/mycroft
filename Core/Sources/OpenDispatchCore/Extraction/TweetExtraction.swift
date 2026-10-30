@@ -61,13 +61,28 @@ enum TweetExtraction {
         return n.substring(with: NSRange(location: lo, length: hi - lo))
     }
 
-    /// The UTF-16 offset of the bracket closing the one at `open` (URLs and ids hold none), or nil.
-    private static func closing(_ n: NSString, open: Int) -> Int? {
+    /// The UTF-16 offset of the bracket closing the one at `open` in X's escaped page data, or nil. Brackets
+    /// inside string values (post text can hold them) don't count. The data is JSON inside a JSON string, so each
+    /// `\x` pair is read as `x` first and the JSON underneath is scanned as usual.
+    static func closing(_ n: NSString, open: Int) -> Int? {
         let o = n.character(at: open), c: unichar = o == 0x5B ? 0x5D : 0x7D
-        var depth = 0
-        for i in open..<n.length {
-            let ch = n.character(at: i)
-            if ch == o { depth += 1 } else if ch == c { depth -= 1; if depth == 0 { return i } }
+        var depth = 0, inString = false, escaped = false
+        var i = open
+        while i < n.length {
+            let at = i
+            var ch = n.character(at: i)
+            if ch == 0x5C, i + 1 < n.length { i += 1; ch = n.character(at: i) }
+            i += 1
+            if inString {
+                if escaped { escaped = false } else if ch == 0x5C { escaped = true } else if ch == 0x22 { inString = false }
+            } else if ch == 0x22 {
+                inString = true
+            } else if ch == o {
+                depth += 1
+            } else if ch == c {
+                depth -= 1
+                if depth == 0 { return at }
+            }
         }
         return nil
     }
@@ -276,6 +291,13 @@ enum TweetExtraction {
         let qiRange = rawNS.range(of: #"\"quoted_tweet_results\""#)
         let qi = qiRange.location == NSNotFound ? -1 : qiRange.location
         let end = qi >= 0 ? qi : rawNS.length
+        // Where the quoted post's data ends. The page holds more after it (the rest of the main post, replies,
+        // the main post again), so reading the quoted post's text or media past this picks up someone else's.
+        var quoteEnd = rawNS.length
+        if qi >= 0 {
+            let brace = rawNS.range(of: "{", range: NSRange(location: qi, length: min(40, rawNS.length - qi)))
+            if brace.location != NSNotFound, let close = closing(rawNS, open: brace.location) { quoteEnd = close + 1 }
+        }
         var links: Links = [:]
         for m in linkPattern.allMatches(raw) {
             if let display = m[1], let expanded = m[2], let url = m[3] { links[url] = (display, expanded) }
@@ -305,8 +327,8 @@ enum TweetExtraction {
         var quoted = ""
         if qi >= 0 {
             let qid = restID.firstMatch(slice(raw, qi, qi + 400))?[1] ?? nil
-            let qm = tweetMedia(raw, from: qi, to: rawNS.length)
-            if let qu = tweetUser(raw, from: qi), var qt = tweetText(raw, from: qi, to: rawNS.length) {
+            let qm = tweetMedia(raw, from: qi, to: quoteEnd)
+            if let qu = tweetUser(raw, from: qi), var qt = tweetText(raw, from: qi, to: quoteEnd) {
                 if !qm.isEmpty { qt = withoutMediaLinks(qt, links: links) }
                 if !qt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !qm.isEmpty {
                     let href = qid.map { "https://x.com/\(qu.handle)/status/\($0)" } ?? "https://x.com/\(qu.handle)"
