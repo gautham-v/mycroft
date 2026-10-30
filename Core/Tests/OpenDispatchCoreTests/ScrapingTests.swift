@@ -133,6 +133,19 @@ struct ScrapingLinkTests {
         ])
     }
 
+    @Test func xProfileSkipsPostsItQuotes() {
+        // A quote post links to the post it quotes, which belongs to another account.
+        let html = """
+        <article><a href="/AdamSchefter/status/1">post</a><a href="/Eagles/status/2">quoted</a></article>
+        <article><a href="/adamschefter/status/3">post</a></article>
+        """
+        #expect(PageScraping.findArticleLinks(html: html, pageURL: "https://x.com/AdamSchefter") == [
+            "https://x.com/AdamSchefter/status/1", "https://x.com/adamschefter/status/3",
+        ])
+        // A page that isn't one account's profile keeps every post.
+        #expect(PageScraping.findArticleLinks(html: html, pageURL: "https://x.com/i/lists/9").count == 3)
+    }
+
     @Test func caps30Links() {
         let html = (1...40).map { #"<a href="/news/post-\#($0)">Post number \#($0)</a>"# }.joined()
         let links = PageScraping.findArticleLinks(html: html, pageURL: "https://example.com/news")

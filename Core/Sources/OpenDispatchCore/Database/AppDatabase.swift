@@ -300,6 +300,16 @@ public final class AppDatabase: Sendable {
                   AND (url LIKE '%://x.com/%' OR url LIKE '%twitter.com/%')
                 """)
         }
+        // X profiles read before 1.0.39 stored the posts they quote as their own, so a post quoted by three followed
+        // accounts was listed three times, under an account that may not be followed. Saved ones stay.
+        m.registerMigration("v12-drop-x-quoted-posts") { db in
+            try db.execute(sql: """
+                DELETE FROM items WHERE is_saved = 0 AND id IN (
+                  SELECT i.id FROM items i JOIN sources s ON s.id = i.source_id
+                  WHERE s.kind = 'page' AND s.feed_url LIKE 'https://x.com/%' AND i.url LIKE 'https://x.com/%/status/%'
+                    AND substr(lower(i.url), 1, length(s.feed_url) + 8) != lower(s.feed_url) || '/status/')
+                """)
+        }
         return m
     }
 }

@@ -191,9 +191,15 @@ public enum PageScraping {
     static func articleLinks(_ doc: Document, page: URL) -> [String] {
         let all = collectLinks(doc, pageURL: page)
         if isXHost(page.host() ?? "") {
-            // Only posts: profile tabs (/user/media, /user/with_replies) and compose links are furniture.
-            return all.filter { l in URL(string: l.url).map { isTweetPath($0.path(percentEncoded: true)) } ?? false }
-                .prefix(maxLinks).map(\.url)
+            // Only posts: profile tabs (/user/media, /user/with_replies) and compose links are furniture. On a profile,
+            // only its own: a post it quotes is linked from the quoting post but belongs to another account.
+            let segs = page.path(percentEncoded: true).split(separator: "/")
+            let handle = segs.count == 1 ? segs[0].lowercased() : nil
+            return all.filter { l in
+                guard URL(string: l.url).map({ isTweetPath($0.path(percentEncoded: true)) }) == true else { return false }
+                return handle == nil || l.segs.first?.lowercased() == handle
+            }
+            .prefix(maxLinks).map(\.url)
         }
         let listingSegs = page.path(percentEncoded: true).split(separator: "/").map(String.init)
         let listingKey = listingSegs.joined(separator: "/")
