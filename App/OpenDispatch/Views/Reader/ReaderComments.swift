@@ -213,9 +213,9 @@ struct ReaderComments: View {
 
 /// One comment: its author line (avatar, name, age, score) over its text, indented by a rail per level. Clicking the
 /// author line folds it and its replies. A YouTube comment is cut to four lines with "Read more" under it; YouTube's
-/// comments are plain text, so the cut version is one Text with the paragraphs a blank line apart. The text is set like a
-/// post's (sans at the reader's text size and line spacing settings), the author line like a post's author row. In a
-/// narrow reader the type is smaller and the author line wraps.
+/// comments are plain text, so the cut version is one Text with the paragraphs a blank line apart. The text is set at the
+/// feed row's size (`ReaderCommentType`), the author line like a feed row's meta line. In a narrow reader the type is
+/// smaller and the author line wraps.
 private struct ReaderCommentRow: View {
     let comment: DiscussionComment
     let place: DiscussionPlace
@@ -339,8 +339,10 @@ private struct ReaderMoreCommentsRow: View {
     }
 }
 
-/// The comments' type: the text at the reader's text size and line spacing (as a post's text in reader.css), the author
-/// line and the "Read more" / "More replies" rows a step smaller, as a post's author row is.
+/// The comments' type: the text at the sidebar and feed row size (14.5 on the Mac and iPad, 15 under the iPhone's 17pt
+/// rows), fixed rather than following the reader's text size, so a thread of one-liners reads at the rail's size and not the
+/// post's; the line spacing still follows the setting. The author line and the "Read more" / "More replies" rows are at the
+/// feed row's meta size. A narrow reader takes a step down.
 struct ReaderCommentType {
     let size: CGFloat
     let lineSpacing: CGFloat
@@ -348,11 +350,15 @@ struct ReaderCommentType {
     let avatar: CGFloat
 
     init(settings: AppSettings, narrow: Bool) {
-        let body = OFFont.bodySize(settings.textSize)
-        size = narrow ? (body * 0.8).rounded() : body
+        #if os(iOS)
+        let phone = UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        let phone = false
+        #endif
+        size = narrow ? 13.5 : phone ? 15 : 14.5
+        meta = narrow ? 12 : phone ? 13.5 : 13
         lineSpacing = size * (settings.lineSpacing.lineHeight - 1.2)
-        meta = (size * 0.82 * 2).rounded() / 2
-        avatar = narrow ? 18 : 24
+        avatar = narrow ? 18 : 20
     }
 }
 

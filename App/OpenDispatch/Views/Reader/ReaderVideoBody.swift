@@ -203,7 +203,7 @@ struct ReaderVideoBody: View {
             }
 
             if !summaryText.isEmpty {
-                // Set like the comments under it, at the reader's text size and line spacing.
+                // Set like the comments under it, at the feed row's size with the reader's line spacing.
                 let type = ReaderCommentType(settings: model.settings, narrow: narrow)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(ReaderText.linkified(item.item.summary ?? ""))
