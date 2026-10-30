@@ -5,10 +5,10 @@ import SwiftUI
 /// (AppModel.orderedFolders / sources(inFolder:)).
 ///
 /// Top to bottom: the sidebar toggle, the search box, the six views and Highlights (any but All can be
-/// hidden from the context menu into a collapsed "More" row, and unhidden from there), each folder
-/// (header opens the folder feed, chevron collapses it, persisted per device) with its sources, then the sources in no folder as a
-/// flat list with no header (new sources land at its end), "New folder", and a footer with "Add source" and
-/// Settings. Sources drag to reorder, between folders and in or out of the flat list; folder headers drag
+/// hidden from the context menu into a collapsed "More" row, and unhidden from there), Topics, Pinned, a
+/// "Folders" header with + (New Folder, like Topics'), each folder (header opens the folder feed, chevron
+/// collapses it, persisted per device) with its sources, then the sources in no folder as a flat list with no
+/// header (new sources land at its end), and a footer with "Add source" and Settings. Sources drag to reorder, between folders and in or out of the flat list; folder headers drag
 /// to reorder folders. Context menus and the hover "..." button offer the same actions.
 /// Pinned sources list in a "Pinned" group under the views (not in their folder); hidden ones in a
 /// collapsed "Hidden" group at the end. Both are not drag targets. The filter field (⌘K) swaps the
@@ -49,12 +49,13 @@ struct SidebarView: View {
                             viewRows
                             SidebarTopicsSection()
                             pinnedSection
-                            ForEach(model.orderedFolders) { folder in
-                                folderSection(folder)
+                            foldersHeader
+                            ForEach(Array(model.orderedFolders.enumerated()), id: \.element.id) { index, folder in
+                                folderSection(folder, first: index == 0)
                             }
+                            newFolderField
                             unfiledSection
                             hiddenSection
-                            newFolderArea.id(Self.newFolderAnchor)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -225,7 +226,7 @@ struct SidebarView: View {
     // MARK: Folders
 
     @ViewBuilder
-    private func folderSection(_ folder: Folder) -> some View {
+    private func folderSection(_ folder: Folder, first: Bool) -> some View {
         let list = model.sources(inFolder: folder.id)
         let open = !model.isFolderCollapsed(folder.id)
         VStack(alignment: .leading, spacing: 0) {
@@ -237,6 +238,29 @@ struct SidebarView: View {
                 endZone(folderId: folder.id, empty: list.isEmpty)
             }
         }
+        .padding(.top, first ? 0 : 12)
+    }
+
+    /// "Folders" and its + (New Folder), like the Topics header. Shown with no folders too, so the + is always there.
+    private var foldersHeader: some View {
+        HStack(spacing: 4) {
+            Text("Folders")
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            Button { editing = .newFolder(withSource: nil) } label: {
+                SidebarMiniButtonLabel(icon: .plus, size: 20, iconSize: 11)
+            }
+            .buttonStyle(.plain)
+            .help("New Folder")
+            .accessibilityLabel("New Folder")
+        }
+        .font(SidebarStyle.groupFont)
+        .tracking(SidebarStyle.sectionTracking)
+        .foregroundStyle(Color.ofMuted)
+        .padding(.leading, SidebarStyle.rowPadding)
+        .padding(.trailing, 4)
+        .frame(height: SidebarStyle.headerHeight)
         .padding(.top, 12)
     }
 
@@ -399,25 +423,23 @@ struct SidebarView: View {
         )
     }
 
+    /// The name field for a new folder, after the last folder (where it will land).
     @ViewBuilder
-    private var newFolderArea: some View {
-        Group {
-            if case .newFolder(let withSource) = editing {
-                SidebarNameField(
-                    initial: "",
-                    placeholder: "New folder name",
-                    onCommit: { title in
-                        editing = nil
-                        createFolder(title, withSource: withSource)
-                    },
-                    onCancel: { editing = nil }
-                )
-                .padding(.horizontal, 4)
-            } else {
-                SidebarNewFolderButton { editing = .newFolder(withSource: nil) }
-            }
+    private var newFolderField: some View {
+        if case .newFolder(let withSource) = editing {
+            SidebarNameField(
+                initial: "",
+                placeholder: "New folder name",
+                onCommit: { title in
+                    editing = nil
+                    createFolder(title, withSource: withSource)
+                },
+                onCancel: { editing = nil }
+            )
+            .padding(.horizontal, 4)
+            .padding(.top, model.orderedFolders.isEmpty ? 0 : 12)
+            .id(Self.newFolderAnchor)
         }
-        .padding(.top, 12)
     }
 
     // MARK: Menus
@@ -665,30 +687,6 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .accessibilityAddTraits(active ? .isSelected : [])
-    }
-}
-
-/// "+ New folder" at the bottom of the folder list.
-private struct SidebarNewFolderButton: View {
-    let action: () -> Void
-    @State private var hovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                OFIcon.plus.image.font(.system(size: 10, weight: .semibold))
-                Text("New folder")
-                Spacer(minLength: 0)
-            }
-            .font(SidebarStyle.sectionFont)
-            .tracking(SidebarStyle.sectionTracking)
-            .foregroundStyle(hovered ? Color.ofInk : Color.ofMuted)
-            .padding(.horizontal, SidebarStyle.rowPadding)
-            .frame(height: SidebarStyle.headerHeight)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovered = $0 }
     }
 }
 

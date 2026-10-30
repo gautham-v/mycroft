@@ -7,8 +7,9 @@ import SwiftUI
 /// one row for it above the results; several links (one per line, or separated by spaces or commas)
 /// show one row each with Add All. Adding doesn't close the sheet or wait for the feed: the row shows
 /// progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
-/// With nothing typed, the sheet explains what works and offers OPML import. Opened from a folder's
-/// "Add Source to <Folder>…" (`AppModel.pendingAddSourceFolderID`), new sources go into that folder.
+/// With nothing typed, the sheet explains what works and offers OPML import. "Add to" under the field picks the
+/// folder new sources go into (Unfiled by default; a folder's "Add Source to <Folder>…" preselects it through
+/// `AppModel.pendingAddSourceFolderID`), and its New Folder… makes one and picks it.
 struct AddSourceView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -21,6 +22,11 @@ struct AddSourceView: View {
     @State private var importStatus: SettingsOPMLStatus?
     /// The folder new sources go into; nil is Unfiled.
     @State private var folderID: Int64?
+    /// The folder each add from this sheet went into (by URL), so the footer can say where they went.
+    @State private var addedTo: [String: Int64?] = [:]
+    @State private var namingFolder = false
+    @State private var newFolderName = ""
+    @State private var folderError: String?
     /// Height of the list or intro, which sizes the sheet on macOS.
     @State private var contentHeight: CGFloat = 0
     @FocusState private var fieldFocused: Bool
@@ -35,13 +41,8 @@ struct AddSourceView: View {
             header
             field
                 .padding(.top, 12)
-            if let targetFolder {
-                Text("New sources go into \u{201C}\(targetFolder.title)\u{201D}.")
-                    .font(OFFont.ui(12))
-                    .foregroundStyle(.ofMuted)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 6)
-            }
+            destination
+                .padding(.top, 10)
             ScrollView {
                 content
                     .padding(.vertical, 8)
@@ -75,6 +76,13 @@ struct AddSourceView: View {
         }
         .onDisappear { model.clearFinishedSourceAdds() }
         .task(id: trimmed) { await search() }
+        .alert("New Folder", isPresented: $namingFolder) {
+            TextField("Name", text: $newFolderName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create", action: createFolder)
+        } message: {
+            Text("Enter a name for the folder.")
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.openDispatchOPML, .xml]) { result in
             switch result {
             case .success(let url): Task { await importFile(url) }
@@ -137,6 +145,63 @@ struct AddSourceView: View {
         )
     }
 
+    /// "Add to" and a menu of Unfiled, the folders and New Folder…
+    private var destination: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Add to")
+                    .font(OFFont.ui(destinationSize))
+                    .foregroundStyle(.ofMuted)
+                Menu {
+                    Picker("Add to", selection: $folderID) {
+                        Text("Unfiled").tag(Int64?.none)
+                        ForEach(model.orderedFolders) { folder in
+                            Text(folder.title).tag(Int64?.some(folder.id))
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                    Divider()
+                    Button("New Folder\u{2026}") {
+                        newFolderName = ""
+                        namingFolder = true
+                    }
+                } label: {
+                    #if os(macOS)
+                    Text(targetFolder?.title ?? "Unfiled")
+                    #else
+                    HStack(spacing: 4) {
+                        Text(targetFolder?.title ?? "Unfiled")
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .font(OFFont.ui(destinationSize, .medium))
+                    .foregroundStyle(.ofAccent)
+                    #endif
+                }
+                #if os(macOS)
+                .fixedSize()
+                #endif
+                .accessibilityLabel("Add to \(targetFolder?.title ?? "Unfiled")")
+            }
+            if let folderError {
+                Text(folderError)
+                    .font(OFFont.ui(12))
+                    .foregroundStyle(.ofDanger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var destinationSize: CGFloat {
+        #if os(iOS)
+        15
+        #else
+        13
+        #endif
+    }
+
     @ViewBuilder
     private var content: some View {
         if trimmed.isEmpty {
@@ -147,7 +212,7 @@ struct AddSourceView: View {
                     HStack {
                         sectionLabel("\(links.count) links")
                         Spacer()
-                        Button("Add All") { links.forEach { model.beginAddSource(url: $0, folderID: folderID) } }
+                        Button("Add All") { links.forEach(add) }
                             .buttonStyle(.plain)
                             .font(OFFont.ui(13, .medium))
                             .foregroundStyle(.ofAccent)
@@ -156,7 +221,7 @@ struct AddSourceView: View {
                 }
                 ForEach(links, id: \.self) { link in
                     AddSourceRow(title: Self.shortLink(link), subtitle: "Link", host: URLHost.host(of: link),
-                                 imageUrl: nil, url: link, inLibrary: false, folderID: folderID)
+                                 imageUrl: nil, url: link, inLibrary: false, add: add)
                 }
                 if links.count <= 1 {
                     if !links.isEmpty, !results.isEmpty {
@@ -165,7 +230,7 @@ struct AddSourceView: View {
                     ForEach(results) { r in
                         AddSourceRow(title: r.title, subtitle: r.kind == .podcast ? "Podcast · \(r.subtitle)" : r.subtitle,
                                      host: URLHost.host(of: r.siteUrl ?? r.feedUrl), imageUrl: r.imageUrl, url: r.feedUrl,
-                                     inLibrary: model.hasSource(feedUrl: r.feedUrl), folderID: folderID)
+                                     inLibrary: model.hasSource(feedUrl: r.feedUrl), add: add)
                     }
                     if results.isEmpty, links.isEmpty, !searching {
                         note(searchError
@@ -207,7 +272,7 @@ struct AddSourceView: View {
         let adding = model.sourceAdds.values.filter { $0 == .adding }.count
         let added = model.sourceAdds.values.filter { $0 == .added }.count
         return HStack(spacing: 8) {
-            Text(Self.progress(adding: adding, added: added))
+            Text(Self.progress(adding: adding, added: added, folder: addsFolder))
                 .font(OFFont.ui(13))
                 .foregroundStyle(.ofMuted)
                 .monospacedDigit()
@@ -256,9 +321,39 @@ struct AddSourceView: View {
 
     // MARK: Actions
 
+    /// The folder every add in progress or done went into, when they all went into the same one (nil when
+    /// they went to Unfiled, to different folders, or some started outside this sheet).
+    private var addsFolder: String? {
+        let urls = model.sourceAdds.filter { $0.value == .adding || $0.value == .added }.map(\.key)
+        guard !urls.isEmpty, urls.allSatisfy({ addedTo[$0] != nil }) else { return nil }
+        let ids = Set(urls.map { addedTo[$0]! })
+        guard ids.count == 1, let id = ids.first!, let folder = model.folders.first(where: { $0.id == id }) else { return nil }
+        return folder.title
+    }
+
+    /// Starts adding `url` to the chosen folder.
+    private func add(_ url: String) {
+        addedTo[url] = folderID
+        model.beginAddSource(url: url, folderID: folderID)
+    }
+
     /// Return adds what was pasted; a name just searches (results update as you type).
     private func submit() {
-        links.forEach { model.beginAddSource(url: $0, folderID: folderID) }
+        links.forEach(add)
+    }
+
+    /// Makes the folder named in the New Folder prompt and picks it.
+    private func createFolder() {
+        let title = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        Task {
+            do {
+                folderID = try await model.createFolder(title: title).id
+                folderError = nil
+            } catch {
+                folderError = "Couldn't create the folder: \(HTTP.message(error))"
+            }
+        }
     }
 
     /// Debounced search for a name (or a single link, which may also be a name like "node.js").
@@ -302,12 +397,14 @@ struct AddSourceView: View {
     /// Tallest the results get on macOS before they scroll.
     static let maxContentHeight: CGFloat = 400
 
-    static func progress(adding: Int, added: Int) -> String {
-        switch (adding, added) {
+    /// "Added 2", "Adding 1…", "Added 1, adding 1…", with " to <Folder>" before any ellipsis when `folder` is given.
+    static func progress(adding: Int, added: Int, folder: String? = nil) -> String {
+        let to = folder.map { " to \($0)" } ?? ""
+        return switch (adding, added) {
         case (0, 0): ""
-        case (0, _): "Added \(added)"
-        case (_, 0): "Adding \(adding)…"
-        default: "Added \(added), adding \(adding)…"
+        case (0, _): "Added \(added)\(to)"
+        case (_, 0): "Adding \(adding)\(to)…"
+        default: "Added \(added), adding \(adding)\(to)…"
         }
     }
 
@@ -329,8 +426,8 @@ private struct AddSourceRow: View {
     /// What gets added: a feed URL from search, or the pasted link.
     let url: String
     let inLibrary: Bool
-    /// The folder the source goes into; nil is Unfiled.
-    let folderID: Int64?
+    /// Starts adding a URL to the sheet's chosen folder.
+    let add: (String) -> Void
 
     @Environment(AppModel.self) private var model
     @State private var hovering = false
@@ -387,7 +484,7 @@ private struct AddSourceRow: View {
     private var button: some View {
         let done = inLibrary || state == .added
         Button {
-            model.beginAddSource(url: url, folderID: folderID)
+            add(url)
         } label: {
             ZStack {
                 if state == .adding {

@@ -74,7 +74,7 @@ struct SidebarTopicsSection: View {
             .help("New Topic\u{2026}")
             .accessibilityLabel("New Topic")
         }
-        .font(SidebarStyle.sectionFont)
+        .font(SidebarStyle.groupFont)
         .tracking(SidebarStyle.sectionTracking)
         .foregroundStyle(Color.ofMuted)
         .padding(.leading, SidebarStyle.rowPadding)

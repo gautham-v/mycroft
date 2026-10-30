@@ -847,17 +847,7 @@ private struct PhoneDrawer: View {
     @ViewBuilder private var topicsSection: some View {
         DrawerSectionLabel("Topics") {
             if model.topics.count > 1 { editButton }
-            Button {
-                pick { model.beginNewTopic() }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.ofInk)
-                    .frame(width: 32, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("New Topic")
+            plusButton("New Topic") { pick { model.beginNewTopic() } }
         }
         if model.topics.isEmpty {
             Text("Follow a keyword to collect new matches from news, forums, videos and podcasts.")
@@ -919,7 +909,10 @@ private struct PhoneDrawer: View {
     }
 
     @ViewBuilder private var foldersSection: some View {
-        DrawerSectionLabel("Folders") { editButton }
+        DrawerSectionLabel("Folders") {
+            editButton
+            plusButton("New Folder") { open(.newFolder) }
+        }
         ForEach(model.orderedFolders) { folder in
             folderRow(folder, expandable: true)
             if expanded.contains(AppModel.folderKey(folder.id)) {
@@ -1106,6 +1099,19 @@ private struct PhoneDrawer: View {
         .buttonStyle(.plain)
         .frame(minHeight: 28)
         .contentShape(Rectangle())
+    }
+
+    /// The + at the end of a section label (Topics, Folders).
+    private func plusButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.ofInk)
+                .frame(width: 32, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     /// Edit mode: just the topics (when there are any) and the folders, each with a delete control and a drag handle.
