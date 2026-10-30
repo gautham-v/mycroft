@@ -65,7 +65,7 @@ struct ExtractionWebKitTests {
         #expect(playable)
     }
 
-    /// OPENDISPATCH_LIVE_BATCH=<file of urls, one per line> OPENDISPATCH_LIVE_DIR=<dir>: extracts each page and writes
+    /// OPENDISPATCH_LIVE_BATCH=<file of urls, one per line> OPENDISPATCH_LIVE_DIR=<dir> [OPENDISPATCH_LIVE_PARALLEL=<n>, 4]: extracts each page and writes
     /// <dir>/<n>.json (url, lead, rendered, paywalled, html or error) for a rendering review (manual check only).
     @Test @MainActor func liveBatch() async throws {
         let env = ProcessInfo.processInfo.environment
@@ -74,9 +74,10 @@ struct ExtractionWebKitTests {
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !$0.hasPrefix("#") }
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let extractor = DefaultContentExtractor(parser: DefaultFeedParser())
+        let width = Int(env["OPENDISPATCH_LIVE_PARALLEL"] ?? "") ?? 4
         await withTaskGroup(of: Void.self) { group in
             for (n, url) in urls.enumerated() {
-                if n >= 4 { await group.next() }
+                if n >= width { await group.next() }
                 group.addTask { @MainActor in
                     var record: [String: Any] = ["url": url]
                     do {
