@@ -3,12 +3,15 @@ import SwiftUI
 
 /// The "Topics" group in the Mac and iPad sidebar, after the view rows and before the sources: a header
 /// with a + (New Topic…) and a row per topic with its keyword, like a source row. A row's context menu (and
-/// the "…" on hover) edits it, turns Notify on New Matches on or off, marks it read and removes it.
+/// the "…" on hover) edits it, turns Notify on New Matches on or off, marks it read and removes it. Rows drag to
+/// reorder the topics (a row takes the topic before it, the strip under the last row puts it last).
 /// Shows only when there is at least one topic; the first is made from the Feed menu or Explore's Follow.
 struct SidebarTopicsSection: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Source?
     @State private var errorMessage: String?
+    @State private var dragging: SidebarDrag?
+    @State private var over: SidebarDrop?
 
     var body: some View {
         let topics = model.topics
@@ -21,8 +24,19 @@ struct SidebarTopicsSection: View {
                         refreshing: model.topicStore.refreshing.contains(topic.id),
                         onOpen: { model.navigate(sourceID: topic.id) }
                     ) { menu(topic) }
+                    .modifier(SidebarDropIndicator(visible: over == .topic(topic.id)))
                     .contextMenu { menu(topic) }
+                    .onDrag {
+                        dragging = .topic(topic.id)
+                        return NSItemProvider(object: SidebarDrag.topic(topic.id).payload as NSString)
+                    }
+                    .onDrop(of: [.plainText], delegate: dropDelegate(.topic(topic.id)))
                 }
+                Color.clear
+                    .frame(height: 6)
+                    .contentShape(Rectangle())
+                    .modifier(SidebarDropIndicator(visible: over == .topicsEnd, edge: .bottom))
+                    .onDrop(of: [.plainText], delegate: dropDelegate(.topicsEnd))
             }
             .padding(.top, 12)
             .confirmationDialog(
@@ -77,6 +91,17 @@ struct SidebarTopicsSection: View {
         Button("Mark All as Read") { model.markAllRead(topic: topic) }
         Divider()
         Button("Remove Topic\u{2026}", role: .destructive) { pendingDelete = topic }
+    }
+
+    private func dropDelegate(_ target: SidebarDrop) -> SidebarDropDelegate {
+        SidebarDropDelegate(target: target, dragging: dragging, over: $over) { drag, target in
+            dragging = nil
+            over = nil
+            guard case .topic(let id) = drag,
+                  let ids = SidebarTree.dropTopic(id: id, at: target, order: model.topics.map(\.id))
+            else { return }
+            Task { await model.reorderTopics(ids) }
+        }
     }
 
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {

@@ -500,6 +500,8 @@ struct SidebarView: View {
         case .folder(let id):
             guard let ids = SidebarTree.dropFolder(id: id, at: target, order: folderOrder) else { return }
             Task { await model.reorderFolders(ids) }
+        case .topic:
+            return  // Topics take drops only in their own section (SidebarTopicsSection).
         }
     }
 

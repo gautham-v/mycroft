@@ -83,6 +83,14 @@ final class TopicStore {
         if let topics = try? await database.topics() { apply(topics) }
     }
 
+    /// Shows the topics in this order (top to bottom) before the database write lands, so a drag doesn't snap back.
+    func applyOrder(_ order: [Int64]) {
+        let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+        var next = topics
+        for i in next.indices { if let r = rank[next[i].id] { next[i].position = r } }
+        topics = next.sorted { (rank[$0.id] ?? Int.max, $0.id) < (rank[$1.id] ?? Int.max, $1.id) }
+    }
+
     func topic(id: Int64) -> Source? { topics.first { $0.id == id } }
 
     /// The topic whose keyword is `text`, ignoring case, diacritics and extra spaces (Explore's Following state).

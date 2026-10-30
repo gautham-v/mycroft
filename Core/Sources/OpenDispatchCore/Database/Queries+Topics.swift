@@ -8,7 +8,7 @@ extension Queries {
 
     // MARK: Lists
 
-    /// Topics in sidebar order: creation order (position), then keyword.
+    /// Topics in sidebar order: position (creation order until the user drags them), then keyword.
     public static func topics(_ db: Database) throws -> [Source] {
         try Source
             .filter(Source.Columns.kind == SourceKind.topic.rawValue)
@@ -103,6 +103,13 @@ extension Queries {
         }
         if !stale.isEmpty { try repairStories(db, readLeads: readLeads) }
         return stale.count
+    }
+
+    /// New topic order, top to bottom. Ids that aren't topics are left alone. The position syncs with the topic's record.
+    public static func reorderTopics(_ db: Database, _ ids: [Int64]) throws {
+        for (i, id) in ids.enumerated() {
+            try db.execute(sql: "UPDATE sources SET position = ? WHERE id = ? AND kind = ?", arguments: [i, id, SourceKind.topic.rawValue])
+        }
     }
 
     /// Stop following a topic and delete its items (saved ones too, like removing a source). False when it isn't a topic here.

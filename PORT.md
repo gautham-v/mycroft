@@ -1277,3 +1277,9 @@ Explore searches posts, and the reader shows comments under a thread and under e
 - Sign-in sheet: a pop-up the page opens ("Sign in with Google" or Apple) is a web view of its own made from WebKit's configuration, laid over the page
   until it calls window.close() (Back closes it by hand); before, it was loaded into the page, which broke Google's sign-in.
 
+### Topic order — 2026-10-30
+- `Queries.reorderTopics` / `AppDatabase.reorderTopics(_:)` set `position` (0, 1, …) on the topic rows only; the Source record already carries
+  `position`, so the order syncs. `AppModel.reorderTopics(_:)` applies it to `TopicStore` first (`applyOrder`), then writes.
+- Mac and iPad: `SidebarDrag.topic`, `SidebarDrop.topic` (before that topic) and `.topicsEnd` (after the last), `SidebarTree.dropTopic`; topics take
+  only topic drags and topic drags land only on topics. iPhone: Edit (on Folders, and on Topics once there are two) lists the topics above the folders,
+  each with a remove control and a drag handle.

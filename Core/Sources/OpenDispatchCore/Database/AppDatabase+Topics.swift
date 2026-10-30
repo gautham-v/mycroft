@@ -48,6 +48,11 @@ extension AppDatabase {
         try await writer.write { db in try Queries.updateTopic(db, id: id, options: options) }
     }
 
+    /// New topic order, top to bottom.
+    public func reorderTopics(_ ids: [Int64]) async throws {
+        try await writer.write { db in try Queries.reorderTopics(db, ids) }
+    }
+
     /// Stop following a topic and delete its items.
     @discardableResult
     public func deleteTopic(id: Int64) async throws -> Bool {

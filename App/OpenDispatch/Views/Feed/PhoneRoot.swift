@@ -642,8 +642,8 @@ private enum DrawerPrompt: Identifiable {
 ///
 /// Search turns the top into a glass field and filters the list to the topics, folders and sources whose name
 /// matches. Holding a folder, source or topic gives its actions (rename, move, copy, delete) as a context menu.
-/// Edit switches the list to the folders alone, with a delete control and a drag handle on each, and the
-/// bottom to New folder and Done.
+/// Edit (on the Folders header, and on Topics once there are two) switches the list to the topics and the folders alone,
+/// with a delete control and a drag handle on each, and the bottom to New folder and Done.
 private struct PhoneDrawer: View {
     let safeArea: EdgeInsets
     let isOpen: Bool
@@ -846,6 +846,7 @@ private struct PhoneDrawer: View {
     /// Explore's Follow are how the first one is made on the iPhone.
     @ViewBuilder private var topicsSection: some View {
         DrawerSectionLabel("Topics") {
+            if model.topics.count > 1 { editButton }
             Button {
                 pick { model.beginNewTopic() }
             } label: {
@@ -918,16 +919,7 @@ private struct PhoneDrawer: View {
     }
 
     @ViewBuilder private var foldersSection: some View {
-        DrawerSectionLabel("Folders") {
-            Button("Edit") {
-                withAnimation(.smooth(duration: 0.2)) { isEditing = true }
-            }
-            .font(OFFont.ui(14, .semibold))
-            .foregroundStyle(.ofInk)
-            .buttonStyle(.plain)
-            .frame(minHeight: 28)
-            .contentShape(Rectangle())
-        }
+        DrawerSectionLabel("Folders") { editButton }
         ForEach(model.orderedFolders) { folder in
             folderRow(folder, expandable: true)
             if expanded.contains(AppModel.folderKey(folder.id)) {
@@ -1105,9 +1097,35 @@ private struct PhoneDrawer: View {
 
     // MARK: Editing
 
-    /// Edit mode: just the folders, each with a delete control and a drag handle.
+    private var editButton: some View {
+        Button("Edit") {
+            withAnimation(.smooth(duration: 0.2)) { isEditing = true }
+        }
+        .font(OFFont.ui(14, .semibold))
+        .foregroundStyle(.ofInk)
+        .buttonStyle(.plain)
+        .frame(minHeight: 28)
+        .contentShape(Rectangle())
+    }
+
+    /// Edit mode: just the topics (when there are any) and the folders, each with a delete control and a drag handle.
     private var editList: some View {
         List {
+            if !model.topics.isEmpty {
+                DrawerSectionLabel("Topics")
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .moveDisabled(true)
+                ForEach(model.topics) { topic in
+                    editRow(topic)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 8))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(.ofHairline)
+                        .deleteDisabled(true)
+                }
+                .onMove(perform: moveTopics)
+            }
             DrawerSectionLabel("Folders")
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
@@ -1138,21 +1156,39 @@ private struct PhoneDrawer: View {
         .contentMargins(.bottom, Self.listBottomInset, for: .scrollContent)
     }
 
+    private func editRow(_ topic: Source) -> some View {
+        HStack(spacing: 12) {
+            editDeleteButton("Remove \(topic.title)") { pendingTopicDelete = topic }
+            OFIcon.topic.image
+                .font(.system(size: 18))
+                .foregroundStyle(.ofInk)
+                .frame(width: 24, height: 24)
+            Text(topic.title)
+                .font(OFFont.ui(17, .medium))
+                .foregroundStyle(.ofInk)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func editDeleteButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "minus")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(.white)
+                .frame(width: 22, height: 22)
+                .background(Color.ofDanger, in: Circle())
+                .frame(width: 34, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
     private func editRow(_ folder: Folder) -> some View {
         HStack(spacing: 12) {
-            Button {
-                pendingFolderDelete = folder
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .frame(width: 22, height: 22)
-                    .background(Color.ofDanger, in: Circle())
-                    .frame(width: 34, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delete \(folder.title)")
+            editDeleteButton("Delete \(folder.title)") { pendingFolderDelete = folder }
             Image("ph.folder").renderingMode(.template).resizable().scaledToFit()
                 .frame(width: 24, height: 24)
                 .foregroundStyle(.ofInk)
@@ -1173,6 +1209,12 @@ private struct PhoneDrawer: View {
         var ids = model.orderedFolders.map(\.id)
         ids.move(fromOffsets: from, toOffset: to)
         Task { await model.reorderFolders(ids) }
+    }
+
+    private func moveTopics(from: IndexSet, to: Int) {
+        var ids = model.topics.map(\.id)
+        ids.move(fromOffsets: from, toOffset: to)
+        Task { await model.reorderTopics(ids) }
     }
 
     // MARK: Bottom

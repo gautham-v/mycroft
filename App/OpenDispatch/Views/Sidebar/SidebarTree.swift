@@ -6,12 +6,14 @@ import UniformTypeIdentifiers
 enum SidebarDrag: Equatable {
     case source(Int64)
     case folder(Int64)
+    case topic(Int64)
 
-    /// Plain-text payload for the drag item provider ("source:12" / "folder:3"), like the web dataTransfer.
+    /// Plain-text payload for the drag item provider ("source:12" / "folder:3" / "topic:5"), like the web dataTransfer.
     var payload: String {
         switch self {
         case .source(let id): "source:\(id)"
         case .folder(let id): "folder:\(id)"
+        case .topic(let id): "topic:\(id)"
         }
     }
 }
@@ -19,12 +21,14 @@ enum SidebarDrag: Equatable {
 /// Where a drop would land (sidebar.tsx `Over`): before a source row, at the end of a folder
 /// (nil = Unfiled; for a folder drag, after that folder), on a folder header (first in that folder for
 /// sources; before it for folders), or in the gap between the last folder and the unfiled list (last
-/// for folders; first unfiled for sources).
+/// for folders; first unfiled for sources). Topics move only among topics: before a topic row, or after the last one.
 enum SidebarDrop: Equatable {
     case row(Int64)
     case end(Int64?)
     case folder(Int64)
     case afterFolders
+    case topic(Int64)
+    case topicsEnd
 }
 
 /// Pure reorder rules ported from sidebar.tsx `dropSource` / `dropFolder`. No state, no UI.
@@ -72,6 +76,8 @@ enum SidebarTree {
             guard let i = laneEnd(nil, header: true) else { return nil }
             at = i
             folderId = nil
+        case .topic, .topicsEnd:
+            return nil
         }
         list.insert(Entry(id: id, folderId: folderId), at: at)
         return list == original ? nil : list
@@ -93,7 +99,26 @@ enum SidebarTree {
             at = i + 1
         case .afterFolders:
             at = ids.count
-        case .row, .end(nil):
+        case .row, .end(nil), .topic, .topicsEnd:
+            return nil
+        }
+        ids.insert(id, at: at)
+        return ids == order ? nil : ids
+    }
+
+    /// New topic order after dropping topic `id` at `target`, or nil when nothing changes (or the target is
+    /// invalid). A topic row puts it before that topic, the strip under the last topic puts it last.
+    static func dropTopic(id: Int64, at target: SidebarDrop, order: [Int64]) -> [Int64]? {
+        guard order.contains(id) else { return nil }
+        var ids = order.filter { $0 != id }
+        let at: Int
+        switch target {
+        case .topic(let targetId):
+            guard targetId != id, let i = ids.firstIndex(of: targetId) else { return nil }
+            at = i
+        case .topicsEnd:
+            at = ids.count
+        case .row, .end, .folder, .afterFolders:
             return nil
         }
         ids.insert(id, at: at)
@@ -103,9 +128,12 @@ enum SidebarTree {
     /// Whether a drag can drop on a target at all (drives hover feedback and validation).
     static func accepts(_ drag: SidebarDrag, at target: SidebarDrop) -> Bool {
         switch (drag, target) {
+        case (.source, .topic), (.source, .topicsEnd): false
         case (.source, _): true
         case (.folder, .folder), (.folder, .end(.some(_))), (.folder, .afterFolders): true
-        case (.folder, .row), (.folder, .end(.none)): false
+        case (.folder, _): false
+        case (.topic, .topic), (.topic, .topicsEnd): true
+        case (.topic, _): false
         }
     }
 }

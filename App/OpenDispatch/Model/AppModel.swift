@@ -1304,6 +1304,13 @@ final class AppModel {
         await loadSources()
     }
 
+    /// New topic order, top to bottom. Applied locally first.
+    func reorderTopics(_ ids: [Int64]) async {
+        topicStore.applyOrder(ids)
+        try? await database.reorderTopics(ids)
+        await topicStore.reload()
+    }
+
     // MARK: Topics
 
     /// Opens the Topic sheet for a new topic (Feed ▸ New Topic…, the sidebar's +), starting from `options`.

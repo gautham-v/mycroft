@@ -150,6 +150,19 @@ struct TopicStoreTests {
         #expect(try await db.reader.read { try Item.fetchCount($0) } == 0)
     }
 
+    @Test func reorderingTopicsSetsTheirSyncedPositionAndLeavesSourcesAlone() async throws {
+        let db = try Fixture.db()
+        let a = try await topic(db, "alpha"), b = try await topic(db, "beta"), c = try await topic(db, "gamma")
+        let blog = try Fixture.source(db)
+        let blogPosition = blog.position
+        try await db.reorderTopics([c.id, a.id, blog.id, b.id])
+        #expect(try await db.topics().map(\.title) == ["gamma", "alpha", "beta"])
+        #expect(try await db.source(id: blog.id)?.position == blogPosition)
+        let records = try await db.reader.read { d in try SyncStore.localRecords(d, readwiseToken: nil) }
+        let positions = try await db.topics().map { records[SyncStore.sourceRecord($0, folderTitle: nil).name]?.fields["position"] }
+        #expect(positions == [.int(0), .int(1), .int(3)])
+    }
+
     // MARK: Lists
 
     @Test func topicsAreInTheSourceTableButNotInSubscriptionLists() async throws {
