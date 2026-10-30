@@ -24,6 +24,11 @@ enum XPages {
         return "\(origin)/search?q=\(q.addingPercentEncoding(withAllowedCharacters: allowed) ?? q)&src=typed_query&f=top"
     }
 
+    /// The accounts matching a name, as the search page's People tab lists them.
+    static func peopleSearchURL(_ query: String) -> String {
+        searchURL(query).replacingOccurrences(of: "&f=top", with: "&f=user")
+    }
+
     struct Post: Equatable {
         var url: String
         var id: String
@@ -245,6 +250,24 @@ enum XPages {
             }
         }
         return out
+    }
+
+    /// The accounts in a People `SearchTimeline` answer, in its order. The fields live in `core`, `avatar` and `relationship_counts`, or in `legacy` in older answers.
+    static func accounts(inTimeline data: Data) -> [SourceSearchResult] {
+        var seen = Set<String>()
+        return entries(data).compactMap { entry -> SourceSearchResult? in
+            guard (entry["entryId"] as? String)?.hasPrefix("user-") == true,
+                  let item = (entry["content"] as? [String: Any])?["itemContent"] as? [String: Any],
+                  let user = (item["user_results"] as? [String: Any])?["result"] as? [String: Any] else { return nil }
+            let core = user["core"] as? [String: Any]
+            let legacy = user["legacy"] as? [String: Any]
+            guard let handle = (core?["screen_name"] as? String) ?? (legacy?["screen_name"] as? String),
+                  seen.insert(handle.lowercased()).inserted else { return nil }
+            let avatar = ((user["avatar"] as? [String: Any])?["image_url"] as? String) ?? (legacy?["profile_image_url_https"] as? String)
+            return XAccounts.result(name: (core?["name"] as? String) ?? (legacy?["name"] as? String) ?? handle, handle: handle,
+                                    followers: ((user["relationship_counts"] as? [String: Any])?["followers"] as? Int) ?? (legacy?["followers_count"] as? Int),
+                                    avatar: avatar?.replacingOccurrences(of: "_normal.", with: "_bigger."))
+        }
     }
 
     /// The posts in a `SearchTimeline` answer, in its order.

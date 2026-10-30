@@ -9,19 +9,48 @@ public struct SourceSearchResult: Sendable, Hashable, Identifiable {
     public var feedUrl: String
     public var siteUrl: String?
     public var kind: SourceKind
-    /// Podcast artwork; sites use SourceBadge's favicon instead.
+    /// Podcast artwork, or a channel's or X account's avatar; sites use SourceBadge's favicon instead.
     public var imageUrl: String?
+    /// A YouTube channel's or X account's handle, without the "@".
+    public var handle: String?
+    /// How many follow it, as the place words it: "21.4M subscribers", "4.4M followers".
+    public var audience: String?
 
     public var id: String { feedUrl }
 
-    public init(title: String, subtitle: String, feedUrl: String, siteUrl: String? = nil, kind: SourceKind, imageUrl: String? = nil) {
+    /// An X account, which is a scraped page source (`PageScraping`) rather than a feed.
+    public var isXAccount: Bool { kind == .page && handle != nil }
+
+    public init(title: String, subtitle: String, feedUrl: String, siteUrl: String? = nil, kind: SourceKind, imageUrl: String? = nil,
+                handle: String? = nil, audience: String? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.feedUrl = feedUrl
         self.siteUrl = siteUrl
         self.kind = kind
         self.imageUrl = imageUrl
+        self.handle = handle
+        self.audience = audience
     }
+}
+
+/// What "Add sources" shows for a name, by place. `all` is the first X accounts and channels (the X and YouTube filters have the
+/// rest), then sites and podcasts alternating.
+public struct SourceSearchSections: Sendable, Equatable {
+    public var x: [SourceSearchResult] = []
+    public var youtube: [SourceSearchResult] = []
+    public var sites: [SourceSearchResult] = []
+    public var podcasts: [SourceSearchResult] = []
+    public var all: [SourceSearchResult] = []
+
+    public init() {}
+}
+
+/// A pasted link to an X account or a YouTube channel, which "Add sources" can show by name before it is added.
+public enum SourceAccountLink: Sendable, Equatable {
+    case x(handle: String)
+    case youtubeHandle(String)
+    case youtubeChannel(id: String)
 }
 
 /// Search sources by name: feeds (sites, newsletters, YouTube channels) from Feedly's public feed
@@ -78,11 +107,7 @@ public struct DefaultSourceSearch: SourceSearching {
     static func merge(query: String, feeds: [SourceSearchResult], podcasts: [SourceSearchResult]) -> [SourceSearchResult] {
         let podcastKeys = Set(podcasts.map { SourceSearch.feedKey($0.feedUrl) })
         let feeds = feeds.filter { !podcastKeys.contains(SourceSearch.feedKey($0.feedUrl)) }
-        let words = query.lowercased().split(whereSeparator: \.isWhitespace)
-        func relevant(_ r: SourceSearchResult) -> Bool {
-            let text = (r.title + " " + r.subtitle).lowercased()
-            return words.allSatisfy { text.contains($0) }
-        }
+        func relevant(_ r: SourceSearchResult) -> Bool { SourceSearch.matches(r, query: query) }
         let (f, p) = (feeds.filter(relevant), podcasts.filter(relevant))
         var ordered: [SourceSearchResult] = []
         for i in 0..<max(f.count, p.count) {
@@ -208,4 +233,80 @@ public enum SourceSearch {
         while s.hasSuffix("/") { s.removeLast() }
         return s
     }
+
+    /// The result's title or publisher contains every word of the query.
+    static func matches(_ result: SourceSearchResult, query: String) -> Bool {
+        let text = (result.title + " " + result.subtitle).lowercased()
+        return query.lowercased().split(whereSeparator: \.isWhitespace).allSatisfy { text.contains($0) }
+    }
+
+    /// The query without an "@" in front of it, which only says it is a handle.
+    public static func name(in query: String) -> String {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return q.hasPrefix("@") ? String(q.dropFirst()) : q
+    }
+
+    /// The X account a query could be: one word X allows as a handle, with or without the "@".
+    public static func xHandle(in query: String) -> String? {
+        let name = name(in: query)
+        return name.wholeMatch(of: #/[A-Za-z0-9_]{1,15}/#) != nil ? name : nil
+    }
+
+    /// The account a link is the page of; nil for any other link, including a post on X or a video.
+    public static func accountLink(_ url: String) -> SourceAccountLink? {
+        guard let c = URLComponents(string: url), let host = c.host else { return nil }
+        let segments = c.path.split(separator: "/").map(String.init)
+        if PageScraping.isXHost(host) {
+            return segments.count == 1 ? xHandle(in: segments[0]).map { .x(handle: $0) } : nil
+        }
+        guard FeedDetection.isYouTubeURL(url), !c.path.hasPrefix("/feeds/") else { return nil }
+        if let id = FeedDetection.youtubeChannelID(fromURL: url) { return .youtubeChannel(id: id) }
+        if let first = segments.first, first.hasPrefix("@"), first.count > 1 { return .youtubeHandle(String(first.dropFirst())) }
+        return nil
+    }
+
+    /// Fewer subscribers than this and a channel is left out, unless its handle is what was typed: YouTube answers a name
+    /// with every channel that uses it ("fireship" finds a FireShip with 3 subscribers).
+    static let minSubscribers: Double = 1000
+
+    /// "21.4M subscribers" as a number; nil when it doesn't start with one.
+    static func subscriberCount(_ text: String?) -> Double? {
+        guard let text, let m = text.replacing(",", with: "").prefixMatch(of: #/([\d.]+)\s*([KMB]?)/#), let n = Double(m.1) else { return nil }
+        return n * (["K": 1e3, "M": 1e6, "B": 1e9][String(m.2)] ?? 1)
+    }
+
+    /// Sorts what the searches found by place. A query with an "@" keeps only the channel with that handle. Once an account
+    /// or channel matched, sites and podcasts must match by name too (the search's fallback for few matches, unrelated shows,
+    /// has no use then). Feedly's copies of a channel go, and so do its feeds of an X account, third-party bridges that the
+    /// account itself replaces.
+    public static func sections(query: String, feeds: [SourceSearchResult], channels: [SourceSearchResult],
+                                xAccounts: [SourceSearchResult]) -> SourceSearchSections {
+        let name = name(in: query)
+        let exactOnly = query.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("@")
+        let shown = channels.filter { channel in
+            if channel.handle?.lowercased() == name.lowercased() { return true }
+            return !exactOnly && (subscriberCount(channel.audience) ?? 0) >= minSubscribers
+        }
+        let channelKeys = Set(channels.map { feedKey($0.feedUrl) })
+        let rest = feeds.filter { feed in
+            if channelKeys.contains(feedKey(feed.feedUrl)) { return false }
+            if let site = feed.siteUrl.flatMap({ URLComponents(string: $0)?.host }), PageScraping.isXHost(site) { return false }
+            return (shown.isEmpty && xAccounts.isEmpty) || matches(feed, query: name)
+        }
+
+        var out = SourceSearchSections()
+        out.x = xAccounts
+        out.youtube = shown + rest.filter { $0.kind == .youtube }
+        out.podcasts = rest.filter { $0.kind == .podcast }
+        out.sites = rest.filter { $0.kind != .youtube && $0.kind != .podcast }
+        out.all = Array(out.x.prefix(allAccounts)) + out.youtube.prefix(allAccounts)
+        for i in 0..<max(out.sites.count, out.podcasts.count) {
+            if i < out.sites.count { out.all.append(out.sites[i]) }
+            if i < out.podcasts.count { out.all.append(out.podcasts[i]) }
+        }
+        return out
+    }
+
+    /// How many X accounts and how many channels `all` shows.
+    static let allAccounts = 3
 }

@@ -24,13 +24,14 @@ public struct OpenDispatchServices: Sendable {
     public let explore: any ExploreSearching
     public let discussions: any DiscussionLoading
     public let articles: any ArticleSearching
+    public let xAccounts: any XAccountSearching
 
     public init(
         database: AppDatabase, feedParser: any FeedParser, scraper: any PageScraper, detector: any FeedDetector,
         extractor: any ContentExtractor, opml: any OPMLCoding, integrations: any IntegrationService, refresh: any RefreshService,
         search: any SourceSearching = DefaultSourceSearch(), sponsorBlock: any SponsorBlockFetching = DefaultSponsorBlock(),
         explore: any ExploreSearching = DefaultExploreSearch(), discussions: any DiscussionLoading = DefaultDiscussions(),
-        articles: any ArticleSearching = DefaultArticleSearch()
+        articles: any ArticleSearching = DefaultArticleSearch(), xAccounts: any XAccountSearching = DefaultXAccounts()
     ) {
         self.database = database
         self.feedParser = feedParser
@@ -45,6 +46,7 @@ public struct OpenDispatchServices: Sendable {
         self.explore = explore
         self.discussions = discussions
         self.articles = articles
+        self.xAccounts = xAccounts
         self.content = ContentService(database: database, extractor: extractor)
         self.copy = CopyService(database: database, content: content, transcripts: DefaultTranscriptFetcher(parser: feedParser))
     }

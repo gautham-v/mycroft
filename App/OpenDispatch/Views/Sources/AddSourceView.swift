@@ -3,9 +3,10 @@ import SwiftUI
 
 /// "Add sources" sheet: search by name, or paste one or more links.
 ///
-/// A name searches feeds (sites, newsletters, YouTube channels) and podcasts as you type; a link shows
-/// one row for it above the results; several links (one per line, or separated by spaces or commas)
-/// show one row each with Add All. Adding doesn't close the sheet or wait for the feed: the row shows
+/// A name searches X accounts, YouTube channels, feeds (sites, newsletters) and podcasts as you type, each landing on
+/// its own, with chips to show one place; one word (or an @handle) is tried as an X handle, and any other name finds X accounts
+/// only while the app is signed in to X. A link shows one row for it above the results, by name when it is an X or YouTube
+/// account; several links (one per line, or separated by spaces or commas) show one row each with Add All. Adding doesn't close the sheet or wait for the feed: the row shows
 /// progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
 /// With nothing typed, the sheet explains what works and offers OPML import. "Add to" under the field picks the
 /// folder new sources go into (Unfiled by default; a folder's "Add Source to <Folder>…" preselects it through
@@ -17,6 +18,13 @@ struct AddSourceView: View {
 
     @State private var query = ""
     @State private var results: [SourceSearchResult] = []
+    @State private var channels: [SourceSearchResult] = []
+    @State private var xAccounts: [SourceSearchResult] = []
+    /// Who a pasted account link is, and the link.
+    @State private var resolved: (link: String, account: SourceSearchResult)?
+    @State private var filter = SourceFilter.all
+    /// The sign-in sheet, from here because the app's own can't open over this one.
+    @State private var signingIn: SignInTarget?
     @State private var searching = false
     @State private var searchError = false
     @State private var importing = false
@@ -36,6 +44,16 @@ struct AddSourceView: View {
     private var links: [String] { SourceSearch.links(in: query) }
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var targetFolder: Folder? { folderID.flatMap { id in model.folders.first { $0.id == id } } }
+    private var sections: SourceSearchSections {
+        SourceSearch.sections(query: trimmed, feeds: results, channels: channels, xAccounts: xAccounts)
+    }
+    private var resolvedAccount: SourceSearchResult? {
+        guard let resolved, links == [resolved.link] else { return nil }
+        return resolved.account
+    }
+    private var signedInToX: Bool { model.accounts.isSignedIn(.x) }
+    /// A name X can't be asked for without a sign-in: anything that couldn't be a handle.
+    private var needsXSignIn: Bool { !signedInToX && links.isEmpty && trimmed.count >= 2 && SourceSearch.xHandle(in: trimmed) == nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -44,6 +62,10 @@ struct AddSourceView: View {
                 .padding(.top, 12)
             destination
                 .padding(.top, 10)
+            if links.isEmpty, !trimmed.isEmpty {
+                filterChips
+                    .padding(.top, 10)
+            }
             ScrollView {
                 content
                     .padding(.vertical, 8)
@@ -79,7 +101,10 @@ struct AddSourceView: View {
         .onChange(of: folderID) { _, folder in
             if let folder { moveUnfiledAdds(to: folder) }
         }
-        .task(id: trimmed) { await search() }
+        .task(id: "\(trimmed)|\(signedInToX)") { await search() }
+        .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
+            WebSignInView(target: target, onDone: {})
+        }
         .alert("New Folder", isPresented: $namingFolder) {
             TextField("Name", text: $newFolderName)
             Button("Cancel", role: .cancel) {}
@@ -124,7 +149,7 @@ struct AddSourceView: View {
             OFIcon.search.image
                 .font(.system(size: 14))
                 .foregroundStyle(.ofFaint)
-            TextField("Search by name, or paste links", text: $query)
+            TextField("Search by name or @handle, or paste links", text: $query)
                 .textFieldStyle(.plain)
                 .font(OFFont.ui(15))
                 .foregroundStyle(.ofBody)
@@ -135,7 +160,7 @@ struct AddSourceView: View {
                 #endif
                 .focused($fieldFocused)
                 .onSubmit(submit)
-                .accessibilityLabel("Search by name, or paste links")
+                .accessibilityLabel("Search by name or @handle, or paste links")
             if searching {
                 ProgressView().controlSize(.small)
             }
@@ -210,6 +235,8 @@ struct AddSourceView: View {
     private var content: some View {
         if trimmed.isEmpty {
             emptyState
+        } else if links.isEmpty {
+            nameResults
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 if links.count > 1 {
@@ -223,32 +250,103 @@ struct AddSourceView: View {
                     }
                     .padding(.horizontal, 8)
                 }
-                ForEach(links, id: \.self) { link in
-                    AddSourceRow(title: Self.shortLink(link), subtitle: "Link", host: URLHost.host(of: link),
-                                 imageUrl: nil, url: link, inLibrary: false, add: add)
+                if let resolvedAccount {
+                    row(resolvedAccount, filter: .all)
+                } else {
+                    ForEach(links, id: \.self) { link in
+                        AddSourceRow(title: Self.shortLink(link), subtitle: "Link", host: URLHost.host(of: link),
+                                     imageUrl: nil, url: link, inLibrary: false, add: add)
+                    }
                 }
-                if links.count <= 1 {
-                    if !links.isEmpty, !results.isEmpty {
-                        sectionLabel("Search results").padding(.horizontal, 8).padding(.top, 8)
-                    }
-                    ForEach(results) { r in
-                        AddSourceRow(title: r.title, subtitle: r.kind == .podcast ? "Podcast · \(r.subtitle)" : r.subtitle,
-                                     host: URLHost.host(of: r.siteUrl ?? r.feedUrl), imageUrl: r.imageUrl, url: r.feedUrl,
-                                     inLibrary: model.hasSource(feedUrl: r.feedUrl), add: add)
-                    }
-                    if results.isEmpty, links.isEmpty, !searching {
-                        note(searchError
-                             ? "Search isn't available right now. Paste the site's link instead."
-                             : "No matches for \u{201C}\(trimmed)\u{201D}. Paste the site's link instead.")
-                    }
+                if links.count == 1, resolvedAccount == nil, !results.isEmpty {
+                    sectionLabel("Search results").padding(.horizontal, 8).padding(.top, 8)
+                    ForEach(results) { row($0, filter: .all) }
                 }
             }
         }
     }
 
+    /// What a name found, in the chosen place.
+    @ViewBuilder
+    private var nameResults: some View {
+        let sections = sections
+        let shown = filter.results(in: sections)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(shown) { row($0, filter: filter) }
+            if needsXSignIn, filter == .all || filter == .x {
+                xSignInHint
+            }
+            if shown.isEmpty, !searching, !(needsXSignIn && filter == .x) {
+                note(emptyNote)
+            }
+        }
+    }
+
+    private func row(_ result: SourceSearchResult, filter: SourceFilter) -> some View {
+        AddSourceRow(title: result.title, subtitle: Self.subtitle(result, filter: filter), host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
+                     imageUrl: result.imageUrl, url: result.feedUrl, inLibrary: model.hasSource(feedUrl: result.feedUrl),
+                     roundIcon: result.handle != nil, add: add)
+    }
+
+    /// All, X, YouTube, Sites and Podcasts, each with its count.
+    private var filterChips: some View {
+        let sections = sections
+        return ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                ForEach(SourceFilter.allCases) { place in
+                    let selected = filter == place
+                    Button { filter = place } label: {
+                        HStack(spacing: 5) {
+                            Text(place.title)
+                            Text("\(place.results(in: sections).count)").monospacedDigit().opacity(0.6)
+                        }
+                        .font(OFFont.ui(chipFontSize, .medium))
+                        .foregroundStyle(selected ? Color.ofSurface : Color.ofBody)
+                        .padding(.horizontal, chipPadding)
+                        .frame(height: chipHeight)
+                        .background(selected ? Color.ofInk : Color.ofCode, in: Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var xSignInHint: some View {
+        HStack(spacing: 10) {
+            Text("Sign in to X to find accounts by name, or type the @handle.")
+                .font(OFFont.ui(13))
+                .foregroundStyle(.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Sign In") { signingIn = .account(.x) }
+                .buttonStyle(.plain)
+                .font(OFFont.ui(13, .medium))
+                .foregroundStyle(.ofAccent)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+    }
+
+    private var emptyNote: String {
+        switch filter {
+        case .all:
+            searchError
+                ? "Search isn't available right now. Paste the site's link instead."
+                : "No matches for \u{201C}\(trimmed)\u{201D}. Paste the site's link instead."
+        case .x: "No X accounts for \u{201C}\(trimmed)\u{201D}."
+        case .youtube: "No YouTube channels for \u{201C}\(trimmed)\u{201D}."
+        case .sites: "No sites for \u{201C}\(trimmed)\u{201D}."
+        case .podcasts: "No podcasts for \u{201C}\(trimmed)\u{201D}."
+        }
+    }
+
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Find sites, newsletters, YouTube channels and podcasts by name, or paste a link. Paste several at once to add them together.")
+            Text("Find sites, newsletters, YouTube channels, X accounts and podcasts by name or @handle, or paste a link. Paste several at once to add them together.")
                 .font(OFFont.ui(13))
                 .foregroundStyle(.ofMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -315,6 +413,30 @@ struct AddSourceView: View {
             .padding(.vertical, 12)
     }
 
+    private var chipFontSize: CGFloat {
+        #if os(iOS)
+        14
+        #else
+        12.5
+        #endif
+    }
+
+    private var chipPadding: CGFloat {
+        #if os(iOS)
+        13
+        #else
+        10
+        #endif
+    }
+
+    private var chipHeight: CGFloat {
+        #if os(iOS)
+        32
+        #else
+        26
+        #endif
+    }
+
     private var closeSize: CGFloat {
         #if os(iOS)
         Metrics.touchTarget
@@ -352,7 +474,11 @@ struct AddSourceView: View {
 
     /// Return adds what was pasted; a name just searches (results update as you type).
     private func submit() {
-        links.forEach(add)
+        if let resolvedAccount {
+            add(resolvedAccount.feedUrl)
+        } else {
+            links.forEach(add)
+        }
     }
 
     /// Makes the folder named in the New Folder prompt and picks it.
@@ -369,19 +495,54 @@ struct AddSourceView: View {
         }
     }
 
+    /// How much longer a name waits before asking X's People search: it opens a page in a hidden web view, which can't be
+    /// called off once started, so it isn't asked mid-word like the others.
+    private static let xSearchDelay: Duration = .milliseconds(600)
+
     /// Debounced search for a name (or a single link, which may also be a name like "node.js").
     private func search() async {
         let q = trimmed
         guard q.count >= 2, links.count <= 1 else {
-            results = []
+            clearResults()
             searching = false
-            searchError = false
             return
         }
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
         searching = true
         defer { if !Task.isCancelled { searching = false } }
+        if let link = links.first {
+            channels = []
+            xAccounts = []
+            if let account = SourceSearch.accountLink(link) {
+                results = []
+                searchError = false
+                if resolved?.link != link { resolved = nil }
+                let found = await model.account(for: account)
+                guard !Task.isCancelled else { return }
+                resolved = found.map { (link, $0) }
+            } else {
+                resolved = nil
+                await searchFeeds(q)
+            }
+            return
+        }
+        resolved = nil
+        async let feeds: Void = searchFeeds(SourceSearch.name(in: q))
+        async let youtube: Void = searchChannels(q)
+        async let x: Void = searchX(q)
+        _ = await (feeds, youtube, x)
+    }
+
+    private func clearResults() {
+        results = []
+        channels = []
+        xAccounts = []
+        resolved = nil
+        searchError = false
+    }
+
+    private func searchFeeds(_ q: String) async {
         do {
             let found = try await model.searchSources(q)
             guard !Task.isCancelled else { return }
@@ -392,6 +553,27 @@ struct AddSourceView: View {
             results = []
             searchError = true
         }
+    }
+
+    private func searchChannels(_ q: String) async {
+        let found = (try? await model.searchChannels(q)) ?? []
+        guard !Task.isCancelled else { return }
+        channels = found
+    }
+
+    /// The account whose handle this could be, then, signed in, the accounts named this. An @handle asks only for that account.
+    private func searchX(_ q: String) async {
+        var found: [SourceSearchResult] = []
+        if let handle = SourceSearch.xHandle(in: q), let profile = (try? await model.xProfile(handle: handle)) ?? nil {
+            found = [profile]
+        }
+        guard !Task.isCancelled else { return }
+        xAccounts = found
+        guard signedInToX, !q.hasPrefix("@") else { return }
+        try? await Task.sleep(for: Self.xSearchDelay)
+        guard !Task.isCancelled, let named = try? await model.searchXAccounts(q), !Task.isCancelled else { return }
+        let handles = Set(found.compactMap { $0.handle?.lowercased() })
+        xAccounts = found + named.filter { !handles.contains($0.handle?.lowercased() ?? "") }
     }
 
     private func importFile(_ url: URL) async {
@@ -421,12 +603,48 @@ struct AddSourceView: View {
         }
     }
 
+    /// A result's second line: "YouTube · @mkbhd · 21.4M subscribers", "Podcast · Publisher", a site's host. Under a chip for the
+    /// place the place's name goes.
+    static func subtitle(_ result: SourceSearchResult, filter: SourceFilter) -> String {
+        if result.kind == .podcast { return "Podcast · \(result.subtitle)" }
+        guard let handle = result.handle else { return result.subtitle }
+        let account = (["@" + handle] + [result.audience].compactMap { $0 }).joined(separator: " · ")
+        return filter == .all ? "\(result.isXAccount ? "X" : "YouTube") · \(account)" : account
+    }
+
     /// A link without its scheme or a bare trailing slash, for the row's second line.
     static func shortLink(_ url: String) -> String {
         var s = url
         for prefix in ["https://", "http://"] where s.hasPrefix(prefix) { s.removeFirst(prefix.count) }
         if s.hasSuffix("/") { s.removeLast() }
         return s
+    }
+}
+
+/// The places a name's results can be narrowed to.
+enum SourceFilter: String, CaseIterable, Identifiable {
+    case all, x, youtube, sites, podcasts
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .x: "X"
+        case .youtube: "YouTube"
+        case .sites: "Sites"
+        case .podcasts: "Podcasts"
+        }
+    }
+
+    func results(in sections: SourceSearchSections) -> [SourceSearchResult] {
+        switch self {
+        case .all: sections.all
+        case .x: sections.x
+        case .youtube: sections.youtube
+        case .sites: sections.sites
+        case .podcasts: sections.podcasts
+        }
     }
 }
 
@@ -439,6 +657,8 @@ private struct AddSourceRow: View {
     /// What gets added: a feed URL from search, or the pasted link.
     let url: String
     let inLibrary: Bool
+    /// A person's or channel's avatar rather than a site's or show's square.
+    var roundIcon = false
     /// Starts adding a URL to the sheet's chosen folder.
     let add: (String) -> Void
 
@@ -487,7 +707,7 @@ private struct AddSourceRow: View {
                 Color.ofCode
             }
             .frame(width: 28, height: 28)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: roundIcon ? 14 : 8, style: .continuous))
         } else {
             SourceBadge(host: host, title: title, size: 28)
         }

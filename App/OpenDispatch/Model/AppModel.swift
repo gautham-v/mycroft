@@ -1199,6 +1199,36 @@ final class AppModel {
         try await services.search.search(query)
     }
 
+    /// YouTube channels for a name or @handle.
+    func searchChannels(_ query: String) async throws -> [SourceSearchResult] {
+        try await services.explore.channels(query)
+    }
+
+    /// The X account with this handle, if there is one.
+    func xProfile(handle: String) async throws -> SourceSearchResult? {
+        try await services.xAccounts.profile(handle: handle)
+    }
+
+    /// X accounts matching a name; only while the app is signed in to X.
+    func searchXAccounts(_ name: String) async throws -> [SourceSearchResult] {
+        try await services.xAccounts.search(name)
+    }
+
+    /// The account a pasted link is the page of, by name; nil when it can't be told, and the link is added as it is.
+    func account(for link: SourceAccountLink) async -> SourceSearchResult? {
+        switch link {
+        case .x(let handle):
+            return (try? await xProfile(handle: handle)) ?? nil
+        case .youtubeHandle(let handle):
+            let found = (try? await searchChannels("@" + handle)) ?? []
+            return found.first { $0.handle?.lowercased() == handle.lowercased() }
+        case .youtubeChannel(let id):
+            // YouTube's search doesn't know channel ids, so its name comes from its feed, without an avatar.
+            guard let feed = try? await services.detector.detect(FeedDetection.youtubeFeedURL(channelID: id)) else { return nil }
+            return SourceSearchResult(title: feed.title, subtitle: "YouTube", feedUrl: feed.feedUrl, siteUrl: feed.url, kind: .youtube)
+        }
+    }
+
     /// Whether a feed (a search result's feed URL) is already in the library.
     func hasSource(feedUrl: String) -> Bool {
         let key = SourceSearch.feedKey(feedUrl)

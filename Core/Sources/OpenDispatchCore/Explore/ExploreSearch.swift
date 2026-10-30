@@ -101,10 +101,13 @@ public protocol ExploreSearching: Sendable {
     func recentVideos(_ query: String) async throws -> ExploreVideoResults
     /// More episodes than `episodes` keeps (several per show), for Topics to pick the recent ones from. Defaults to `episodes`.
     func recentEpisodes(_ query: String) async throws -> [ExploreEpisode]
+    /// YouTube channels matching a name or an @handle, with their counts worded in English. Defaults to `videos`' channels.
+    func channels(_ query: String) async throws -> [SourceSearchResult]
 }
 
 extension ExploreSearching {
     public func recentVideos(_ query: String) async throws -> ExploreVideoResults { try await videos(query) }
     public func recentEpisodes(_ query: String) async throws -> [ExploreEpisode] { try await episodes(query) }
+    public func channels(_ query: String) async throws -> [SourceSearchResult] { try await videos(query).channels }
 }
 

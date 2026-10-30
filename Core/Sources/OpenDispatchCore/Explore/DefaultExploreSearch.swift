@@ -53,7 +53,17 @@ public struct DefaultExploreSearch: ExploreSearching {
         try await search(query, params: Self.recentParams, language: "en")
     }
 
-    private func search(_ query: String, params: String?, language: String) async throws -> ExploreVideoResults {
+    /// The search filter that keeps channels (innertube `params`, as the website sends them for Filters: Type: Channel).
+    static let channelParams = "EgIQAg=="
+    /// Asked of a channel search, which is about nothing else.
+    static let channelSearchLimit = 12
+
+    public func channels(_ query: String) async throws -> [SourceSearchResult] {
+        // English, so "21.4M subscribers" can be read as a number whatever language the system speaks.
+        try await search(query, params: Self.channelParams, language: "en", channelLimit: Self.channelSearchLimit).channels
+    }
+
+    private func search(_ query: String, params: String?, language: String, channelLimit: Int = channelLimit) async throws -> ExploreVideoResults {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return ExploreVideoResults() }
         var body: [String: Any] = [
@@ -63,11 +73,11 @@ public struct DefaultExploreSearch: ExploreSearching {
         if let params { body["params"] = params }
         let (data, res) = try await fetch(Self.searchURL, try JSONSerialization.data(withJSONObject: body))
         guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
-        return try Self.results(inSearch: data)
+        return try Self.results(inSearch: data, channelLimit: channelLimit)
     }
 
     /// The videos and channels in a search answer, in page order. Throws when the answer isn't JSON.
-    static func results(inSearch data: Data) throws -> ExploreVideoResults {
+    static func results(inSearch data: Data, channelLimit: Int = channelLimit) throws -> ExploreVideoResults {
         let json = try JSONSerialization.jsonObject(with: data)
         var videos: [ExploreVideo] = []
         var channels: [SourceSearchResult] = []
@@ -132,9 +142,10 @@ public struct DefaultExploreSearch: ExploreSearching {
             ?? (hasHandle ? counts.first : counts.first { $0 == subs })
         var avatar = ((r["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]])?.last?["url"] as? String
         if let a = avatar, a.hasPrefix("//") { avatar = "https:" + a }
+        let handle = fields.first { $0.hasPrefix("@") }.map { String($0.dropFirst()) }
         return SourceSearchResult(
             title: title, subtitle: subscribers.map { "YouTube · \($0)" } ?? "YouTube", feedUrl: FeedDetection.youtubeFeedURL(channelID: id),
-            siteUrl: "https://www.youtube.com/channel/\(id)", kind: .youtube, imageUrl: avatar)
+            siteUrl: "https://www.youtube.com/channel/\(id)", kind: .youtube, imageUrl: avatar, handle: handle, audience: subscribers)
     }
 
     /// A YouTube text object: `simpleText`, or `runs` joined. nil when empty.
