@@ -283,6 +283,14 @@ public final class AppDatabase: Sendable {
                 CREATE INDEX items_story_idx ON items(story_id) WHERE story_id IS NOT NULL;
                 """)
         }
+        // X quote posts read before 1.0.32 could show the main post's text in the quoted card; drop their cached
+        // copy so the reader reads them again.
+        m.registerMigration("v10-reread-x-quotes") { db in
+            try db.execute(sql: """
+                UPDATE items SET content_html = NULL, content_rendered = 0
+                WHERE content_html LIKE '%class="x-quote"%' AND (url LIKE '%://x.com/%' OR url LIKE '%twitter.com/%')
+                """)
+        }
         return m
     }
 }

@@ -245,7 +245,7 @@ struct ReaderItemView: View {
     }
 
     #if os(iOS)
-    /// iPhone: Save, Open original, Share and Send to in the system bar (it groups them in glass).
+    /// iPhone: Save, Open original, Share, Reload Article and Send to in the system bar (it groups them in glass).
     @ToolbarContentBuilder private var phoneToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button {
@@ -278,6 +278,14 @@ struct ReaderItemView: View {
                     Label("Share", systemImage: OFIcon.share.rawValue)
                 }
                 .tint(Color.primary)
+            }
+            // Reads the article again instead of the stored copy (the Mac's Reload Article).
+            if !isVideo {
+                Button { model.reloadArticle(item) } label: {
+                    Label("Reload Article", systemImage: OFIcon.refresh.rawValue)
+                }
+                .tint(Color.primary)
+                .disabled(content == .loading)
             }
         }
         ToolbarItem(placement: .topBarTrailing) {

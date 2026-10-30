@@ -27,6 +27,27 @@ struct TopicStoreTests {
 
     // MARK: Migration
 
+    @Test func migrationDropsCachedXQuotePosts() throws {
+        let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
+        try AppDatabase.migrator.migrate(queue, upTo: "v9-topic-stories")
+        try queue.write { d in
+            try d.execute(sql: "INSERT INTO sources (title, url, feed_url, kind, \"group\", position) VALUES ('S', 'https://s.example', 'https://s.example/feed', 'rss', 'blogs', 0)")
+            let quote = "<div class=\"x-post\"><div class=\"x-quote\">q</div></div>"
+            try d.execute(sql: """
+                INSERT INTO items (source_id, guid, url, title, published_at, content_html, content_rendered) VALUES
+                (1, 'a', 'https://x.com/a/status/1', 'A', ?, ?, 1),
+                (1, 'b', 'https://x.com/b/status/2', 'B', ?, '<div class="x-post">plain</div>', 0),
+                (1, 'c', 'https://s.example/c', 'C', ?, ?, 0)
+                """, arguments: [Fixture.base, quote, Fixture.base, Fixture.base, quote])
+        }
+        try AppDatabase.migrator.migrate(queue)
+        try queue.read { d in
+            let cached = try String?.fetchAll(d, sql: "SELECT content_html FROM items ORDER BY guid")
+            #expect(cached[0] == nil)
+            #expect(cached[1] != nil && cached[2] != nil)
+        }
+    }
+
     @Test func migrationRebuildsSourcesKeepingEverything() throws {
         let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
         try AppDatabase.migrator.migrate(queue, upTo: "v7-history")
