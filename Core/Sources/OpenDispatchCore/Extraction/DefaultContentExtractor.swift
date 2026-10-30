@@ -192,6 +192,8 @@ public struct DefaultContentExtractor: ContentExtractor {
            let full = r.contentHtml, ExtractionDOM.plainText(full).count > 2 * ExtractionDOM.plainText(out.contentHtml).count {
             return ExtractResult(contentHtml: full, leadImage: out.leadImage ?? r.leadImage, rendered: true, paywalled: r.paywalled)
         }
+        // Still empty when rendered (Politico no longer fills it for Jina): what the page has is the public half.
+        if ArticlePasses.hasUnfilledPrivateContent(html) { out.paywalled = true }
         return out
     }
 
@@ -221,7 +223,7 @@ public struct DefaultContentExtractor: ContentExtractor {
         // A bot check, a login wall, or only the page's footer (Reuters' rendered copy: "Apps Newsletters Advertise…").
         guard let html = out.contentHtml, !ArticleExtraction.isLoginWall(html), ArticleExtraction.hasProse(html) else { return nil }
         return ExtractResult(contentHtml: html, leadImage: out.leadImage, rendered: true,
-                             paywalled: PaywallDetection.isWalled(pageHTML: page, articleHTML: html, url: url))
+                             paywalled: ArticlePasses.hasUnfilledPrivateContent(page) || PaywallDetection.isWalled(pageHTML: page, articleHTML: html, url: url))
     }
 
     // MARK: Helpers

@@ -199,6 +199,15 @@ struct ExtractionContentLossTests {
         let whole = try await ex.extractArticle(url: "https://e.com/q", feed: nil)
         #expect(!whole.rendered)
         #expect(!ContentLossStub.requests().contains { $0.hasPrefix("https://r.jina.ai/") })
+
+        // Still empty when rendered (Politico stopped filling it for Jina): the public half, a preview.
+        let teaser = Self.politicoPage(private: "<!--[--><!--]-->")
+        ContentLossStub.reset([
+            "https://e.com/r": [.init(status: 200, headers: Self.stubHTML, body: teaser)],
+            "https://r.jina.ai/https://e.com/r": [.init(status: 200, headers: Self.stubHTML, body: teaser)],
+        ])
+        let preview = try await ex.extractArticle(url: "https://e.com/r", feed: nil)
+        #expect(!preview.rendered && preview.paywalled)
     }
 
     // MARK: ProPublica
