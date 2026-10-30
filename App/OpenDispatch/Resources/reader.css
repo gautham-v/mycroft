@@ -372,7 +372,8 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-name { font-weight: 600; color: var(--ink); }
 .prose-opendispatch .x-handle, .prose-opendispatch .x-when { color: var(--muted); text-decoration: none; }
 .prose-opendispatch .x-handle:hover { text-decoration: underline; }
-.prose-opendispatch .x-body { display: grid; gap: 0.7em; }
+/* Paragraphs a blank line apart, as X sets them. */
+.prose-opendispatch .x-body { display: grid; gap: 1lh; }
 .prose-opendispatch .x-body p { margin: 0; }
 .prose-opendispatch .x-body a { text-decoration: none; }
 .prose-opendispatch .x-body a:hover { text-decoration: underline; }

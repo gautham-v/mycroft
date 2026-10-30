@@ -376,43 +376,53 @@ private struct ReaderCommentRails: View {
 }
 
 /// `RichText` as paragraphs: links in the accent color, bold and italic as written, quotes behind a bar, code blocks on a
-/// tinted ground and list items with a bullet.
+/// tinted ground and list items with a bullet. Paragraphs are a blank line apart, as on X.
 struct ReaderRichText: View {
     let text: RichText
     var size: CGFloat = 15
     var lineSpacing: CGFloat?
 
+    private var leading: CGFloat { lineSpacing ?? size * 0.3 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: size * 0.7) {
-            ForEach(Array(text.paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                switch paragraph.style {
-                case .plain:
-                    line(paragraph)
-                case .quote:
-                    HStack(alignment: .top, spacing: 10) {
-                        Rectangle().fill(Color.ofBorder).frame(width: 2)
-                        line(paragraph).foregroundStyle(.ofMuted)
-                    }
-                case .code:
-                    line(paragraph)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                case .bullet:
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(verbatim: "\u{2022}").foregroundStyle(.ofMuted)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(text.paragraphs.enumerated()), id: \.offset) { i, paragraph in
+                Group {
+                    switch paragraph.style {
+                    case .plain:
                         line(paragraph)
+                    case .quote:
+                        HStack(alignment: .top, spacing: 10) {
+                            Rectangle().fill(Color.ofBorder).frame(width: 2)
+                            line(paragraph).foregroundStyle(.ofMuted)
+                        }
+                    case .code:
+                        line(paragraph)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.ofCode, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    case .bullet:
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(verbatim: "\u{2022}").foregroundStyle(.ofMuted)
+                            line(paragraph)
+                        }
                     }
                 }
+                .padding(.top, i == 0 ? 0 : gap(after: text.paragraphs[i - 1], before: paragraph))
             }
         }
+    }
+
+    /// A blank line between paragraphs; list items run on with only the line spacing between them.
+    private func gap(after previous: RichText.Paragraph, before paragraph: RichText.Paragraph) -> CGFloat {
+        previous.style == .bullet && paragraph.style == .bullet ? leading + size * 0.3 : size * 1.2 + 2 * leading
     }
 
     private func line(_ paragraph: RichText.Paragraph) -> some View {
         Text(Self.attributed(paragraph))
             .font(OFFont.ui(size))
-            .lineSpacing(lineSpacing ?? size * 0.3)
+            .lineSpacing(leading)
             .foregroundStyle(.ofInk)
             .tint(.ofAccent)
             .textSelection(.enabled)
