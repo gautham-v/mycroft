@@ -541,6 +541,37 @@ struct SyncTopicTests {
         #expect(try diff(b).isEmpty)
     }
 
+    @Test func theSameKeywordFollowedOnTwoDevicesBecomesOneTopic() async throws {
+        let server = FakeServer()
+        let a = try Fixture.db()
+        let b = try Fixture.db()
+        let onA = try await a.createTopic(options)
+        let onB = try await b.createTopic(TopicOptions(keyword: "vision pro"))
+        let items = try Fixture.items(b, sourceId: onB.id, [
+            ParsedItem(guid: "hn:1", url: "https://example.com/1", title: "Vision Pro review", publishedAt: Fixture.base)])
+        try await b.setSaved(itemId: items[0].id, saved: true)
+        let (winner, loser) = onA.feedUrl < onB.feedUrl ? (a, b) : (b, a)
+        let winnerURL = min(onA.feedUrl, onB.feedUrl)
+
+        // Both upload theirs, then each sees the other's.
+        try server.join(a)
+        try server.join(b)
+        try server.pull(a)
+        try server.pull(winner)
+        try server.pull(loser)
+        try server.push(loser)
+        try server.pull(winner)
+        for db in [a, b] {
+            let topics = try await db.topics()
+            #expect(topics.map(\.feedUrl) == [winnerURL])
+            #expect(try diff(db).isEmpty)
+        }
+        #expect(server.records.values.filter { $0["kind"] == .string("topic") }.count == 1)
+        // B's item stays with its topic, and its saved copy moves to the kept record.
+        let saved = try await b.items(ItemQuery(view: .saved)).items
+        #expect(saved.map(\.item.guid) == ["hn:1"] && saved[0].source.feedUrl == winnerURL)
+    }
+
     @Test func unreadableOptionsFallBackToTheTitle() async throws {
         let b = try Fixture.db()
         let feedUrl = Topic.newFeedURL()

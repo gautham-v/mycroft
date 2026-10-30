@@ -437,12 +437,12 @@ public actor CloudSync: CKSyncEngineDelegate {
                     // Most likely the type isn't in the Production schema yet: hold all of them.
                     typeHold[type] = Date().addingTimeInterval(30 * 60)
                 }
-                log.error("save \(id.recordName) failed: \(failure.error.localizedDescription)")
+                log.error("save \(id.recordName, privacy: .public) (\(failure.record.recordType, privacy: .public)) failed: \(failure.error.localizedDescription, privacy: .public)")
             }
         }
         for (id, error) in e.failedRecordDeletes where error.code != .unknownItem && !Self.isTransient(error.code) {
             backoff[id.recordName] = holdUntil
-            log.error("delete \(id.recordName) failed: \(error.localizedDescription)")
+            log.error("delete \(id.recordName, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
         }
         let removed = deleted + clearShadow
         try? await database.writer.write { db in

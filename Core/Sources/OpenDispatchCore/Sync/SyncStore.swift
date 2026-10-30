@@ -327,6 +327,19 @@ public enum SyncStore {
             // A topic's options travel with it; one that arrives without readable options keeps what this device has.
             let isTopic = Topic.isTopicFeedURL(feedUrl)
             let topicOptions = isTopic ? TopicOptions(json: r["topicOptions"]?.stringValue) : nil
+            // The same keyword followed on two devices is two records. Every device keeps the one with the smaller feed
+            // URL: a local twin with a larger one takes the incoming URL (keeping its items, and its old record is deleted
+            // by the next diff), and an incoming one with a larger URL is not applied (its own device renames it).
+            if isTopic, try Queries.source(db, feedUrl: feedUrl) == nil,
+               var twin = try Queries.topic(db, keyword: topicOptions?.keyword ?? title) {
+                guard feedUrl < twin.feedUrl else { return false }
+                let old = twin.feedUrl
+                twin.feedUrl = feedUrl
+                try twin.update(db)
+                try db.execute(sql: "UPDATE OR IGNORE history SET source_feed_url = ? WHERE source_feed_url = ?", arguments: [feedUrl, old])
+                try db.execute(sql: "UPDATE highlights SET source_feed_url = ? WHERE source_feed_url = ?", arguments: [feedUrl, old])
+                result.libraryChanged = true
+            }
             if var s = try Queries.source(db, feedUrl: feedUrl) {
                 let before = s
                 s.title = title
