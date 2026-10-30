@@ -25,7 +25,8 @@ import Foundation
 ///
 /// Messages to the `openDispatchYouTube` handler: `{type: "playing"}` once playback first starts,
 /// `{type: "failed"}` when the API or the video fails (the layer and bar are removed, YouTube's own
-/// player or error shows), `{type: "fullscreen" | "exitFullscreen", time}`, and `{type: "time", time, duration}`
+/// player or error shows), `{type: "blocked"}` when the video's owner doesn't allow it in other apps (error 101 or
+/// 150; the reader says so itself), `{type: "fullscreen" | "exitFullscreen", time}`, and `{type: "time", time, duration}`
 /// whenever the position crosses a second (the transcript follows it), and `{type: "state", playing}` whenever it
 /// starts or stops playing. `window.odPlayer.resume(t)` seeks and plays (once the player is ready, if it isn't yet),
 /// `window.odPlayer.toggle()` plays or pauses
@@ -639,7 +640,9 @@ enum ReaderYouTubePage {
                 update();
               },
               onStateChange: function (e) { setState(e.data); },
-              onError: fail
+              onError: function (e) {
+                if (e.data === 101 || e.data === 150) post({ type: 'blocked' }); else fail();
+              }
             } });
           };
 

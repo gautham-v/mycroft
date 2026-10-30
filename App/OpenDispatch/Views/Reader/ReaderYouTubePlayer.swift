@@ -10,7 +10,8 @@ import AVFoundation
 ///
 /// Until playback starts the video's thumbnail covers the player, so YouTube's own poster never shows.
 /// With autoplay off it carries a play button and the length, and YouTube isn't loaded until it's
-/// pressed; with autoplay on it shows a spinner until the first frame plays.
+/// pressed; with autoplay on it shows a spinner until the first frame plays. A video whose owner keeps it out of
+/// other apps goes back to the thumbnail, with a note and a way to YouTube.
 struct ReaderYouTubePlayer: View {
     let videoID: String
     let title: String
@@ -46,6 +47,8 @@ private struct ReaderYouTubeStage: View {
     @State private var startTime: Double
     /// The poster is gone: playback started, or the player failed or took too long and is shown as is.
     @State private var revealed = false
+    /// The video's owner doesn't allow it in other apps (the player's error 101 or 150).
+    @State private var blocked = false
     /// The video's SponsorBlock segments in every category, fetched once the player is created; what the page
     /// gets is these under the settings (`segmentsJSON`).
     @State private var segments: [SponsorBlockSegment] = []
@@ -74,13 +77,13 @@ private struct ReaderYouTubeStage: View {
 
     var body: some View {
         ZStack {
-            if started {
+            if started && !blocked {
                 ReaderYouTubeRepresentable(videoID: videoID, title: title, start: Int(startTime), inCover: false,
                                            segmentsJSON: segmentsJSON, controller: controller, onEvent: handle)
             }
-            if !revealed {
+            if !revealed || blocked {
                 ReaderYouTubePoster(videoID: videoID, title: title, thumbnail: thumbnail, durationSec: durationSec,
-                                    vertical: vertical, loading: started) { started = true }
+                                    vertical: vertical, loading: started && !blocked, blocked: blocked) { started = true }
                     .transition(.opacity)
             }
         }
@@ -123,6 +126,7 @@ private struct ReaderYouTubeStage: View {
     private func handle(_ event: ReaderYouTubeEvent) {
         switch event {
         case .playing, .failed: reveal()
+        case .blocked: blocked = true
         #if os(iOS)
         case .fullscreen(let time):
             controller.inFullscreen = true
@@ -147,9 +151,11 @@ private struct ReaderYouTubePoster: View {
     let durationSec: Int?
     let vertical: Bool
     let loading: Bool
+    let blocked: Bool
     let play: () -> Void
 
     @State private var hovering = false
+    @Environment(\.openURL) private var openURL
 
     private var id: String { videoID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoID }
     private var fallbackURL: URL? {
@@ -158,12 +164,20 @@ private struct ReaderYouTubePoster: View {
     }
 
     var body: some View {
-        Button { if !loading { play() } } label: {
+        Button {
+            if blocked {
+                if let url = URL(string: "https://www.youtube.com/watch?v=\(id)") { openURL(url) }
+            } else if !loading {
+                play()
+            }
+        } label: {
             Color.black
                 .overlay { image }
-                .overlay { button }
+                .overlay {
+                    if blocked { blockedNotice } else { button }
+                }
                 .overlay(alignment: .bottomTrailing) {
-                    if !loading, let duration = TextFormat.duration(durationSec) {
+                    if !loading, !blocked, let duration = TextFormat.duration(durationSec) {
                         Text(duration)
                             .font(OFFont.ui(12, .semibold))
                             .monospacedDigit()
@@ -179,7 +193,7 @@ private struct ReaderYouTubePoster: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .accessibilityLabel(loading ? "Loading \(title)" : "Play \(title)")
+        .accessibilityLabel(blocked ? "Watch \(title) on YouTube" : loading ? "Loading \(title)" : "Play \(title)")
     }
 
     private var image: some View {
@@ -196,6 +210,28 @@ private struct ReaderYouTubePoster: View {
             } else {
                 Color.black
             }
+        }
+    }
+
+    private var blockedNotice: some View {
+        ZStack {
+            Color.black.opacity(0.65)
+            VStack(spacing: 12) {
+                Text("The owner of this video doesn\u{2019}t allow it to play in other apps.")
+                    .font(OFFont.ui(13.5))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                HStack(spacing: 6) {
+                    Text("Watch on YouTube")
+                    OFIcon.external.image.font(.system(size: 12))
+                }
+                .font(OFFont.ui(12.5, .semibold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .background(Color.white, in: Capsule())
+            }
+            .padding(16)
         }
     }
 
@@ -243,7 +279,7 @@ private struct ReaderYouTubeFullscreen: View {
                                        controller: nil) { event in
                 switch event {
                 case .exitFullscreen(let time): onExit(time)
-                case .failed: onExit(start)
+                case .failed, .blocked: onExit(start)
                 default: break
                 }
             }
@@ -256,7 +292,7 @@ private struct ReaderYouTubeFullscreen: View {
 #endif
 
 enum ReaderYouTubeEvent {
-    case playing, failed, fullscreen(Double), exitFullscreen(Double)
+    case playing, failed, blocked, fullscreen(Double), exitFullscreen(Double)
     /// Seconds in, and the video's length once the player knows it (else 0).
     case time(Double, Double)
 }
@@ -382,6 +418,7 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         switch type {
         case "playing": onEvent(.playing)
         case "failed": onEvent(.failed)
+        case "blocked": onEvent(.blocked)
         case "fullscreen": onEvent(.fullscreen(time))
         case "exitFullscreen": onEvent(.exitFullscreen(time))
         case "time": onEvent(.time(time, (body["duration"] as? NSNumber)?.doubleValue ?? 0))
