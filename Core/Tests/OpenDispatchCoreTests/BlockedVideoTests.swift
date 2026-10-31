@@ -413,3 +413,22 @@ private struct PartlySlowCheck: YouTubeEmbedChecking {
         #expect(try db.reader.read { try Queries.hiddenBlockedVideoCount($0, q) } == 0)
     }
 }
+
+@Suite("Embed checks give up")
+struct EmbedCheckGiveUpTests {
+    @Test func unreadableAnswersStopTheRun() async {
+        let check = FakeEmbedCheck(answer: { _ in nil })
+        let targets = (0..<60).map { EmbedCheckTarget(id: Int64($0), videoId: "v\($0)") }
+        let answers = await DefaultRefreshService.askPlayable(targets, check: check, concurrency: 4, budget: 5)
+        #expect(answers.isEmpty)
+        #expect(check.videos.count < 20)
+    }
+
+    @Test func oneAnswerKeepsItGoing() async {
+        let check = FakeEmbedCheck(answer: { $0 == "v0" ? true : nil })
+        let targets = (0..<30).map { EmbedCheckTarget(id: Int64($0), videoId: "v\($0)") }
+        let answers = await DefaultRefreshService.askPlayable(targets, check: check, concurrency: 1, budget: 5)
+        #expect(answers.count == 1)
+        #expect(check.videos.count == 30)
+    }
+}

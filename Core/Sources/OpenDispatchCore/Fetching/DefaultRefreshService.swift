@@ -28,6 +28,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     public static let embedCheckConcurrency = 4
     /// How long a refresh waits for the answers, over all its sources. Those it didn't get are asked for next time.
     public static let embedCheckBudget: TimeInterval = 6
+    /// How many checks may come back unreadable, with none answering, before a refresh stops asking.
+    static let embedCheckGiveUpAfter = 8
 
     let database: AppDatabase
     let parser: any FeedParser
@@ -322,7 +324,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         // A nil result is the budget running out.
         await withTaskGroup(of: (id: Int64, playable: Bool?)?.self) { group in
             var answers: [Int64: Bool] = [:]
-            var next = 0, running = 0
+            var next = 0, running = 0, unknown = 0
             func startNext() {
                 guard next < targets.count else { return }
                 let target = targets[next]
@@ -338,7 +340,9 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             while running > 0, let done = await group.next() {
                 guard let done else { break }
                 running -= 1
-                if let playable = done.playable { answers[done.id] = playable }
+                if let playable = done.playable { answers[done.id] = playable } else { unknown += 1 }
+                // Every answer unreadable means YouTube's page changed, which more pages won't fix.
+                if answers.isEmpty, unknown >= Self.embedCheckGiveUpAfter { break }
                 startNext()
             }
             group.cancelAll()
