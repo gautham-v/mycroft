@@ -601,25 +601,25 @@ private struct SidebarSourceRow<MenuContent: View>: View {
                 Text(source.title)
                     .font(OFFont.sidebarRow)
                     .foregroundStyle(isMuted ? Color.ofRead : Color.ofInk)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .modifier(SidebarTitleFade(clearsButton: hovered))
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onOpen)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { onOpen() }
                     .help(source.lastError.map { "Last refresh failed: \($0)" } ?? source.title)
-                Menu {
-                    menu()
-                } label: {
-                    SidebarMiniButtonLabel(icon: .more, size: 22, iconSize: 12)
-                }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .opacity(hovered ? 1 : 0)
-                .accessibilityLabel("Options for \(source.title)")
+                    .overlay(alignment: .trailing) {
+                        Menu {
+                            menu()
+                        } label: {
+                            SidebarMiniButtonLabel(icon: .more, size: 22, iconSize: 12)
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .opacity(hovered ? 1 : 0)
+                        .accessibilityLabel("Options for \(source.title)")
+                    }
             }
         }
         .padding(.horizontal, SidebarStyle.rowPadding)
@@ -655,26 +655,27 @@ private struct SidebarFolderHeader<MenuContent: View>: View {
             } else {
                 // A tap gesture, not a Button, so the header's .onDrag can start (see SidebarSourceRow).
                 Text(title)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .modifier(SidebarTitleFade(clearsButton: hovered && hasMenu, buttonWidth: 20))
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTitle)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { onTitle() }
                     .help(hasMenu ? "Show everything in \(title)" : "")
-                if hasMenu {
-                    Menu {
-                        menu()
-                    } label: {
-                        SidebarMiniButtonLabel(icon: .more, size: 20, iconSize: 11)
+                    .overlay(alignment: .trailing) {
+                        if hasMenu {
+                            Menu {
+                                menu()
+                            } label: {
+                                SidebarMiniButtonLabel(icon: .more, size: 20, iconSize: 11)
+                            }
+                            .menuStyle(.button)
+                            .buttonStyle(.plain)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
+                            .opacity(hovered ? 1 : 0)
+                            .accessibilityLabel("Options for \(title)")
+                        }
                     }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .opacity(hovered ? 1 : 0)
-                    .accessibilityLabel("Options for \(title)")
-                }
                 Button(action: onToggle) {
                     SidebarMiniButtonLabel(icon: .chevron, size: 20, iconSize: 10, rotation: .degrees(open ? 90 : 0))
                         .animation(.easeOut(duration: 0.15), value: open)

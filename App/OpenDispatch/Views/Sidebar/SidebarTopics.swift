@@ -130,10 +130,8 @@ private struct SidebarTopicRow<MenuContent: View>: View {
             Text(topic.title)
                 .font(OFFont.sidebarRow)
                 .foregroundStyle(.ofInk)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            trailing
+                .modifier(SidebarTitleFade(clearsButton: hovered || refreshing))
+                .overlay(alignment: .trailing) { trailing }
         }
         .padding(.horizontal, SidebarStyle.rowPadding)
         .frame(height: Metrics.sidebarRowHeight)

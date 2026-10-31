@@ -14,6 +14,39 @@ enum SidebarStyle {
     /// Row horizontal padding (px-2) and icon column width (w-[20px]).
     static let rowPadding: CGFloat = 8
     static let iconColumn: CGFloat = 20
+    /// How far a title that doesn't fit takes to fade out.
+    static let titleFade: CGFloat = 24
+}
+
+/// A row title that runs to the row's edge and, only when it doesn't fit, fades out there rather than truncating.
+/// While something sits on top of its end (the "…" button on hover, a spinner), a title that reaches it fades out
+/// just before it instead.
+struct SidebarTitleFade: ViewModifier {
+    var clearsButton: Bool
+    var buttonWidth: CGFloat = 22
+
+    private var clearance: CGFloat { clearsButton ? buttonWidth + 2 : 0 }
+
+    func body(content: Content) -> some View {
+        ViewThatFits(in: .horizontal) {
+            content
+                .lineLimit(1)
+                .padding(.trailing, clearance)
+            content
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .mask {
+                    HStack(spacing: 0) {
+                        Rectangle()
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: SidebarStyle.titleFade)
+                        Color.clear.frame(width: clearance)
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
 }
 
 /// Background for a sidebar row: nav selection when active, nav hover when hovered.
