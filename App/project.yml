@@ -52,10 +52,13 @@ targets:
         CADisableMinimumFrameDurationOnPhone: true
         # Sparkle (macOS): the appcast is attached to the latest GitHub release; updates are signed
         # with the EdDSA key in the login keychain. The installer runs as an XPC service (sandbox).
+        # SUAutomaticallyUpdate is the default for Settings → About's switch: updates download on
+        # their own and install on quit. A choice the user has made overrides it.
         SUFeedURL: https://github.com/gautham-v/opendispatch/releases/latest/download/appcast.xml
         SUPublicEDKey: OyQttpMtNaMVzkFDCat5UJz3orsN82BUi1SJjP8HqFE=
         SUEnableInstallerLauncherService: true
         SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen:
           UIColorName: ""

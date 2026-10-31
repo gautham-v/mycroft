@@ -40,7 +40,7 @@ extension SettingsTab {
         case .notifications: "alerts new posts notify"
         case .integrations: "readwise webhook send markdown copy prompt sign in x reddit paywall subscribe"
         case .data: "icloud sync refresh cache database storage"
-        case .about: "version updates credits"
+        case .about: "version updates automatically download install check credits"
         }
     }
 

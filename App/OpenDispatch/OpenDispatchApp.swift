@@ -14,7 +14,8 @@ struct OpenDispatchApp: App {
     /// Read aloud (the reader's Listen): one session at a time, app-wide.
     @State private var speech = ReaderSpeech()
     #if os(macOS)
-    /// Sparkle: checks the appcast on its own schedule and backs "Check for Updates…".
+    /// Sparkle: checks the appcast on its own schedule, installs updates on quit unless turned off in
+    /// Settings → About, and backs "Check for Updates…".
     private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     #endif
 
@@ -41,6 +42,9 @@ struct OpenDispatchApp: App {
                 .environment(model)
                 .environment(speech)
                 .environment(highlights)
+                #if os(macOS)
+                .environment(\.updater, updater.updater)
+                #endif
                 .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
         // A link from outside (opendispatch://…) goes to the window that's open instead of opening another.

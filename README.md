@@ -4,7 +4,7 @@ A native RSS and news reader for macOS and iOS, written in SwiftUI. It pulls RSS
 
 Single user, no accounts, no server. Everything is fetched and stored on the device, and iCloud sync keeps your sources, folders, saved items and settings the same on your Macs, iPhones and iPads through the iCloud account they are already signed in to. MIT licensed.
 
-**Download for Mac:** the latest notarized DMG is on the [releases page](https://github.com/gautham-v/opendispatch/releases/latest). The app updates itself through Sparkle (OpenDispatch → Check for Updates…). Requires macOS 15 or later. The iPhone and iPad app (iOS/iPadOS 26 or later) builds from this repo; see [Build from source](#build-from-source).
+**Download for Mac:** the latest notarized DMG is on the [releases page](https://github.com/gautham-v/opendispatch/releases/latest). The app updates itself through Sparkle: updates download on their own and install when you quit, or ask first if you turn that off in Settings → About. Requires macOS 15 or later. The iPhone and iPad app (iOS/iPadOS 26 or later) builds from this repo; see [Build from source](#build-from-source).
 
 ## Features
 

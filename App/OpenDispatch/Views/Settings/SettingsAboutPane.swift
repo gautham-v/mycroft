@@ -1,12 +1,15 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// About pane (native): logo, version, what the app is, and credits. On a phone the logo and version
-/// are the Settings screen's header, so the pane starts at the description, and the text and credits
-/// sit in cards. Figtree is credited on iOS only, the one platform that sets its UI in it.
+/// About pane (native): logo, version, what the app is, and credits, with the update settings on the Mac.
+/// On a phone the logo and version are the Settings screen's header, so the pane starts at the description,
+/// and the text and credits sit in cards. Figtree is credited on iOS only, the one platform that sets its UI in it.
 struct SettingsAboutPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
+    #if os(macOS)
+    @Environment(\.updater) private var updater
+    #endif
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -55,6 +58,12 @@ struct SettingsAboutPane: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 18)
+
+                #if os(macOS)
+                if let updater {
+                    SettingsUpdatesSection(updater: updater)
+                }
+                #endif
 
                 SettingsCard {
                     ForEach(Self.about, id: \.self) { text in
