@@ -30,6 +30,9 @@ public enum FeedOrder: String, Codable, Sendable, CaseIterable, Hashable {
     case balanced
     /// Newest first.
     case latest
+    /// Balanced, with each row counted newer or older by how often the user opens its source (`ReadingProfile`). In a topic,
+    /// where the sources are other people's, it is Balanced.
+    case forYou
 }
 
 /// What the item list shows: GET /api/items?view&source&folder&q&cursor&limit.
@@ -50,13 +53,15 @@ public struct ItemQuery: Sendable, Hashable {
     public var hideReadBefore: Date?
     /// A topic's Show filter: which kind of item the list shows (the app sets it only for a topic's list).
     public var topicFilter: TopicContentFilter
-    /// Balanced applies to the first page; later pages are always newest first.
+    /// Balanced and For You apply to the first page; later pages are always newest first.
     public var order: FeedOrder
     /// Videos that won't play here (`Item.embedBlocked`) leave the list, unless it's Saved, a search or a topic's
     /// (`Queries.hidesBlockedVideos`).
     public var hidesBlockedVideos: Bool
     /// Sources to leave out of the list: ones being removed, whose Undo is still up.
     public var excludedSourceIds: Set<Int64>
+    /// For You's Show More (+1) and Show Less (-1), by feed URL.
+    public var sourcePreferences: [String: Int]
 
     public static let defaultLimit = 50
     public static let maxQueryLength = 200
@@ -66,7 +71,7 @@ public struct ItemQuery: Sendable, Hashable {
         view: FeedView = .all, sourceId: Int64? = nil, folderId: Int64? = nil, filter: FeedFilter? = nil,
         search: String = "", cursor: ItemCursor? = nil, limit: Int = ItemQuery.defaultLimit, since: Date? = nil,
         hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all, order: FeedOrder = .latest,
-        hidesBlockedVideos: Bool = false, excludedSourceIds: Set<Int64> = []
+        hidesBlockedVideos: Bool = false, excludedSourceIds: Set<Int64> = [], sourcePreferences: [String: Int] = [:]
     ) {
         self.view = view
         self.sourceId = sourceId
@@ -81,6 +86,7 @@ public struct ItemQuery: Sendable, Hashable {
         self.order = order
         self.hidesBlockedVideos = hidesBlockedVideos
         self.excludedSourceIds = excludedSourceIds
+        self.sourcePreferences = sourcePreferences
     }
 
     /// The search terms actually matched.

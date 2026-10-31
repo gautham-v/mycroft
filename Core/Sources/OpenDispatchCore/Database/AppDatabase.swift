@@ -370,6 +370,44 @@ public final class AppDatabase: Sendable {
                 WHERE content_html IS NOT NULL AND url LIKE '%reddit.com/r/%/comments/%'
                 """)
         }
+        // For You and "Sources for you". Per device, not synced: rows that came on screen, every open (history keeps only the
+        // last), and sources removed or dismissed, so a suggestion doesn't offer them straight back. History's sources that
+        // are no longer in the library were removed before anything remembered it.
+        m.registerMigration("v20-reading-signals") { db in
+            try db.execute(sql: """
+                CREATE TABLE rows_seen (
+                  source_feed_url TEXT NOT NULL,
+                  item_guid TEXT NOT NULL,
+                  first_seen_at DATETIME NOT NULL,
+                  PRIMARY KEY (source_feed_url, item_guid)
+                ) WITHOUT ROWID;
+                CREATE INDEX rows_seen_at_idx ON rows_seen(first_seen_at);
+                CREATE TABLE open_events (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  source_feed_url TEXT NOT NULL,
+                  item_guid TEXT NOT NULL,
+                  opened_at DATETIME NOT NULL
+                );
+                CREATE INDEX open_events_at_idx ON open_events(opened_at);
+                CREATE INDEX open_events_item_idx ON open_events(source_feed_url, item_guid);
+                CREATE TABLE removed_sources (
+                  feed_url TEXT PRIMARY KEY,
+                  title TEXT NOT NULL,
+                  removed_at DATETIME NOT NULL
+                );
+                INSERT INTO open_events (source_feed_url, item_guid, opened_at)
+                  SELECT source_feed_url, item_guid, opened_at FROM history WHERE opened_at IS NOT NULL;
+                INSERT OR IGNORE INTO removed_sources (feed_url, title, removed_at)
+                  SELECT source_feed_url, MAX(source_title), MAX(COALESCE(opened_at, read_at)) FROM history
+                  WHERE source_feed_url NOT LIKE 'opendispatch:%'
+                    AND source_feed_url NOT IN (SELECT feed_url FROM sources)
+                    AND COALESCE(opened_at, read_at) IS NOT NULL
+                  GROUP BY source_feed_url;
+                CREATE TRIGGER sources_forget_removal AFTER INSERT ON sources BEGIN
+                  DELETE FROM removed_sources WHERE feed_url = NEW.feed_url;
+                END;
+                """)
+        }
         return m
     }
 }

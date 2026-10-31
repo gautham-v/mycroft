@@ -136,7 +136,10 @@ public enum Queries {
             .including(required: Item.source.aliased(src))
         let topic = try topicScope(db, q)
         for cond in conditions(q, src: src, topic: topic) { req = req.filter(cond) }
-        if q.order == .balanced, q.cursor == nil { return try balancedPage(db, req, topic: topic) }
+        if q.order != .latest, q.cursor == nil {
+            let profile = q.order == .forYou && topic == nil ? try readingProfile(db) : nil
+            return try balancedPage(db, req, topic: topic, profile: profile, preferences: q.sourcePreferences)
+        }
         let rows = try req
             .order(sortTime(topic: topic != nil).desc, Item.Columns.id.desc)
             .limit(limit + 1)
@@ -153,11 +156,13 @@ public enum Queries {
     /// newer item from its source in the page; ties keep time order. The cursor is the page's oldest item, so the
     /// next pages go on newest first below it. In a topic's list, where every result shares the topic as its source,
     /// an item's site stands for its source (x.com, bsky.app, youtube.com, each publisher), and times are story times.
+    /// With a `profile` (For You) each item also counts as newer or older by how often its source is opened.
     static let balancedWindowCount = 300
     static let balancedWindowSpan: TimeInterval = 48 * 3600
     static let balancedPenalty: TimeInterval = 2 * 3600
 
-    private static func balancedPage(_ db: Database, _ req: QueryInterfaceRequest<Item>, topic: Source?) throws -> ItemPage {
+    private static func balancedPage(_ db: Database, _ req: QueryInterfaceRequest<Item>, topic: Source?, profile: ReadingProfile?,
+                                     preferences: [String: Int]) throws -> ItemPage {
         let inTopic = topic != nil
         let rows = try req
             .order(sortTime(topic: inTopic).desc, Item.Columns.id.desc)
@@ -174,7 +179,9 @@ public enum Queries {
             let key = inTopic ? URLHost.host(of: row.item.url) : String(row.item.sourceId)
             let newer = seen[key, default: 0]
             seen[key] = newer + 1
-            ranked.append((row, time(row).addingTimeInterval(-Double(newer) * balancedPenalty), index))
+            let feedUrl = row.source.feedUrl
+            let shift = profile?.shiftHours(feedUrl: feedUrl, preference: preferences[feedUrl] ?? 0) ?? 0
+            ranked.append((row, time(row).addingTimeInterval(shift * 3600 - Double(newer) * balancedPenalty), index))
         }
         ranked.sort { $0.at != $1.at ? $0.at > $1.at : $0.index < $1.index }
         var page = ranked.map { $0.row }
@@ -339,6 +346,7 @@ public enum Queries {
         let removed = db.changesCount
         try repairStories(db, readLeads: readLeads)
         try pruneReadMarks(db)
+        try pruneReadingSignals(db, before: cutoff.addingTimeInterval(-90 * 86_400))
         return removed
     }
 
@@ -478,8 +486,11 @@ public enum Queries {
 
     /// DELETE /api/sources/:id (items cascade). Returns false when not found.
     @discardableResult
-    public static func deleteSource(_ db: Database, id: Int64) throws -> Bool {
-        try Source.deleteOne(db, key: id)
+    public static func deleteSource(_ db: Database, id: Int64, remembers: Bool = true) throws -> Bool {
+        if remembers, let source = try Source.fetchOne(db, key: id), !source.isTopic, !source.isOpenedLinks {
+            try rememberRemovedSource(db, feedUrl: source.feedUrl, title: source.title)
+        }
+        return try Source.deleteOne(db, key: id)
     }
 
     /// PATCH /api/sources {order}: each entry gets its folder and the index of its position within that folder.

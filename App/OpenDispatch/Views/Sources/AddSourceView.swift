@@ -131,6 +131,7 @@ struct AddSourceView: View {
         .onChange(of: trimmed) { showsAll = false }
         .onChange(of: filter) { showsAll = false }
         .task(id: "\(trimmed)|\(signedInToX)") { await search() }
+        .task { await model.loadSourceSuggestions() }
         .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
             WebSignInView(target: target, onDone: {})
         }
@@ -384,13 +385,16 @@ struct AddSourceView: View {
     /// Starter packs of free sources, leaving out what's in the library and any site this device has learned is walled, and what can be
     /// added at all. Search still finds walled sites; this is only for suggesting them.
     private var emptyState: some View {
-        let packs = StarterSources.packs.compactMap { pack -> StarterPack? in
+        let catalog = StarterSources.packs.compactMap { pack -> StarterPack? in
             let left = pack.sources.filter { source in
                 guard !model.isWalled(source) else { return false }
                 return !model.hasSource(feedUrl: source.feedUrl) || model.sourceAdds[source.feedUrl] != nil
             }
             return left.isEmpty ? nil : StarterPack(name: pack.name, sources: left)
         }
+        // For You comes first when History points anywhere, and is what the sheet opens on. Its rows are `forYouRows`.
+        let suggested = model.shownSuggestions
+        let packs = suggested.isEmpty ? catalog : [StarterPack(name: Self.forYouPack, sources: [])] + catalog
         let shown = packs.first { $0.name == suggestionPack } ?? packs.first
         return VStack(alignment: .leading, spacing: 10) {
             ReaderFlowLayout(spacingX: 10, spacingY: 4) {
@@ -486,7 +490,39 @@ struct AddSourceView: View {
         #endif
     }
 
-    private func suggestionRows(_ pack: StarterPack) -> some View {
+    /// What History points to: first what was opened or linked, then neighbours in the subjects the user reads.
+    private var forYouRows: some View {
+        let suggested = model.shownSuggestions
+        let groups: [(title: String, rows: [SourceSuggestion])] = [
+            ("From what you\u{2019}ve opened", suggested.filter { $0.evidence != .subject }),
+            ("More in what you read", suggested.filter { $0.evidence == .subject }),
+        ]
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(groups.filter { !$0.rows.isEmpty }, id: \.title) { group in
+                sectionLabel(group.title).padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 4)
+                ForEach(group.rows) { suggestion in
+                    let result = suggestion.result
+                    AddSourceRow(title: result.title, subtitle: result.subtitle, host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
+                                 imageUrl: result.imageUrl, url: result.feedUrl, inLibrary: model.hasSource(feedUrl: result.feedUrl),
+                                 roundIcon: result.handle != nil || result.place == .youtube,
+                                 placeHost: result.imageUrl == nil ? nil : result.place.host, reason: suggestion.reason, add: add)
+                        .contextMenu {
+                            Button("Not Interested") { Task { await model.dismissSuggestion(suggestion) } }
+                        }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func suggestionRows(_ pack: StarterPack) -> some View {
+        if pack.name == Self.forYouPack {
+            forYouRows
+        } else {
+            catalogRows(pack)
+        }
+    }
+
+    private func catalogRows(_ pack: StarterPack) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(pack.sources) { source in
                 AddSourceRow(title: source.title, subtitle: source.detail, host: source.host, imageUrl: source.imageUrl, url: source.feedUrl,
@@ -839,6 +875,9 @@ struct AddSourceView: View {
 
     /// Tallest the results get on macOS before they scroll.
     static let maxContentHeight: CGFloat = 400
+    /// The category of suggestions from History.
+    static let forYouPack = "For You"
+
     /// The empty sheet's category column and its height on macOS.
     static let categoryColumn: CGFloat = 118
     static let suggestionsHeight: CGFloat = 310
@@ -922,6 +961,8 @@ private struct AddSourceRow: View {
     var placeHost: String?
     /// Why it can't be added; the row then has no add button.
     var note: String?
+    /// Why it's suggested.
+    var reason: String?
     /// Starts adding a URL to the sheet's chosen folder.
     let add: (String) -> Void
 
@@ -947,6 +988,12 @@ private struct AddSourceRow: View {
                         Text(note)
                             .font(OFFont.ui(12))
                             .foregroundStyle(.ofMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let reason {
+                        Text(reason)
+                            .font(OFFont.ui(12))
+                            .foregroundStyle(.ofBody)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

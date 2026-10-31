@@ -22,6 +22,7 @@ extension Queries {
     public static func recordOpen(_ db: Database, _ snapshot: HistoryEntry, isMedia: Bool, now: Date = Date()) throws -> HistoryEntry {
         var e = try existing(db, snapshot) ?? snapshot
         e.openedAt = now
+        try recordOpenEvent(db, snapshot, now: now)
         if !isMedia, e.readAt == nil { e.readAt = now }
         try e.save(db)
         return e
@@ -54,7 +55,10 @@ extension Queries {
     @discardableResult
     public static func recordProgress(_ db: Database, _ snapshot: HistoryEntry, position: Double, duration: Double, now: Date = Date()) throws -> HistoryEntry {
         var e = try existing(db, snapshot) ?? snapshot
-        if e.openedAt == nil { e.openedAt = now }
+        if e.openedAt == nil {
+            e.openedAt = now
+            try recordOpenEvent(db, snapshot, now: now)
+        }
         e.positionSec = max(position, 0)
         if duration > 0 { e.durationSec = duration }
         if e.readAt == nil, let d = e.durationSec, d > 0, position >= d * HistoryEntry.finishedFraction { e.readAt = now }
@@ -65,6 +69,7 @@ extension Queries {
     /// Remove from History: the article is unread again.
     @discardableResult
     public static func removeHistory(_ db: Database, sourceFeedUrl: String, itemGuid: String) throws -> Bool {
+        try clearReadingSignals(db, sourceFeedUrl: sourceFeedUrl, itemGuid: itemGuid)
         try db.execute(sql: "DELETE FROM history WHERE source_feed_url = ? AND item_guid = ?", arguments: [sourceFeedUrl, itemGuid])
         return db.changesCount > 0
     }
@@ -73,6 +78,7 @@ extension Queries {
     /// unread again. Returns rows removed.
     @discardableResult
     public static func clearHistory(_ db: Database, since: Date?) throws -> Int {
+        try clearReadingSignals(db, since: since)
         if let since {
             try db.execute(sql: "DELETE FROM history WHERE COALESCE(opened_at, read_at) >= ?", arguments: [since])
         } else {

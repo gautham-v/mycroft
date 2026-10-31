@@ -51,7 +51,7 @@ struct SettingsAppearancePane: View {
                     SettingsSegmented(label: "Source icons", selection: $model.settings.sourceIcons,
                                       options: SourceIconSetting.allCases.map { ($0, $0.label) })
                 }
-                SettingsRow(label: "Feed order", hint: "Balanced keeps busy sources from filling the top") {
+                SettingsRow(label: "Feed order", hint: model.settings.feedOrder == .forYou ? "Sources you open often come first, counted on this device" : "Balanced keeps busy sources from filling the top") {
                     SettingsSegmented(label: "Feed order", selection: $model.settings.feedOrder,
                                       options: FeedOrder.allCases.map { ($0, $0.label) })
                 }

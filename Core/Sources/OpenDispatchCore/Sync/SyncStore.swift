@@ -551,7 +551,8 @@ public enum SyncStore {
         guard pristine else { return false }
         var changed = false
         for s in sources {
-            try Queries.deleteSource(db, id: s.id)
+            // Seeded sources going away on first sync isn't the user saying no to them.
+            try Queries.deleteSource(db, id: s.id, remembers: false)
             changed = true
         }
         let filed = Set(try Int64.fetchAll(db, sql: "SELECT DISTINCT folder_id FROM sources WHERE folder_id IS NOT NULL"))

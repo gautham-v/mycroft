@@ -132,6 +132,10 @@ struct ExplorePlayBadge: View {
 struct ExploreSourceItem: View {
     let result: SourceSearchResult
     var avatarSize: CGFloat = 36
+    /// Replaces "Feed · example.com" when the row says what it is some other way.
+    var meta: String?
+    /// Why it's suggested, under the name.
+    var reason: String?
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -143,10 +147,16 @@ struct ExploreSourceItem: View {
                         .font(OFFont.ui(14, .semibold))
                         .foregroundStyle(.ofInk)
                         .lineLimit(1)
-                    Text(ExploreFormat.sourceMeta(result))
+                    Text(meta ?? ExploreFormat.sourceMeta(result))
                         .font(OFFont.ui(12))
                         .foregroundStyle(.ofMuted)
                         .lineLimit(1)
+                    if let reason {
+                        Text(reason)
+                            .font(OFFont.ui(12))
+                            .foregroundStyle(.ofBody)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 ExploreFollowButton(result: result)
@@ -173,6 +183,35 @@ struct ExploreSourceItem: View {
             .accessibilityHidden(true)
         } else {
             SourceBadge(host: URLHost.host(of: result.siteUrl ?? result.feedUrl), title: result.title, size: avatarSize)
+        }
+    }
+}
+
+/// Sources for you, at the top of Explore's start: the strongest few of what History points to, each with its reason. See
+/// All opens Add Sources, whose For You category has the rest. Nothing shows until there's something to say. The page
+/// showing it calls `loadSourceSuggestions`: this view has nothing to hang that on while it's empty.
+struct ExploreSuggestedSources<Header: View>: View {
+    static var limit: Int { 4 }
+    var avatarSize: CGFloat = 36
+    var rowSpacing: CGFloat = 12
+    var horizontalPadding: CGFloat = 0
+    @ViewBuilder let header: (_ seeAll: Button<Text>) -> Header
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let suggestions = Array(model.shownSuggestions.prefix(Self.limit))
+        if !suggestions.isEmpty {
+            VStack(alignment: .leading, spacing: rowSpacing) {
+                header(Button("See All") { model.isAddSourcePresented = true })
+                ForEach(suggestions) { suggestion in
+                    ExploreSourceItem(result: suggestion.result, avatarSize: avatarSize, meta: suggestion.result.subtitle, reason: suggestion.reason)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            Button("Not Interested") { Task { await model.dismissSuggestion(suggestion) } }
+                        }
+                        .padding(.horizontal, horizontalPadding)
+                }
+            }
         }
     }
 }

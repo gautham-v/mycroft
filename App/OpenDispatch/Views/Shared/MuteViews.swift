@@ -55,6 +55,40 @@ struct MuteRowMenuItem: View {
     }
 }
 
+/// For You's part of a feed row's menu: why the row is where it is, Show More and Show Less. Only while the list is in For
+/// You order, which is the only order they change.
+struct ForYouRowMenuItems: View {
+    let item: FeedItem
+    var icons = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        // A topic's list can hold rows of the user's own sources, but it stays Balanced.
+        if model.listOrder == .forYou, !model.isTopicSelected, !item.source.isTopic, !item.source.isOpenedLinks {
+            let source = model.sources.first { $0.id == item.source.id } ?? item.source
+            let preference = model.settings.sourcePreferences[source.feedUrl] ?? 0
+            Section(model.whyHere(source)) {
+                toggle("Show More from \(source.shortTitle)", symbol: "arrow.up.circle", isOn: preference == 1) {
+                    model.setSourcePreference(source, to: preference == 1 ? 0 : 1)
+                }
+                toggle("Show Less from \(source.shortTitle)", symbol: "arrow.down.circle", isOn: preference == -1) {
+                    model.setSourcePreference(source, to: preference == -1 ? 0 : -1)
+                }
+            }
+        }
+    }
+
+    private func toggle(_ title: String, symbol: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Toggle(isOn: Binding(get: { isOn }, set: { _ in action() })) {
+            if icons {
+                Label(title, systemImage: symbol)
+            } else {
+                Text(title)
+            }
+        }
+    }
+}
+
 /// "Remove Adam Schefter" in a feed row's menu, under Mute: gone at once with Undo in the toast, or asked first when its saved
 /// items would go with it.
 struct RemoveRowMenuItem: View {

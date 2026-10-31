@@ -83,6 +83,7 @@ extension FeedOrder {
         switch self {
         case .latest: "Latest"
         case .balanced: "Balanced"
+        case .forYou: "For You"
         }
     }
 }
@@ -194,6 +195,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var sendHighlightsToReadwise: Bool = true
     /// How All, its Articles, Posts, Video and Podcasts views, and topics order items (`AppModel.listOrder`).
     var feedOrder: FeedOrder = .balanced
+    /// For You's Show More (+1) and Show Less (-1) by feed URL. In the settings so they sync with no new record type.
+    var sourcePreferences: [String: Int] = [:]
     /// Leave read items out of the lists (not Saved or searches); they stay in History.
     var hideReadItems: Bool = false
     /// The comments under a post, a video or an article's Hacker News discussion, and the reader's Discussion link.
@@ -254,6 +257,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         speechRate = ReaderPodcastPlayback.rates.contains(rate) ? rate : 1
         sendHighlightsToReadwise = (try? c.decode(Bool.self, forKey: .sendHighlightsToReadwise)) ?? true
         feedOrder = (try? c.decode(FeedOrder.self, forKey: .feedOrder)) ?? .balanced
+        sourcePreferences = (try? c.decode([String: Int].self, forKey: .sourcePreferences)) ?? [:]
         hideReadItems = (try? c.decode(Bool.self, forKey: .hideReadItems)) ?? false
         showComments = (try? c.decode(Bool.self, forKey: .showComments)) ?? true
         paywallTreatment = (try? c.decode(PaywallTreatment.self, forKey: .paywallTreatment)) ?? .mark

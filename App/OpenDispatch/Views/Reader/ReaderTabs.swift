@@ -55,6 +55,19 @@ struct NewTabView: View {
                 if isSearching {
                     ExploreDesktopResults(pane: pane)
                 } else {
+                    ExploreSuggestedSources(horizontalPadding: 8) { seeAll in
+                        HStack {
+                            Text("Sources for you")
+                                .font(OFFont.ui(13))
+                                .foregroundStyle(.ofMuted)
+                            Spacer()
+                            seeAll
+                                .buttonStyle(.plain)
+                                .font(OFFont.ui(13))
+                                .foregroundStyle(.ofAccent)
+                        }
+                        .padding(.horizontal, 8)
+                    }
                     ExploreRecentSearches(pane: pane)
                     recentlyRead
                     section("Saved", saved)
@@ -79,6 +92,7 @@ struct NewTabView: View {
         }
         .background(Color.ofSurface)
         .task { saved = (try? await model.database.items(ItemQuery(view: .saved, limit: 5)).items) ?? [] }
+        .task { await model.loadSourceSuggestions() }
     }
 
     @ViewBuilder private func section(_ title: String, _ items: [FeedItem]) -> some View {

@@ -53,6 +53,7 @@ struct ExplorePhoneView: View {
         }
         .onAppear(perform: focusIfRequested)
         .onChange(of: model.exploreFocusRequests) { focusIfRequested() }
+        .task { await model.loadSourceSuggestions() }
     }
 
     /// Picking Explore in the drawer puts the cursor in the search field, once the drawer has slid away.
@@ -172,6 +173,14 @@ struct ExplorePhoneView: View {
     @ViewBuilder private var start: some View {
         let recents = model.explore.recents
         let played = model.history.opened.filter { $0.sourceKind == .youtube || $0.sourceKind == .podcast }.prefix(3)
+        ExploreSuggestedSources(avatarSize: 40, rowSpacing: 14, horizontalPadding: Self.side) { seeAll in
+            header("Sources for you") {
+                seeAll
+                    .buttonStyle(.plain)
+                    .font(OFFont.ui(14, .medium))
+                    .foregroundStyle(.ofAccent)
+            }
+        }
         if !recents.isEmpty {
             header("Recent searches") {
                 Button("Clear") { model.explore.clearRecents() }

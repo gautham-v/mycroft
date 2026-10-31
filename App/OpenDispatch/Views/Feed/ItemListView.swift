@@ -315,6 +315,7 @@ struct ItemListView: View {
             }
         }
         .contextMenu { RowMenu(item: item, isPhone: isPhone, sendError: $sendError) }
+        .onAppear { model.noteRowSeen(item) }
         // iPhone: the menu's icons and labels in ink, like the drawer, rather than the accent blue.
         .tint(isPhone ? Color.ofInk : nil)
         .id(item.id)
@@ -714,6 +715,7 @@ private struct RowMenu: View {
             Divider()
             Button(goToTitle, systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
         }
+        ForYouRowMenuItems(item: item, icons: true)
         MuteRowMenuItem(item: item, icons: true)
         RemoveRowMenuItem(item: item, icons: true)
         if model.blockTarget(for: item) != nil {
@@ -776,6 +778,7 @@ private struct RowMenu: View {
         }
         if !item.source.isTopic, !item.source.isOpenedLinks {
             Divider()
+            ForYouRowMenuItems(item: item)
             MuteRowMenuItem(item: item)
             RemoveRowMenuItem(item: item)
         }

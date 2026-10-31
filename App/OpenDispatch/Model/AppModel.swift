@@ -96,6 +96,8 @@ enum UndoAction: Equatable, Sendable {
     case mute(MuteTarget, to: Bool)
     /// A source held for the toast's 6 s and deleted after it. `reopens`: its own list was showing.
     case removeSource(Int64, reopens: Bool)
+    /// For You's Show More or Show Less for a feed URL; nil is neither.
+    case sourcePreference(String, to: Int?)
     /// An entry added to a topic's block list; what it covers is deleted after the toast.
     case block(topic: Int64, key: String)
 }
@@ -247,6 +249,13 @@ final class AppModel {
     // MARK: Presentation flags (sheets / dialogs)
 
     var isAddSourcePresented = false
+    /// What History says might be worth following (`loadSourceSuggestions`).
+    private(set) var sourceSuggestions: [SourceSuggestion] = []
+    /// For the row menu's Why Here, kept current by `loadItems` while the order is For You. Not observed: the menu reads it as it opens.
+    @ObservationIgnored private(set) var readingProfile = ReadingProfile.empty
+    @ObservationIgnored private var seenRowKeys = Set<String>()
+    @ObservationIgnored private var pendingSeenRows: [(feedUrl: String, guid: String)] = []
+    @ObservationIgnored private var seenRowsFlush: Task<Void, Never>?
     /// The Topic sheet (New Topic…, Edit Topic…); nil when closed.
     var topicEditor: TopicEditorRequest?
     /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
@@ -318,7 +327,12 @@ final class AppModel {
             }
             if settings.paywallTreatment != oldValue.paywallTreatment { PaywallTreatment.current = settings.paywallTreatment }
             if settings.paywallTreatment != oldValue.paywallTreatment || settings.paywalls != oldValue.paywalls { applyPaywallFilter() }
-            if settings.feedOrder != oldValue.feedOrder { Task { await loadItems(reset: true) } }
+            if settings.feedOrder != oldValue.feedOrder {
+                Task { await loadItems(reset: true) }
+            } else if settings.sourcePreferences != oldValue.sourcePreferences, listOrder == .forYou, !isTopicSelected {
+                // Only a For You list changes; it may also be iCloud bringing another device's choice, so nothing else should move.
+                Task { await loadItems(reset: true, keepingDepth: true, countsNewRows: false) }
+            }
             // Show and Mark list the same rows; Hide is in the query.
             if (settings.blockedVideoTreatment == .hide) != (oldValue.blockedVideoTreatment == .hide) {
                 Task { await loadItems(reset: true, keepingDepth: true, countsNewRows: false) }
@@ -472,7 +486,8 @@ final class AppModel {
                   hideReadBefore: hidesReadItems ? hideReadCutoff : nil,
                   topicFilter: isTopicSelected ? topicFilter : .all, order: listOrder,
                   hidesBlockedVideos: settings.blockedVideoTreatment == .hide && !showsBlockedVideos,
-                  excludedSourceIds: heldSourceRemovals)
+                  excludedSourceIds: heldSourceRemovals,
+                  sourcePreferences: listOrder == .forYou ? settings.sourcePreferences : [:])
     }
 
     /// Feed order applies to All, its type views and topics; a source, folder, Saved and a search stay newest first.
@@ -698,6 +713,7 @@ final class AppModel {
         isLoading = true
         do {
             let page = try await database.items(request)
+            if query.order == .forYou { readingProfile = (try? await database.readingProfile()) ?? readingProfile }
             let hiddenVideos = query.hidesBlockedVideos ? (try? await database.hiddenBlockedVideoCount(query)) ?? 0 : 0
             guard gen == loadGeneration else { return }
             if hiddenVideos != hiddenBlockedVideoCount { hiddenBlockedVideoCount = hiddenVideos }
@@ -1534,6 +1550,8 @@ final class AppModel {
         switch toast.action {
         case .mute(.source(let id), let to): await setSourceMuted(id: id, muted: to, showsToast: false)
         case .mute(.folder(let id), let to): await setFolderMuted(id: id, muted: to, showsToast: false)
+        case .sourcePreference(let feedUrl, let to):
+            settings.sourcePreferences[feedUrl] = to
         case .removeSource(let id, let reopens):
             heldSourceRemovals.remove(id)
             await loadSources()
@@ -1548,6 +1566,69 @@ final class AppModel {
                 showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t unblock \(key): \(HTTP.message(error))"), for: .seconds(3.5))
             }
         }
+    }
+
+    // MARK: For You
+
+    /// A row's Show More or Show Less, or taking it back. The list re-ranks through `settings`.
+    func setSourcePreference(_ source: Source, to preference: Int) {
+        let feedUrl = source.feedUrl
+        let before = settings.sourcePreferences[feedUrl]
+        settings.sourcePreferences[feedUrl] = preference == 0 ? nil : preference
+        let message = switch preference {
+        case 1: "Showing more from \(source.shortTitle)."
+        case -1: "Showing less from \(source.shortTitle)."
+        default: "Back to the usual amount from \(source.shortTitle)."
+        }
+        showUndoToast(UndoToast(message: message, action: .sourcePreference(feedUrl, to: before)))
+    }
+
+    /// What a row's menu says about why the row is where it is: how much of the source was opened and what that does.
+    func whyHere(_ source: Source) -> String {
+        let shift = readingProfile.shiftHours(feedUrl: source.feedUrl, preference: settings.sourcePreferences[source.feedUrl] ?? 0)
+        let effect = abs(shift) < 0.5 ? "about your average"
+            : shift > 0 ? "counted \(Int(shift.rounded()))h newer" : "counted \(Int((-shift).rounded()))h older"
+        guard let affinity = readingProfile.affinities[source.feedUrl], affinity.opens > 0 || affinity.published > 0 else {
+            return "New to you, \(effect)"
+        }
+        if affinity.opens >= affinity.published { return "Opened nearly all lately, \(effect)" }
+        return "Opened \(affinity.opens) of \(affinity.published) lately, \(effect)"
+    }
+
+    /// A row came on screen. Written in batches: rows go by faster than a write should happen.
+    func noteRowSeen(_ item: FeedItem) {
+        let key = HistoryStore.key(for: item)
+        guard seenRowKeys.insert(key).inserted else { return }
+        pendingSeenRows.append((feedUrl: item.source.feedUrl, guid: item.item.guid))
+        guard seenRowsFlush == nil else { return }
+        seenRowsFlush = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self else { return }
+            let rows = self.pendingSeenRows
+            self.pendingSeenRows = []
+            self.seenRowsFlush = nil
+            try? await self.database.recordRowsSeen(rows)
+        }
+    }
+
+    /// Reads History again for what to suggest; opening Explore or Add Sources calls it.
+    func loadSourceSuggestions() async {
+        if let found = try? await database.sourceSuggestions(), found != sourceSuggestions { sourceSuggestions = found }
+    }
+
+    /// What to show of them: not what's in the library (unless added just now, which stays to say Following) or on a site
+    /// learned to be walled.
+    var shownSuggestions: [SourceSuggestion] {
+        sourceSuggestions.filter { suggestion in
+            if let starter = suggestion.starter, isWalled(starter) { return false }
+            return !hasSource(feedUrl: suggestion.result.feedUrl) || sourceAdds[suggestion.result.feedUrl] != nil
+        }
+    }
+
+    /// A suggestion's Not Interested: it isn't offered again unless the source is added some other way and then removed.
+    func dismissSuggestion(_ suggestion: SourceSuggestion) async {
+        sourceSuggestions.removeAll { $0 == suggestion }
+        try? await database.rememberRemovedSource(feedUrl: suggestion.result.feedUrl, title: suggestion.result.title)
     }
 
     // MARK: Remove and block from a row
@@ -1600,7 +1681,7 @@ final class AppModel {
     /// The toast ended without Undo: what it held happens now.
     private func settle(_ action: UndoAction) async {
         switch action {
-        case .mute:
+        case .mute, .sourcePreference:
             break
         case .removeSource(let id, _):
             do {
@@ -2574,6 +2655,7 @@ extension ItemQuery {
         var q = self
         // Rows of a source being removed leave the list; it stays the same list.
         q.excludedSourceIds = []
+        q.sourcePreferences = [:]
         if q.hideReadBefore != nil { q.hideReadBefore = .distantPast }
         q.hidesBlockedVideos = false
         return q

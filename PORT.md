@@ -208,11 +208,12 @@ public struct ItemCursor: Sendable, Hashable, Codable {            // keyset ove
     public init(publishedAt: Date, id: Int64)
     public var stringValue: String                                  // "<iso>|<id>" like the web API
     public init?(string: String) }
-public enum FeedOrder: String { case balanced, latest }            // Settings → Appearance → Feed order
+public enum FeedOrder: String { case balanced, latest, forYou }    // Settings → Appearance → Feed order
 public struct ItemQuery: Sendable, Hashable {                       // GET /api/items params
     public var view: FeedView = .all; sourceId: Int64?; folderId: Int64?; filter: FeedFilter?
     public var search: String = ""; cursor: ItemCursor?; limit: Int = 50      // limit clamped 1...200
-    public var order: FeedOrder = .latest                           // .balanced ranks the first page
+    public var order: FeedOrder = .latest                           // .balanced and .forYou rank the first page
+    public var sourcePreferences: [String: Int] = [:]               // For You's Show More (+1) / Show Less (-1) by feed URL
     public static let defaultLimit = 50, maxQueryLength = 200, maxTerms = 8
     public init(view:sourceId:folderId:filter:search:cursor:limit:)  // all defaulted
     public var searchTerms: [String]                                // whitespace-split, ≤ 8 terms, ≤ 200 chars
