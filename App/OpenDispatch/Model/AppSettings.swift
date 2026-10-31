@@ -203,6 +203,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var paywallTreatment: PaywallTreatment = .mark
     /// The sites that have walled an article, and which ones stopped being asked about; synced with the settings.
     var paywalls = PaywallBook()
+    /// What the lists do with videos whose owner keeps them out of other apps (Settings → Playback).
+    var blockedVideoTreatment: BlockedVideoTreatment = .mark
     /// Settings → Themes: the theme for light mode and for dark mode, by `AppTheme.id`.
     var lightTheme: String = AppTheme.defaultID
     var darkTheme: String = AppTheme.defaultID
@@ -256,6 +258,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         showComments = (try? c.decode(Bool.self, forKey: .showComments)) ?? true
         paywallTreatment = (try? c.decode(PaywallTreatment.self, forKey: .paywallTreatment)) ?? .mark
         paywalls = (try? c.decode(PaywallBook.self, forKey: .paywalls)) ?? PaywallBook()
+        blockedVideoTreatment = (try? c.decode(BlockedVideoTreatment.self, forKey: .blockedVideoTreatment)) ?? .mark
         lightTheme = (try? c.decode(String.self, forKey: .lightTheme)) ?? AppTheme.defaultID
         darkTheme = (try? c.decode(String.self, forKey: .darkTheme)) ?? AppTheme.defaultID
         customLightTheme = (try? c.decodeIfPresent(ThemeBase.self, forKey: .customLightTheme)) ?? nil

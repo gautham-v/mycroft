@@ -75,7 +75,13 @@ private func makeService(
 ) -> DefaultRefreshService {
     DefaultRefreshService(
         database: db, parser: DefaultFeedParser(), scraper: scraper, fetch: { url, _ in try await feeds(url) },
-        fallbacks: fallbacks, feedTimeout: timeout, concurrency: concurrency)
+        fallbacks: fallbacks, feedTimeout: timeout, concurrency: concurrency, embedCheck: NoEmbedCheck())
+}
+
+/// Knows nothing and asks nobody, so these tests don't reach YouTube.
+private struct NoEmbedCheck: YouTubeEmbedChecking {
+    func isPlayable(videoID: String) async -> Bool? { nil }
+    func isPlayable(channelID: String) async -> Bool? { nil }
 }
 
 private func itemRows(_ db: AppDatabase, sourceId: Int64) throws -> [Item] {

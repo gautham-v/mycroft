@@ -88,6 +88,9 @@ public enum Queries {
             let cols = [Item.Columns.title, Item.Columns.summary, Item.Columns.author, Item.Columns.contentHtml]
             c.append(cols.map { SQL("\($0) LIKE \(pat) ESCAPE '\\'").sqlExpression }.joined(operator: .or))
         }
+        if hidesBlockedVideos(q, topic: topic) {
+            c.append(Item.Columns.embedBlocked == nil || Item.Columns.embedBlocked == false)
+        }
         if let since = q.since { c.append(Item.Columns.publishedAt >= since) }
         // Hide Read Items: what was read before the list loaded; what's read while it shows stays until the next load.
         if let before = q.hideReadBefore {

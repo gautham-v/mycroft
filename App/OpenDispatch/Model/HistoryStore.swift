@@ -70,6 +70,13 @@ final class HistoryStore {
         Task { try? await database.recordOpen(snapshot, isMedia: media) }
     }
 
+    /// The item was opened outside the app, which can't follow how far a video gets from there: it tops History and is
+    /// read at once, a video too.
+    func recordOpenedElsewhere(_ item: FeedItem) {
+        let snapshot = HistoryEntry(item: item)
+        Task { try? await database.recordOpen(snapshot, isMedia: false) }
+    }
+
     func setRead(_ item: FeedItem, _ read: Bool) {
         let snapshot = HistoryEntry(item: item)
         Task { try? await database.setRead(snapshot, read: read) }

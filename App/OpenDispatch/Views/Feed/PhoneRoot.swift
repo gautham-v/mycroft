@@ -228,7 +228,8 @@ struct PhoneRoot: View {
         let pages = model.phonePages
         for neighbor in [index - 1, index + 1] where pages.indices.contains(neighbor) {
             let view = pages[neighbor]
-            guard let page = try? await model.database.items(ItemQuery(view: view, limit: PhonePagePeek.rows)) else { continue }
+            let query = ItemQuery(view: view, limit: PhonePagePeek.rows, hidesBlockedVideos: model.settings.blockedVideoTreatment == .hide)
+            guard let page = try? await model.database.items(query) else { continue }
             chrome.peekItems[view] = page.items
         }
     }

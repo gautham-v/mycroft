@@ -11,7 +11,8 @@ import AVFoundation
 /// Until playback starts the video's thumbnail covers the player, so YouTube's own poster never shows.
 /// With autoplay off it carries a play button and the length, and YouTube isn't loaded until it's
 /// pressed; with autoplay on it shows a spinner until the first frame plays. A video whose owner keeps it out of
-/// other apps goes back to the thumbnail, with a note and a way to YouTube.
+/// other apps goes back to the thumbnail, with a note and a way to YouTube; one already known to (`knownBlocked`) starts
+/// there without trying the player.
 struct ReaderYouTubePlayer: View {
     let videoID: String
     let title: String
@@ -21,12 +22,19 @@ struct ReaderYouTubePlayer: View {
     var vertical = false
     /// Where a video watched partway starts again (History); nil starts at the beginning.
     var resumeAt: Double?
+    /// The video won't play here (`AppModel.opensOnYouTube`).
+    var knownBlocked = false
     /// Shared with the transcript, which follows the position and seeks through it.
     let controller: ReaderYouTubeController
+    /// The player's error said the video won't play here.
+    let onBlocked: () -> Void
+    /// The notice's way out, which opens YouTube.
+    let watchOnYouTube: () -> Void
 
     var body: some View {
         ReaderYouTubeStage(videoID: videoID, title: title, autoplay: autoplay, thumbnail: thumbnail,
-                           durationSec: durationSec, vertical: vertical, resumeAt: resumeAt, controller: controller)
+                           durationSec: durationSec, vertical: vertical, resumeAt: resumeAt, knownBlocked: knownBlocked,
+                           controller: controller, onBlocked: onBlocked, watchOnYouTube: watchOnYouTube)
             .aspectRatio(vertical ? 9 / 16 : 16 / 9, contentMode: .fit)
             .background(Color.black)
             .id(videoID)
@@ -41,14 +49,16 @@ private struct ReaderYouTubeStage: View {
     let durationSec: Int?
     let vertical: Bool
     let controller: ReaderYouTubeController
+    let onBlocked: () -> Void
+    let watchOnYouTube: () -> Void
 
     @State private var started: Bool
     /// Where the player starts: 0, where it was left last time, or a transcript line clicked before it was loaded.
     @State private var startTime: Double
     /// The poster is gone: playback started, or the player failed or took too long and is shown as is.
     @State private var revealed = false
-    /// The video's owner doesn't allow it in other apps (the player's error 101 or 150).
-    @State private var blocked = false
+    /// The video's owner doesn't allow it in other apps (known already, or the player's error 101 or 150).
+    @State private var blocked: Bool
     /// The video's SponsorBlock segments in every category, fetched once the player is created; what the page
     /// gets is these under the settings (`segmentsJSON`).
     @State private var segments: [SponsorBlockSegment] = []
@@ -58,14 +68,18 @@ private struct ReaderYouTubeStage: View {
     #endif
 
     init(videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?, vertical: Bool,
-         resumeAt: Double?, controller: ReaderYouTubeController) {
+         resumeAt: Double?, knownBlocked: Bool, controller: ReaderYouTubeController, onBlocked: @escaping () -> Void,
+         watchOnYouTube: @escaping () -> Void) {
         self.videoID = videoID
         self.title = title
         self.thumbnail = thumbnail
         self.durationSec = durationSec
         self.vertical = vertical
         self.controller = controller
-        _started = State(initialValue: autoplay)
+        self.onBlocked = onBlocked
+        self.watchOnYouTube = watchOnYouTube
+        _started = State(initialValue: autoplay && !knownBlocked)
+        _blocked = State(initialValue: knownBlocked)
         _startTime = State(initialValue: resumeAt ?? 0)
     }
 
@@ -83,7 +97,8 @@ private struct ReaderYouTubeStage: View {
             }
             if !revealed || blocked {
                 ReaderYouTubePoster(videoID: videoID, title: title, thumbnail: thumbnail, durationSec: durationSec,
-                                    vertical: vertical, loading: started && !blocked, blocked: blocked) { started = true }
+                                    vertical: vertical, loading: started && !blocked, blocked: blocked,
+                                    watchOnYouTube: watchOnYouTube) { started = true }
                     .transition(.opacity)
             }
         }
@@ -99,7 +114,7 @@ private struct ReaderYouTubeStage: View {
             if ReaderYouTubeController.current === controller { ReaderYouTubeController.current = nil }
         }
         .task(id: started && model.settings.sponsorBlock) {
-            guard started, model.settings.sponsorBlock else { return }
+            guard started, !blocked, model.settings.sponsorBlock else { return }
             segments = await model.services.sponsorBlock.segments(forVideoID: videoID)
         }
         .task(id: started) {
@@ -126,7 +141,9 @@ private struct ReaderYouTubeStage: View {
     private func handle(_ event: ReaderYouTubeEvent) {
         switch event {
         case .playing, .failed: reveal()
-        case .blocked: blocked = true
+        case .blocked:
+            blocked = true
+            onBlocked()
         #if os(iOS)
         case .fullscreen(let time):
             controller.inFullscreen = true
@@ -152,10 +169,10 @@ private struct ReaderYouTubePoster: View {
     let vertical: Bool
     let loading: Bool
     let blocked: Bool
+    let watchOnYouTube: () -> Void
     let play: () -> Void
 
     @State private var hovering = false
-    @Environment(\.openURL) private var openURL
 
     private var id: String { videoID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoID }
     private var fallbackURL: URL? {
@@ -166,7 +183,7 @@ private struct ReaderYouTubePoster: View {
     var body: some View {
         Button {
             if blocked {
-                if let url = URL(string: "https://www.youtube.com/watch?v=\(id)") { openURL(url) }
+                watchOnYouTube()
             } else if !loading {
                 play()
             }

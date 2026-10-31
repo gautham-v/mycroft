@@ -160,7 +160,7 @@ struct ReaderVideoBody: View {
                 }
                 Spacer(minLength: 8)
                 if let url = URL(string: item.item.url), narrow {
-                    Button { openURL(url) } label: {
+                    Button { watch(url) } label: {
                         OFIcon.external.image
                             .font(.system(size: 13))
                             .foregroundStyle(.ofMuted)
@@ -171,7 +171,7 @@ struct ReaderVideoBody: View {
                     .help("Watch on YouTube")
                     .accessibilityLabel("Watch on YouTube")
                 } else if let url = URL(string: item.item.url) {
-                    Button { openURL(url) } label: {
+                    Button { watch(url) } label: {
                         HStack(spacing: 6) {
                             Text("Watch on YouTube")
                             OFIcon.external.image.font(.system(size: 12))
@@ -195,9 +195,7 @@ struct ReaderVideoBody: View {
                 portraitPlayer(videoID)
                     .padding(.top, 20)
             } else if !theater, let videoID = item.item.videoId {
-                ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
-                                    thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
-                                    resumeAt: resumeAt, controller: playback)
+                player(videoID)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .padding(.top, 20)
             }
@@ -242,9 +240,7 @@ struct ReaderVideoBody: View {
     private var pinnedHeader: some View {
         Group {
             if band, let videoID = item.item.videoId {
-                ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
-                                    thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec,
-                                    resumeAt: resumeAt, controller: playback)
+                player(videoID)
                     // The snap eases the player's height frame by frame, so the page under it is laid out again each
                     // frame and moves with it, rather than each view sliding to its new place on its own.
                     .keyframeAnimator(initialValue: CGFloat(0), trigger: bandSmall) { player, lag in
@@ -319,10 +315,20 @@ struct ReaderVideoBody: View {
         DispatchQueue.main.async { scroll?.scrollTo(Self.tabsAnchor, anchor: .top) }
     }
 
-    private func portraitPlayer(_ videoID: String) -> some View {
+    /// Watch on YouTube. A video that can't play here isn't followed by the player, so going there counts as opening it.
+    private func watch(_ url: URL) {
+        if model.opensOnYouTube(item) { model.watchOnYouTube(item) } else { openURL(url) }
+    }
+
+    private func player(_ videoID: String, vertical: Bool = false) -> ReaderYouTubePlayer {
         ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
-                            thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec, vertical: true,
-                            resumeAt: resumeAt, controller: playback)
+                            thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec, vertical: vertical,
+                            resumeAt: resumeAt, knownBlocked: model.opensOnYouTube(item), controller: playback,
+                            onBlocked: { model.noteVideoBlocked(item) }, watchOnYouTube: { model.watchOnYouTube(item) })
+    }
+
+    private func portraitPlayer(_ videoID: String) -> some View {
+        player(videoID, vertical: true)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .frame(maxWidth: portraitWidth)
             .frame(maxWidth: .infinity)

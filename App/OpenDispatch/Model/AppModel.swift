@@ -249,6 +249,8 @@ final class AppModel {
     private(set) var items: [FeedItem] = []
     /// How many of the loaded items the list leaves out for their paywall, for the list's footer.
     private(set) var hiddenPaywalledCount = 0
+    /// How many videos that won't play here the list's query leaves out, for the list's footer.
+    private(set) var hiddenBlockedVideoCount = 0
     private(set) var nextCursor: ItemCursor?
     /// Rows the last reload of the same list added (a refresh), for the list's new-items pill. Empty after a load
     /// of another list, or the first load of one.
@@ -284,6 +286,10 @@ final class AppModel {
             if settings.paywallTreatment != oldValue.paywallTreatment { PaywallTreatment.current = settings.paywallTreatment }
             if settings.paywallTreatment != oldValue.paywallTreatment || settings.paywalls != oldValue.paywalls { applyPaywallFilter() }
             if settings.feedOrder != oldValue.feedOrder { Task { await loadItems(reset: true) } }
+            // Show and Mark list the same rows; Hide is in the query.
+            if (settings.blockedVideoTreatment == .hide) != (oldValue.blockedVideoTreatment == .hide) {
+                Task { await loadItems(reset: true, keepingDepth: true, countsNewRows: false) }
+            }
         }
     }
 
@@ -311,6 +317,8 @@ final class AppModel {
     @ObservationIgnored private var loadedItems: [FeedItem] = []
     /// Show on the list's footer: the hidden paywalled items are shown until you go to another list.
     @ObservationIgnored private var showsPaywalled = false
+    /// Show on the list's footer: the hidden videos that won't play here are listed until you go to another list.
+    @ObservationIgnored private var showsBlockedVideos = false
     /// Items whose article was read for the paywall book this launch, so each counts once.
     @ObservationIgnored private var learnedPaywalls: Set<Int64> = []
     /// The query `nextCursor` belongs to; paging a different query from it would append wrong rows.
@@ -422,7 +430,8 @@ final class AppModel {
     var currentQuery: ItemQuery {
         ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery,
                   hideReadBefore: hidesReadItems ? hideReadCutoff : nil,
-                  topicFilter: isTopicSelected ? topicFilter : .all, order: listOrder)
+                  topicFilter: isTopicSelected ? topicFilter : .all, order: listOrder,
+                  hidesBlockedVideos: settings.blockedVideoTreatment == .hide && !showsBlockedVideos)
     }
 
     /// Feed order applies to All, its type views and topics; a source, folder, Saved and a search stay newest first.
@@ -611,6 +620,7 @@ final class AppModel {
         if changed {
             hideReadCutoff = Date()
             showsPaywalled = false
+            showsBlockedVideos = false
         }
         selectedView = view
         if source != selectedSourceID { topicFilter = .all }
@@ -643,7 +653,9 @@ final class AppModel {
         isLoading = true
         do {
             let page = try await database.items(request)
+            let hiddenVideos = query.hidesBlockedVideos ? (try? await database.hiddenBlockedVideoCount(query)) ?? 0 : 0
             guard gen == loadGeneration else { return }
+            if hiddenVideos != hiddenBlockedVideoCount { hiddenBlockedVideoCount = hiddenVideos }
             let before = Set(loadedItems.map(\.id))
             let arrived = countsNewRows && cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
                 ? Set(page.items.map(\.id)).subtracting(before) : []
@@ -932,6 +944,32 @@ final class AppModel {
                 settings.paywalls.record(url: url, walled: result.paywalled)
             }
         }
+    }
+
+    // MARK: Videos that won't play here
+
+    /// The video's owner keeps it out of other apps and the setting isn't Show: the list marks it and sends a click to
+    /// YouTube, and the reader doesn't try the player. Hide marks the ones it still lists (Saved, a search).
+    func opensOnYouTube(_ item: FeedItem) -> Bool {
+        settings.blockedVideoTreatment != .show && item.item.embedBlocked == true
+    }
+
+    /// An explicit open of such a video (a click, a tap, Return or o, the reader's notice): YouTube's site or app.
+    func watchOnYouTube(_ item: FeedItem) {
+        history.recordOpenedElsewhere(item)
+        if let url = URL(string: item.item.url) { ReaderWebSupport.openExternally(url) }
+    }
+
+    /// The player found the video won't play here: remembered, so its row updates and the next open doesn't try.
+    func noteVideoBlocked(_ item: FeedItem) {
+        patchLocal(item.id) { $0.item.embedBlocked = true }
+        Task { try? await database.setVideoBlocked(itemId: item.id) }
+    }
+
+    /// The list's footer Show: the hidden videos appear until you go to another list.
+    func showHiddenBlockedVideos() {
+        showsBlockedVideos = true
+        Task { await loadItems(reset: true, keepingDepth: true, countsNewRows: false) }
     }
 
     // MARK: Refresh
@@ -2286,10 +2324,11 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 extension ItemQuery {
     /// The list this query shows: the query apart from Hide Read Items' cutoff, which a refresh moves without
-    /// changing lists.
+    /// changing lists, and whether it hides videos that won't play here, which Show on its footer turns off in place.
     var listIdentity: ItemQuery {
         var q = self
         if q.hideReadBefore != nil { q.hideReadBefore = .distantPast }
+        q.hidesBlockedVideos = false
         return q
     }
 }

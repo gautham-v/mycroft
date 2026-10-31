@@ -228,9 +228,11 @@ struct SettingsMenuPicker<Value: Hashable>: View {
     }
 }
 
-/// Playback pane (PlaybackPane): autoplay, theater layout and transcripts for YouTube sources, then SponsorBlock and Read aloud.
+/// Playback pane (PlaybackPane): autoplay, theater layout, transcripts and videos that won't play here for YouTube sources,
+/// then SponsorBlock and Read aloud.
 struct SettingsPlaybackPane: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.settingsCompact) private var compact
 
     var body: some View {
         @Bindable var model = model
@@ -245,6 +247,12 @@ struct SettingsPlaybackPane: View {
                 }
                 SettingsRow(label: "Transcripts", hint: "Show a video's captions under it, following along as it plays") {
                     toggle("Transcripts", isOn: $model.settings.videoTranscript)
+                }
+                SettingsRow(label: "Videos that won\u{2019}t play here",
+                            hint: "Some owners keep their videos out of other apps. Mark opens them on YouTube; Hide also leaves them out of your lists.",
+                            stacked: compact) {
+                    SettingsSegmented(label: "Videos that won\u{2019}t play here", selection: $model.settings.blockedVideoTreatment,
+                                      options: BlockedVideoTreatment.allCases.map { ($0, $0.label) })
                 }
             }
             SettingsSponsorBlockSection()

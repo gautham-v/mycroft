@@ -65,7 +65,7 @@ final class FeedKeyHandler {
             model.moveSelection(by: -1)
         case .enter, .char("o"):
             guard let item = model.selectedItem, let url = URL(string: item.item.url) else { return true }
-            openURL(url)
+            if model.opensOnYouTube(item) { model.watchOnYouTube(item) } else { openURL(url) }
         case .char("s"):
             Task { await model.toggleSavedOnSelection() }
         case .char("m"):

@@ -37,6 +37,9 @@ public struct Item: Sendable, Hashable, Identifiable {
     /// On a story's lead: when its newest article (or the lead itself) was published, which is where the story sorts in the
     /// topic's list. nil on anything else.
     public var storyAt: Date?
+    /// A video whose owner keeps it out of other apps: true when it won't play here, false when it will, nil when it isn't
+    /// known yet (`YouTubeEmbedChecking`, or the player's own error). Per device: it isn't part of the saved item's sync record.
+    public var embedBlocked: Bool?
 
     public init(
         id: Int64 = 0, sourceId: Int64, guid: String, url: String, title: String, summary: String? = nil,
@@ -44,7 +47,7 @@ public struct Item: Sendable, Hashable, Identifiable {
         thumbnailUrl: String? = nil, thumbnailChecked: Bool = false, videoId: String? = nil, durationSec: Int? = nil,
         audioUrl: String? = nil, hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil,
         quoteAvatarUrl: String? = nil, isSaved: Bool = false, createdAt: Date = Date(), storyId: Int64? = nil,
-        storyAt: Date? = nil
+        storyAt: Date? = nil, embedBlocked: Bool? = nil
     ) {
         self.id = id
         self.sourceId = sourceId
@@ -69,6 +72,7 @@ public struct Item: Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.storyId = storyId
         self.storyAt = storyAt
+        self.embedBlocked = embedBlocked
     }
 }
 
@@ -106,6 +110,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         public static let createdAt = Column("created_at")
         public static let storyId = Column("story_id")
         public static let storyAt = Column("story_at")
+        public static let embedBlocked = Column("embed_blocked")
     }
 
     public init(row: Row) throws {
@@ -133,6 +138,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         createdAt = row["created_at"]
         storyId = row["story_id"]
         storyAt = row["story_at"]
+        embedBlocked = row["embed_blocked"]
     }
 
     public func encode(to container: inout PersistenceContainer) throws {
@@ -159,6 +165,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         container["created_at"] = createdAt
         container["story_id"] = storyId
         container["story_at"] = storyAt
+        container["embed_blocked"] = embedBlocked
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
@@ -174,7 +181,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
             Columns.contentRendered, Columns.author, Columns.publishedAt, Columns.thumbnailUrl,
             Columns.thumbnailChecked, Columns.videoId, Columns.durationSec, Columns.audioUrl, Columns.hnPoints,
             Columns.hnComments, Columns.hnCommentsUrl, Columns.quoteAvatarUrl, Columns.isSaved, Columns.createdAt,
-            Columns.storyId, Columns.storyAt,
+            Columns.storyId, Columns.storyAt, Columns.embedBlocked,
             (Columns.contentHtml != nil).forKey("has_content"),
         ]
     }

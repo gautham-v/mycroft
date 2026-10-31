@@ -24,6 +24,16 @@ extension AppDatabase {
         try await writer.write { db in try Queries.setSaved(db, itemId: itemId, saved: saved) }
     }
 
+    /// How many videos the query leaves out for not playing here, for the list's footer.
+    public func hiddenBlockedVideoCount(_ query: ItemQuery) async throws -> Int {
+        try await reader.read { db in try Queries.hiddenBlockedVideoCount(db, query) }
+    }
+
+    /// The player found the video won't play here.
+    public func setVideoBlocked(itemId: Int64) async throws {
+        try await writer.write { db in try Queries.setVideoBlocked(db, itemId: itemId) }
+    }
+
     public func counts() async throws -> ItemCounts {
         try await reader.read { db in try Queries.counts(db) }
     }

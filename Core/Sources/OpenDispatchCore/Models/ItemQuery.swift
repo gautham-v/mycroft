@@ -52,6 +52,9 @@ public struct ItemQuery: Sendable, Hashable {
     public var topicFilter: TopicContentFilter
     /// Balanced applies to the first page; later pages are always newest first.
     public var order: FeedOrder
+    /// Videos that won't play here (`Item.embedBlocked`) leave the list, unless it's Saved, a search or a topic's
+    /// (`Queries.hidesBlockedVideos`).
+    public var hidesBlockedVideos: Bool
 
     public static let defaultLimit = 50
     public static let maxQueryLength = 200
@@ -60,7 +63,8 @@ public struct ItemQuery: Sendable, Hashable {
     public init(
         view: FeedView = .all, sourceId: Int64? = nil, folderId: Int64? = nil, filter: FeedFilter? = nil,
         search: String = "", cursor: ItemCursor? = nil, limit: Int = ItemQuery.defaultLimit, since: Date? = nil,
-        hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all, order: FeedOrder = .latest
+        hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all, order: FeedOrder = .latest,
+        hidesBlockedVideos: Bool = false
     ) {
         self.view = view
         self.sourceId = sourceId
@@ -73,6 +77,7 @@ public struct ItemQuery: Sendable, Hashable {
         self.hideReadBefore = hideReadBefore
         self.topicFilter = topicFilter
         self.order = order
+        self.hidesBlockedVideos = hidesBlockedVideos
     }
 
     /// The search terms actually matched.

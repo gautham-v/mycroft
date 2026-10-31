@@ -401,7 +401,8 @@ private struct PhonePageDots: View {
         let pages = model.phonePages
         Task {
             for view in pages where view != pages[index] {
-                guard let page = try? await model.database.items(ItemQuery(view: view, limit: PhonePagePeek.rows)) else { continue }
+                let query = ItemQuery(view: view, limit: PhonePagePeek.rows, hidesBlockedVideos: model.settings.blockedVideoTreatment == .hide)
+                guard let page = try? await model.database.items(query) else { continue }
                 chrome.peekItems[view] = page.items
             }
         }

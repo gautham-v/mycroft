@@ -324,6 +324,10 @@ public final class AppDatabase: Sendable {
                 ALTER TABLE folders ADD COLUMN is_muted BOOLEAN NOT NULL DEFAULT 0;
                 """)
         }
+        // Whether a video plays in other apps: 1 no, 0 yes, NULL not known yet. Asked per device, so never synced.
+        m.registerMigration("v15-embed-blocked") { db in
+            try db.execute(sql: "ALTER TABLE items ADD COLUMN embed_blocked BOOLEAN")
+        }
         return m
     }
 }

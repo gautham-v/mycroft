@@ -39,6 +39,9 @@ struct ItemRowView: View, Equatable {
     /// The article's site wants a subscription (Settings → Integrations → Paywalled articles): a lock and "Subscribers" end
     /// the meta line, and the title is a little quieter. `.free` for no mark.
     var paywall: PaywallStatus = .free
+    /// A video that won't play here and opens on YouTube (Settings → Playback → Videos that won't play here): the meta line
+    /// says so after the source's name.
+    var opensOnYouTube = false
 
     /// Settings → Appearance → Lists.
     @Environment(\.listLayout) private var layout
@@ -48,6 +51,7 @@ struct ItemRowView: View, Equatable {
         a.item == b.item && a.isSelected == b.isSelected && a.isSecondary == b.isSecondary && a.isOpenInTab == b.isOpenInTab
             && a.isHovered == b.isHovered && a.isPhone == b.isPhone && a.isRead == b.isRead && a.progress == b.progress
             && a.timeText == b.timeText && a.showsTopic == b.showsTopic && a.paywall == b.paywall
+            && a.opensOnYouTube == b.opensOnYouTube
     }
 
     /// Read and drawn as read: with Unread marker set to None, read rows look like the rest.
@@ -171,11 +175,17 @@ struct ItemRowView: View, Equatable {
     }
 
     private func metaText(name: String, handle: String?) -> Text {
-        let line = name + (handle.map { " @\($0)" } ?? "") + " · " + (timeText ?? RelativeTime.format(item.item.publishedAt))
-        let base = Text(verbatim: line)
+        let who = name + (handle.map { " @\($0)" } ?? "")
+        let time = " · " + (timeText ?? RelativeTime.format(item.item.publishedAt))
+        let base = opensOnYouTube ? Text("\(Text(verbatim: who + " "))\(Self.youTubeMark)\(Text(verbatim: time))") : Text(verbatim: who + time)
         var text = DiscussionStats.text(item: item.item, isTopicItem: item.source.isTopic).map { Text("\(base)\(Text(verbatim: " \u{00B7} "))\($0)") } ?? base
         if let mark = paywall.markText { text = Text("\(text)\(Text(verbatim: " \u{00B7} "))\(mark)") }
         return text.font(isPhone ? OFFont.phoneItemMeta : OFFont.itemMeta).foregroundStyle(Color.ofMuted)
+    }
+
+    /// "↗ YouTube", drawn with an SF Symbol.
+    private static var youTubeMark: Text {
+        Text("\(Text(Image(systemName: OFIcon.opensElsewhere.rawValue)).font(.system(size: 9, weight: .semibold)))\(Text(verbatim: " YouTube"))")
     }
 
     /// Where the item is from, as its meta line names it: the source, or for a topic's item the origin (Hacker News, a
@@ -197,6 +207,7 @@ struct ItemRowView: View, Equatable {
         if let d = TextFormat.duration(item.item.durationSec) { parts.append(d) }
         if let stats = DiscussionStats.spoken(item: item.item, isTopicItem: item.source.isTopic) { parts.append(stats) }
         if let label = paywall.markLabel { parts.append(label) }
+        if opensOnYouTube { parts.append("Opens on YouTube") }
         if item.isSaved { parts.append("Saved") }
         if isRead { parts.append(item.source.kind == .youtube ? "Watched" : "Read") }
         if let progress { parts.append("\(Int(progress * 100))% played") }
