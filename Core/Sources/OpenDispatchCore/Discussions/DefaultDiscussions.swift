@@ -145,8 +145,8 @@ public struct DefaultDiscussions: DiscussionLoading {
 /// Reader content for the threads the generic extractor can't read: a Reddit post (its page refuses plain requests) and a
 /// Hacker News item (whose page is mostly comments, which the reader shows on its own).
 enum DiscussionContent {
-    /// The post's body; an empty paragraph for a post that is only a title, so the reader shows the title and comments
-    /// rather than a failure. Nil when the post can't be read.
+    /// The post's body; an empty paragraph for a Hacker News item that is only a title, or a Reddit post with nothing at all, so
+    /// the reader shows the title and comments rather than a failure. Nil when the post can't be read.
     /// A Reddit post linking to a post on X, Bluesky, Mastodon and the like shows that post, read through `embedFetch`, and one
     /// linking to a YouTube video plays it.
     static func extract(url: String, fetch: @escaping @Sendable (String) async throws -> Data, embedFetch: @escaping EmbeddedPosts.Fetch) async -> ExtractResult? {

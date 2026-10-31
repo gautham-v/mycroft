@@ -111,7 +111,8 @@ struct DiscussionTests {
         #expect(post.video == "https://v.redd.it/p543/HLSPlaylist.m3u8")
         #expect(post.leadImage == "https://external-preview.redd.it/prank.png?format=pjpg&s=afb")
         let content = try #require(RedditPages.contentHTML(post))
-        #expect(content.contains("<video") && content.contains("HLSPlaylist.m3u8") && content.contains("controls") && content.contains("poster="))
+        #expect(content.contains("<div class=\"x-media\"><video") && content.contains("HLSPlaylist.m3u8") && content.contains("controls") && content.contains("poster="))
+        #expect(content.contains("<div class=\"x-body\"><p>Prank</p></div>"))
         #expect(!content.contains("x-card"))
     }
 
@@ -136,6 +137,10 @@ struct DiscussionTests {
         #expect(content.contains("width=\"640\"") && content.contains("height=\"336\""))
         #expect(content.contains("https://nypost.com/a/") && content.contains(">nypost.com<") && content.contains("Patriots receiver"))
         #expect(content.contains("own words"))
+        // Author row, title and the poster's text, then the card.
+        #expect(content.hasPrefix("<div class=\"x-post\">"))
+        let parts = try ["x-body", "<p>Brown</p>", "own words", "x-card-large"].map { try #require(content.range(of: $0)).lowerBound }
+        #expect(parts == parts.sorted())
     }
 
     @Test func aRedditPostLinkingToYouTubePlaysIt() async throws {
@@ -156,7 +161,9 @@ struct DiscussionTests {
             let content = try #require(RedditPages.contentHTML(post, embed: embed))
             #expect(content.contains("<iframe") && content.contains("www.youtube-nocookie.com/embed/VuM9DHF6dyc"))
             #expect(!content.contains("x-card"))
-            #expect(LeadImage.contentHasHero(content, hero: try #require(post.leadImage)))
+            // The post opens with its author row, and the app draws no hero over a post.
+            #expect(content.hasPrefix("<div class=\"x-post\">") && content.contains("<figure><iframe"))
+            #expect(!LeadImage.contentHasHero(content, hero: try #require(post.leadImage)))
         }
         // The NFL's and the like won't play here: a card with the video's picture opens it.
         let blocked = await DiscussionContent.embed(for: post, fetch: fetch, check: Check(playable: false))
@@ -171,6 +178,97 @@ struct DiscussionTests {
         let post = try #require(RedditPages.post(inThread: Self.redditLinkPost.replacingOccurrences(of: "LINK", with: linked)))
         let content = try #require(RedditPages.contentHTML(post, embed: "<div class=\"x-post x-embed\"><div class=\"x-body\"><p>The post</p></div></div>"))
         #expect(content.contains("x-embed") && content.contains("The post") && !content.contains("x-card"))
+        #expect(content.hasPrefix("<div class=\"x-post\">") && content.contains("<p>Brown</p>"))
+    }
+
+    /// A post page holding one post with these attributes and children.
+    private func redditPost(_ attributes: String, _ inner: String = "") throws -> RedditPages.Post {
+        try #require(RedditPages.post(inThread: "<shreddit-post permalink=\"/r/nfl/comments/1abc/t/\" \(attributes)>\(inner)</shreddit-post>"))
+    }
+
+    @Test func aRedditPostsAuthorRowIsItsCommunityAndPoster() throws {
+        let post = try redditPost(
+            "post-title=\"T\" post-type=\"text\" author=\"Sidecarlover\" subreddit-prefixed-name=\"r/nfl\" icon=\"https://preview.redd.it/snoovatar/author.png\"",
+            "<img class=\"shreddit-subreddit-icon__icon\" src=\"https://styles.redditmedia.com/t5_2qmg3/styles/communityIcon_a.png\">")
+        #expect(post.communityIcon == "https://styles.redditmedia.com/t5_2qmg3/styles/communityIcon_a.png")
+        let content = try #require(RedditPages.contentHTML(post))
+        #expect(content.hasPrefix("<div class=\"x-post\"><div class=\"x-who\"><img class=\"x-avatar\" src=\"https://styles.redditmedia.com/t5_2qmg3/styles/communityIcon_a.png\" alt=\"\" loading=\"lazy\" /><span class=\"x-name\">r/nfl</span><a class=\"x-handle\" href=\"https://www.reddit.com/user/Sidecarlover/\" target=\"_blank\" rel=\"noopener noreferrer\">u/Sidecarlover</a></div>"))
+        #expect(!content.contains("@") && !content.contains("snoovatar"))
+    }
+
+    @Test func aRedditCommunityWithNoIconHasNoAvatar() throws {
+        let post = try redditPost("post-title=\"T\" post-type=\"text\" author=\"a\" subreddit-prefixed-name=\"r/nfl\" icon=\"https://preview.redd.it/snoovatar/author.png\"")
+        #expect(post.communityIcon == nil)
+        let content = try #require(RedditPages.contentHTML(post))
+        #expect(content.contains("<div class=\"x-who\"><span class=\"x-name\">r/nfl</span>") && !content.contains("x-avatar"))
+    }
+
+    @Test func aPostOnARedditProfileGoesByItsPoster() throws {
+        let post = try redditPost("post-title=\"T\" post-type=\"text\" author=\"Sidecarlover\"")
+        let content = try #require(RedditPages.contentHTML(post))
+        #expect(content.contains("<span class=\"x-name\">u/Sidecarlover</span><a class=\"x-handle\" href=\"https://www.reddit.com/user/Sidecarlover/\" target=\"_blank\" rel=\"noopener noreferrer\">u/Sidecarlover</a>"))
+    }
+
+    @Test func aDeletedRedditPosterHasNoHandle() throws {
+        for author in ["", "author=\"[deleted]\""] {
+            let post = try redditPost("post-title=\"T\" post-type=\"text\" subreddit-prefixed-name=\"r/nfl\" \(author)")
+            let content = try #require(RedditPages.contentHTML(post))
+            #expect(content.contains("<div class=\"x-who\"><span class=\"x-name\">r/nfl</span></div>"))
+            #expect(!content.contains("x-handle") && !content.contains("/user/"))
+        }
+        let nobody = try #require(RedditPages.contentHTML(try redditPost("post-title=\"T\" post-type=\"text\" author=\"[deleted]\"")))
+        #expect(nobody.contains("<div class=\"x-who\"><span class=\"x-name\">[deleted]</span></div>"))
+    }
+
+    @Test func aRedditTitleIsThePostsEscapedText() throws {
+        let post = try redditPost(
+            "post-title=\"Fish &amp; chips &lt;b&gt;now&lt;/b&gt;\" post-type=\"text\"",
+            "<div property=\"schema:articleBody\"><p>The text.</p></div>")
+        let content = try #require(RedditPages.contentHTML(post))
+        #expect(content.contains("<div class=\"x-body\"><p>Fish &amp; chips &lt;b&gt;now&lt;/b&gt;</p><p>The text.</p></div>"))
+    }
+
+    @Test func aRedditPostThatIsOnlyATitleShowsIt() throws {
+        let content = try #require(RedditPages.contentHTML(try redditPost("post-title=\"T\" post-type=\"text\"")))
+        #expect(content.contains("<div class=\"x-body\"><p>T</p></div>"))
+        #expect(content.hasPrefix("<div class=\"x-post\">") && !content.contains("x-foot"))
+        #expect(RedditPages.contentHTML(try redditPost("post-type=\"text\"")) == nil)
+    }
+
+    @Test func aRedditPostsFooterHasItsDateAndStats() throws {
+        let stamp = "2026-10-28T10:44:14.463000+0000"
+        let date = TweetExtraction.stampLine(try #require(DiscussionDates.parse(stamp)))
+        func foot(_ attributes: String) throws -> String? {
+            let content = try #require(RedditPages.contentHTML(try redditPost("post-title=\"T\" post-type=\"text\" \(attributes)")))
+            return content.range(of: "<div class=\"x-foot\">").map { String(content[$0.lowerBound...]) }
+        }
+        #expect(try foot("created-timestamp=\"\(stamp)\" score=\"217\" comment-count=\"35\"") == "<div class=\"x-foot\"><span>\(date)</span><span>217 points · 35 comments</span></div></div>")
+        #expect(try foot("created-timestamp=\"\(stamp)\" score=\"1\" comment-count=\"1\"") == "<div class=\"x-foot\"><span>\(date)</span><span>1 point · 1 comment</span></div></div>")
+        #expect(try foot("created-timestamp=\"\(stamp)\" score=\"0\"") == "<div class=\"x-foot\"><span>\(date)</span><span>0 points</span></div></div>")
+        #expect(try foot("comment-count=\"35\"") == "<div class=\"x-foot\"><span>35 comments</span></div></div>")
+        #expect(try foot("created-timestamp=\"\(stamp)\"") == "<div class=\"x-foot\"><span>\(date)</span></div></div>")
+        #expect(try foot("") == nil)
+    }
+
+    @Test func aRedditImageOrGalleryIsThePostsMedia() throws {
+        let image = try redditPost("post-title=\"T\" post-type=\"image\" content-href=\"https://i.redd.it/a.jpeg\" author=\"a\"")
+        let one = try #require(RedditPages.contentHTML(image))
+        #expect(one.contains("</div><div class=\"x-media\"><img src=\"https://i.redd.it/a.jpeg\" alt=\"\" loading=\"lazy\" /></div>"))
+        #expect(!one.contains("<figure>"))
+        let gallery = try redditPost(
+            "post-title=\"T\" post-type=\"gallery\"",
+            "<gallery-carousel><img src=\"https://i.redd.it/a.jpeg\"><img data-lazy-src=\"https://i.redd.it/b.jpeg\"><img src=\"https://i.redd.it/a.jpeg\"></gallery-carousel>")
+        let grid = try #require(RedditPages.contentHTML(gallery))
+        #expect(grid.contains("<div class=\"x-media x-media-grid\"><img src=\"https://i.redd.it/a.jpeg\" alt=\"\" loading=\"lazy\" /><img src=\"https://i.redd.it/b.jpeg\" alt=\"\" loading=\"lazy\" /></div>"))
+        #expect(!grid.contains("<figure>"))
+    }
+
+    @Test func otherPostsAuthorRowsStillShowAnAtSign() {
+        let user = TweetExtraction.User(name: "A", handle: "a")
+        #expect(TweetExtraction.whoHTML(user, date: nil) == "<div class=\"x-who\"><span class=\"x-name\">A</span><a class=\"x-handle\" href=\"https://x.com/a\">@a</a></div>")
+        #expect(TweetExtraction.whoHTML(user, date: "Oct 25, 2026", profile: "https://bsky.app/profile/a") == "<div class=\"x-who\"><span class=\"x-name\">A</span><a class=\"x-handle\" href=\"https://bsky.app/profile/a\">@a</a><span class=\"x-when\">· Oct 25, 2026</span></div>")
+        let bluesky = SocialPost(network: .bluesky, url: "https://bsky.app/profile/a/post/1", author: .init(name: "A", handle: "a", profile: "https://bsky.app/profile/a"), paragraphs: ["Hi"])
+        #expect(bluesky.render()?.contentHtml?.contains(">@a</a>") == true)
     }
 
     @Test func readsARedditPostAndItsComments() throws {
@@ -183,6 +281,10 @@ struct DiscussionTests {
         #expect(post.bodyHTML?.contains("I watch all the various versions of Love is Blind") == true)
         let content = try #require(RedditPages.contentHTML(post))
         #expect(content.contains("i.redd.it/rda2lbhft6yh1.jpeg") && content.contains("various versions"))
+        #expect(content.contains("<span class=\"x-name\">r/LoveIsBlindNetflix</span>") && content.contains(">u/BlueZima2</a>"))
+        #expect(content.contains("<p>Disgusted</p>") && content.contains("3.5K points · 1.6K comments"))
+        // The attribute named icon is the poster's picture.
+        #expect(!content.contains("snoovatar"))
 
         let thread = RedditPages.thread(html)
         #expect(thread.total == 1635)

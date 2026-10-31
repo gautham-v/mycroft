@@ -352,7 +352,7 @@ body { overflow-y: hidden; }
   padding: 6px 10px;
 }
 
-/* Posts (TweetExtraction for X, SocialPost for the other networks): author row, text, quoted post, link card, footer. */
+/* Posts (TweetExtraction for X, SocialPost for the other networks, RedditPages for Reddit): author row, text, quoted post, link card, footer. */
 .prose-opendispatch .x-post { font-family: var(--font-sans); display: grid; gap: 14px; }
 .prose-opendispatch .x-post > * + *,
 .prose-opendispatch .x-quote > * + * { margin-top: 0; }
@@ -384,10 +384,12 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-media video { width: 100%; margin: 0; border-radius: 0; }
 .prose-opendispatch .x-media-grid img,
 .prose-opendispatch .x-media-grid video { height: 100%; aspect-ratio: 1; object-fit: cover; }
-/* A lone video is as big as its picture, centered, so the corners are the picture's: a box wider or taller than the
-   picture left them on empty space. */
-.prose-opendispatch .x-media:not(.x-media-grid):has(> video) { justify-items: center; overflow: visible; outline: none; }
-.prose-opendispatch .x-media:not(.x-media-grid) > video { width: auto; height: auto; max-width: 100%; max-height: 560px; border-radius: 12px; background: #000; }
+/* A lone picture or video is as big as its picture, centered, so the corners are the picture's: a box wider or taller
+   than the picture left them on empty space. */
+.prose-opendispatch .x-media:not(.x-media-grid):has(> video, > img) { justify-items: center; overflow: visible; outline: none; }
+.prose-opendispatch .x-media:not(.x-media-grid) > video,
+.prose-opendispatch .x-media:not(.x-media-grid) > img { width: auto; height: auto; max-width: 100%; max-height: 560px; border-radius: 12px; }
+.prose-opendispatch .x-media:not(.x-media-grid) > video { background: #000; }
 .prose-opendispatch .x-quote { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; font-size: 0.92em; }
 .prose-opendispatch .x-quote-link { font-size: 13px; color: var(--muted); text-decoration: none; }
 .prose-opendispatch .x-quote-link:hover { text-decoration: underline; }
@@ -396,11 +398,14 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-card-img { width: 100%; height: 100%; aspect-ratio: 1; object-fit: cover; margin: 0; border-radius: 0; }
 .prose-opendispatch .x-card-large { grid-template-columns: 1fr; }
 .prose-opendispatch .x-card-large .x-card-img { height: auto; aspect-ratio: 800 / 419; }
-.prose-opendispatch .x-card-large .x-card-whole { aspect-ratio: auto; max-height: 560px; object-fit: contain; background: #000; }
+.prose-opendispatch .x-card-large .x-card-whole { aspect-ratio: auto; max-height: 420px; object-fit: contain; background: #000; }
+/* In a post every link card is one style: full width, the whole picture at its own shape, domain and title under it. */
+.prose-opendispatch .x-post .x-card { grid-template-columns: minmax(0, 1fr); }
+.prose-opendispatch .x-post .x-card-img { width: 100%; height: auto; aspect-ratio: auto; max-height: 420px; object-fit: contain; background: #000; }
 .prose-opendispatch .x-card-text { display: grid; gap: 2px; align-content: center; padding: 10px 14px; font-size: 14px; line-height: 1.35; }
 .prose-opendispatch .x-card-domain { color: var(--muted); font-size: 13px; }
 .prose-opendispatch .x-card-title { color: var(--ink); font-weight: 500; }
-.prose-opendispatch .x-foot { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--hairline); }
+.prose-opendispatch .x-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--hairline); }
 /* Posts read before the toolbar's open button replaced it still carry an "Open on X" link. */
 .prose-opendispatch .x-open { display: none; }
 /* A post embedded in an article (EmbeddedPosts): the same post, as an inset card with the network's mark in its
@@ -419,8 +424,18 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-embed .x-body { font-size: 16.5px; line-height: 1.5; color: var(--ink); }
 .prose-opendispatch .x-embed .x-media { outline: 1px solid var(--hairline); outline-offset: -1px; }
 .prose-opendispatch .x-embed .x-media-grid video { background: #000; object-fit: contain; }
-.prose-opendispatch .x-embed .x-foot { flex-wrap: wrap; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.prose-opendispatch .x-embed .x-foot { font-variant-numeric: tabular-nums; }
 .prose-opendispatch .x-embed .x-link { margin-left: auto; color: var(--accent); text-decoration: none; font-weight: 500; }
 .prose-opendispatch .x-embed .x-link:hover { text-decoration: underline; }
+/* A post linked inside a post (a Reddit post's, RedditPages) reads like a quoted post, not an inset card. The age in the
+   author row is the outer post's (--post-age), so it stays off this one. */
+.prose-opendispatch .x-post > .x-embed { margin: 0; padding: 12px 14px; border-radius: 12px; background: none; gap: 10px; font-size: 0.92em; }
+.prose-opendispatch .x-post > .x-embed + * { margin-top: 0; }
+.prose-opendispatch .x-post > .x-embed .x-avatar { width: 22px; height: 22px; }
+.prose-opendispatch .x-post > .x-embed .x-body { font-size: inherit; line-height: inherit; }
+.prose-opendispatch .x-post > .x-embed > .x-who .x-handle::after { content: none; }
+/* A video player in a post (a Reddit post's link to YouTube) has only the post's gap around it. */
+.prose-opendispatch .x-post > figure { margin: 0; }
+.prose-opendispatch .x-post > figure > iframe { display: block; border-radius: 12px; }
 .prose-opendispatch .x-body ul { margin: 0; padding-left: 1.1em; }
 .prose-opendispatch .x-body li + li { margin-top: 0.3em; }

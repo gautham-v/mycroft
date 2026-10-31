@@ -79,6 +79,7 @@ enum RedditPages {
         var title: String
         var author: String?
         var community: String?
+        var communityIcon: String?
         var published: Date?
         var score: Int?
         var comments: Int?
@@ -148,6 +149,8 @@ enum RedditPages {
         let player = try? el.select("shreddit-player[src]").first()
         return Post(
             url: url, title: attr("post-title") ?? "", author: attr("author"), community: attr("subreddit-prefixed-name"),
+            // The post's `icon` attribute is its author's.
+            communityIcon: nonEmpty(try? el.select("img.shreddit-subreddit-icon__icon").first()?.attr("src")),
             published: DiscussionDates.parse(attr("created-timestamp")), score: attr("score").flatMap(Int.init),
             comments: attr("comment-count").flatMap(Int.init), kind: kind, contentHref: attr("content-href"), images: images,
             bodyHTML: body.flatMap { try? $0.html() }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
@@ -271,32 +274,49 @@ enum RedditPages {
 
     // MARK: Reader content
 
-    /// A post as reader markup: its text, its image, gallery or video, and for one that links elsewhere a card for the page, or
-    /// `embed`, the linked post as the reader draws posts. Nil for a post with none of these (a title-only post, whose title
-    /// the reader already shows).
+    /// A post as reader markup, the x-* markup of posts on other networks: an author row with its community and poster, its title
+    /// and text, its image, gallery or video, for one that links elsewhere a card for the page or `embed` (the linked post as the
+    /// reader draws posts, or a YouTube player), and a footer. Nil only for a post with no title, text or media.
     static func contentHTML(_ post: Post, embed: String? = nil) -> String? {
-        var parts: [String] = []
+        var media = ""
         switch post.kind {
         case .image:
-            if let src = post.contentHref { parts.append("<figure><img src=\"\(ExtractionDOM.escapeAttr(src))\" alt=\"\"></figure>") }
+            if let src = post.contentHref { media = TweetExtraction.mediaHTML([.init(kind: .photo, url: src)]) }
         case .gallery:
-            parts += post.images.map { "<figure><img src=\"\(ExtractionDOM.escapeAttr($0))\" alt=\"\"></figure>" }
+            media = TweetExtraction.mediaHTML(post.images.map { .init(kind: .photo, url: $0) })
         case .link, .video:
             if let embed {
-                parts.append(embed)
+                media = embed
             } else if let video = post.video {
-                parts.append(TweetExtraction.mediaHTML([.init(kind: .video, url: video, poster: post.poster)]))
+                media = TweetExtraction.mediaHTML([.init(kind: .video, url: video, poster: post.poster)])
             } else if let href = post.contentHref, !isThread(href) {
-                parts.append(TweetExtraction.cardHTML(
+                media = TweetExtraction.cardHTML(
                     href: href, title: post.linkDescription ?? "", domain: post.domain, image: post.preview?.url, large: true,
-                    showsTitle: post.linkDescription != nil, imageSize: post.preview.flatMap { p in p.width.flatMap { w in p.height.map { (w, $0) } } }))
+                    showsTitle: post.linkDescription != nil, imageSize: post.preview.flatMap { p in p.width.flatMap { w in p.height.map { (w, $0) } } })
             }
         case .text, .other:
             break
         }
-        if let body = post.bodyHTML { parts.append(body) }
-        let html = ArticleSanitizer.sanitize(parts.joined()).trimmingCharacters(in: .whitespacesAndNewlines)
-        return html.isEmpty ? nil : html
+        let text = TweetExtraction.paragraphHTML(ExtractionDOM.escapeHTML(post.title)) + (post.bodyHTML ?? "")
+        guard !text.isEmpty || !media.isEmpty else { return nil }
+        let body = text.isEmpty ? "" : "<div class=\"x-body\">\(text)</div>"
+        let foot = TweetExtraction.footHTML(date: post.published, stats: stats(post))
+        let html = ArticleSanitizer.sanitize("<div class=\"x-post\">\(who(post))\(body)\(media)\(foot)</div>")
+        return html.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The author row: the community and its icon over the poster. A post on a user's profile has no community and goes by the
+    /// poster; a deleted poster has no handle.
+    private static func who(_ post: Post) -> String {
+        let author = post.author == "[deleted]" ? nil : post.author
+        let user = TweetExtraction.User(name: post.community ?? author.map { "u/" + $0 } ?? "[deleted]", handle: author ?? "", avatar: post.communityIcon)
+        return TweetExtraction.whoHTML(user, date: nil, profile: author.map { "\(origin)/user/\($0)/" }, handlePrefix: author == nil ? nil : "u/")
+    }
+
+    /// "217 points · 35 comments", or whichever of them is known.
+    private static func stats(_ post: Post) -> String? {
+        let known = [post.score.map { EmbeddedPosts.count($0, "point") }, post.comments.map { EmbeddedPosts.count($0, "comment") }].compactMap { $0 }
+        return known.isEmpty ? nil : known.joined(separator: " · ")
     }
 }
 

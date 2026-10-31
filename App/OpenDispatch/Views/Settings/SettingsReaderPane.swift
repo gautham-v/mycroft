@@ -147,7 +147,7 @@ struct SettingsTextSizePreview: View {
     }
 
     var body: some View {
-        let headline = OFFont.headlineSize(size, wide: false) * 0.62
+        let headline = OFFont.headlineSize(size)
         let bodySize = OFFont.bodySize(size)
         VStack(alignment: .leading, spacing: 4) {
             Text("The quick brown fox")

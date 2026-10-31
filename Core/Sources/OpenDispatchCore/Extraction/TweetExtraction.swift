@@ -214,12 +214,15 @@ enum TweetExtraction {
         return t
     }
 
-    /// The author row. `profile` is the account's page where it isn't x.com/handle.
-    static func whoHTML(_ u: User, date: String?, profile: String? = nil) -> String {
+    /// The author row. `profile` is the account's page where it isn't x.com/handle. `handlePrefix` goes before the handle where
+    /// it isn't "@" (Reddit's "u/"); nil leaves the handle out.
+    static func whoHTML(_ u: User, date: String?, profile: String? = nil, handlePrefix: String? = "@") -> String {
         let av = u.avatar.map { "<img class=\"x-avatar\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
         let when = date.map { "<span class=\"x-when\">· \(DOM.escapeHTML($0))</span>" } ?? ""
-        let handle = profile.map { "<a class=\"x-handle\" href=\"\(DOM.escapeAttr($0))\">@\(DOM.escapeHTML(u.handle))</a>" }
-            ?? "<a class=\"x-handle\" href=\"https://x.com/\(u.handle)\">@\(u.handle)</a>"
+        let handle = handlePrefix.map { prefix in
+            profile.map { "<a class=\"x-handle\" href=\"\(DOM.escapeAttr($0))\">\(prefix)\(DOM.escapeHTML(u.handle))</a>" }
+                ?? "<a class=\"x-handle\" href=\"https://x.com/\(u.handle)\">\(prefix)\(u.handle)</a>"
+        } ?? ""
         return "<div class=\"x-who\">\(av)<span class=\"x-name\">\(DOM.escapeHTML(u.name))</span>\(handle)\(when)</div>"
     }
 
@@ -234,9 +237,10 @@ enum TweetExtraction {
         return "<a class=\"x-card\(large ? " x-card-large" : "")\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span>\(shownTitle)</span></a>"
     }
 
-    /// The footer: when the post went up. (The reader's toolbar opens the post on its network.)
-    static func footHTML(date: Date?) -> String {
-        date.map { "<div class=\"x-foot\"><span>\(DOM.escapeHTML(stampLine($0)))</span></div>" } ?? ""
+    /// The footer: when the post went up, and `stats` where a post shows them. (The reader's toolbar opens the post on its network.)
+    static func footHTML(date: Date?, stats: String? = nil) -> String {
+        let spans = [date.map(stampLine), stats].compactMap { $0 }.map { "<span>\(DOM.escapeHTML($0))</span>" }
+        return spans.isEmpty ? "" : "<div class=\"x-foot\">\(spans.joined())</div>"
     }
 
     /// A paragraph's inner HTML, lines split at <br>, as blocks: runs of two or more bulleted lines ("• a", "- b")

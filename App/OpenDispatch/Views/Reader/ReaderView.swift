@@ -90,10 +90,16 @@ struct ReaderItemView: View {
     private var isVideo: Bool { item.source.kind == .youtube }
     /// Podcasts read like articles with an audio player between header and notes.
     private var isPodcast: Bool { item.source.kind == .podcast && item.item.audioUrl != nil }
-    /// Posts (X, Bluesky, Mastodon, LinkedIn, Threads, Instagram) have no headline: the extracted markup carries the author row, text and cards.
-    private var isPost: Bool { TextFormat.isSocialPost(item.item.url) && content != .failed }
+    /// Posts (X, Bluesky, Mastodon, LinkedIn, Threads, Instagram, Reddit) have no headline: the extracted markup carries the author
+    /// row, text and cards. A Reddit post whose page refused the app is read from its feed, without that markup or its title, so it
+    /// keeps the headline.
+    private var isPost: Bool {
+        guard content != .failed else { return false }
+        if DiscussionPlace.thread(of: item.item.url) == .reddit { return contentHTML?.contains("class=\"x-post") ?? true }
+        return TextFormat.isSocialPost(item.item.url)
+    }
     /// A post's video starts when it is opened, as a YouTube item's does; an article's waits for play.
-    private var playsVideoAlone: Bool { isPost || DiscussionPlace.thread(of: item.item.url) == .reddit }
+    private var playsVideoAlone: Bool { isPost }
     private var itemURL: URL? { URL(string: item.item.url) }
 
     private var contentHTML: String? {
@@ -414,7 +420,7 @@ struct ReaderItemView: View {
         }
     }
 
-    private var headlineSize: CGFloat { OFFont.headlineSize(settings.textSize, wide: wide) }
+    private var headlineSize: CGFloat { OFFont.headlineSize(settings.textSize) }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {

@@ -683,9 +683,9 @@ struct RereadRedditPostsMigrationTests {
     }
 }
 
-@Suite("Reddit posts linking to YouTube read again")
-struct RereadRedditYouTubePostsMigrationTests {
-    @Test func onlyThoseAreDropped() throws {
+@Suite("Reddit posts read again as posts")
+struct RereadRedditPostsAsPostsMigrationTests {
+    @Test func everyRedditPostIsDropped() throws {
         let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
         try AppDatabase.migrator.migrate(queue, upTo: "v18-reread-reddit-posts")
         try queue.write { d in
@@ -693,13 +693,16 @@ struct RereadRedditYouTubePostsMigrationTests {
             try d.execute(sql: """
                 INSERT INTO items (source_id, guid, url, title, published_at, content_html, content_rendered) VALUES
                 (1, 'a', 'https://www.reddit.com/r/nfl/comments/1abc/title/', 'A', ?1, '<a class="x-card" href="https://www.youtube.com/watch?v=x"></a>', 0),
-                (1, 'b', 'https://www.reddit.com/r/nfl/comments/1abd/title/', 'B', ?1, '<a class="x-card" href="https://nypost.com/a"></a>', 0)
+                (1, 'b', 'https://www.reddit.com/r/nfl/comments/1abd/title/', 'B', ?1, '<a class="x-card" href="https://nypost.com/a"></a>', 1),
+                (1, 'c', 'https://example.com/r/nfl/comments/1abe/title/', 'C', ?1, '<p>kept</p>', 1),
+                (1, 'd', 'https://example.com/r/nfl', 'D', ?1, '<p>kept</p>', 1)
                 """, arguments: [Fixture.base])
         }
         try AppDatabase.migrator.migrate(queue)
         try queue.read { d in
             let cached = try String?.fetchAll(d, sql: "SELECT content_html FROM items ORDER BY guid")
-            #expect(cached[0] == nil && cached[1] != nil)
+            #expect(cached == [nil, nil, "<p>kept</p>", "<p>kept</p>"])
+            #expect(try Int.fetchOne(d, sql: "SELECT count(*) FROM items WHERE content_rendered = 1") == 2)
         }
     }
 }

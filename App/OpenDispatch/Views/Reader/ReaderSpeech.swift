@@ -105,7 +105,8 @@ final class ReaderSpeech {
         stop()
         owner = ObjectIdentifier(page)
         self.page = page
-        let isPost = TextFormat.isSocialPost(item.item.url)
+        // A post's text is in its body, a Reddit post's title with it.
+        let isPost = TextFormat.isSocialPost(item.item.url) || DiscussionPlace.thread(of: item.item.url) == .reddit
         title = item.item.title
         source = item.originName
         voiceID = settings.speechVoice

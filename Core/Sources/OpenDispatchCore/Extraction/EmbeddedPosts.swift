@@ -184,7 +184,7 @@ public enum EmbeddedPosts {
         variantSize.firstMatch(url)?[1].flatMap { Int($0) }
     }
 
-    private static func count(_ n: Int, _ one: String, plural: String? = nil) -> String {
+    static func count(_ n: Int, _ one: String, plural: String? = nil) -> String {
         "\(n.formatted(.number.notation(.compactName))) \(n == 1 ? one : plural ?? one + "s")"
     }
 }
