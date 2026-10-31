@@ -374,6 +374,23 @@ public final class DiscussionWeb: NSObject {
 
     // MARK: Views
 
+    /// Opens Reddit's view and, signed in, X's front one ahead of a search, so the first search moves inside the page instead of loading the
+    /// site. For a screen about to search both, which are about a second faster for it.
+    public func warmForSearch() {
+        guard (try? Self.requireForeground()) != nil else { return }
+        Task { _ = try? await self.redditView(warmingWith: "/", force: false) }
+        let lane = xFront
+        let previous = lane.queue
+        lane.queue = Task { @MainActor in
+            _ = await previous?.value
+            guard await WebAccount.x.isSignedIn() else { return }
+            let view = await self.xView(lane)
+            guard view.webView.url?.host != "x.com" else { return }
+            try? await view.load(URL(string: XPages.origin + "/settings")!)
+            lane.shown = []
+        }
+    }
+
     private func xView(_ lane: XLane) async -> SiteView {
         if let view = lane.view, !view.terminated { return view }
         let view = await newView(.x)

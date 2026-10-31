@@ -36,6 +36,8 @@ struct AddSourceView: View {
     @State private var rankedQuery = ""
     /// How many searches for the current name haven't answered.
     @State private var unanswered = 0
+    /// What each name found while the sheet is open, so going back to one (a deleted letter) is instant.
+    @State private var answered: [String: [SourceSearchResult]] = [:]
     /// Past the first results.
     @State private var showsAll = false
     /// The starter pack the empty sheet shows, by name; nil is the first with anything left to add.
@@ -118,6 +120,9 @@ struct AddSourceView: View {
             folderID = model.pendingAddSourceFolderID
             model.pendingAddSourceFolderID = nil
             fieldFocused = true
+            #if canImport(WebKit)
+            DiscussionWeb.shared.warmForSearch()
+            #endif
         }
         .onDisappear { model.clearFinishedSourceAdds() }
         .onChange(of: folderID) { _, folder in
@@ -390,12 +395,19 @@ struct AddSourceView: View {
         return VStack(alignment: .leading, spacing: 10) {
             ReaderFlowLayout(spacingX: 10, spacingY: 4) {
                 ForEach([SourcePlace.x, .youtube, .bluesky, .reddit, .mastodon], id: \.self) { place in
-                    HStack(spacing: 4) {
-                        SourceBadge(host: place.host ?? "", title: place.name, size: 12)
-                        Text(place.name)
+                    Button { suggestionPack = place.name } label: {
+                        HStack(spacing: 4) {
+                            SourceBadge(host: place.host ?? "", title: place.name, size: 12)
+                            Text(place.name)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting(packs.contains { $0.name == place.name })
                 }
-                Label("Podcasts", systemImage: "mic").labelStyle(.titleAndIcon)
+                Button { suggestionPack = "Podcasts" } label: {
+                    Label("Podcasts", systemImage: "mic").labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.plain)
                 Label("Any site", systemImage: "globe").labelStyle(.titleAndIcon)
             }
             .font(OFFont.ui(12))
@@ -427,7 +439,9 @@ struct AddSourceView: View {
         HStack(alignment: .top, spacing: 8) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(packs) { categoryButton($0, selected: $0 == shown).frame(maxWidth: .infinity, alignment: .leading) }
+                    ForEach(packs.filter { !StarterSources.formats.contains($0.name) }) { categoryButton($0, selected: $0 == shown) }
+                    sectionLabel("By format").padding(.horizontal, 9).padding(.top, 8)
+                    ForEach(packs.filter { StarterSources.formats.contains($0.name) }) { categoryButton($0, selected: $0 == shown) }
                 }
             }
             .frame(width: Self.categoryColumn)
@@ -604,13 +618,15 @@ struct AddSourceView: View {
     /// The searches a name starts: feeds, channels, X's handle and names, Bluesky, Mastodon, Reddit.
     private static let searchCount = 7
     /// How long a name's results wait for every search before showing what has answered.
-    private static let settleDelay: Duration = .milliseconds(1800)
+    private static let settleDelay: Duration = .milliseconds(1000)
+    /// How long typing has to stop before a name is searched.
+    private static let typingPause: Duration = .milliseconds(200)
     /// How many channels are asked whether their videos play here.
     private static let checkedChannels = 3
 
     /// How much longer a name waits before asking X's People search or Reddit: each opens a page in a hidden web view, which can't be
     /// called off once started, so it isn't asked mid-word like the others.
-    private static let xSearchDelay: Duration = .milliseconds(400)
+    private static let xSearchDelay: Duration = .milliseconds(100)
 
     /// Debounced search for a name (or a single link, which may also be a name like "node.js").
     private func search() async {
@@ -620,7 +636,18 @@ struct AddSourceView: View {
             searching = false
             return
         }
-        try? await Task.sleep(for: .milliseconds(300))
+        if links.isEmpty, let known = answered[answerKey(q)] {
+            clearAccounts()
+            results = []
+            searchError = false
+            rankedQuery = q
+            rows = known
+            settled = true
+            unanswered = 0
+            searching = false
+            return
+        }
+        try? await Task.sleep(for: Self.typingPause)
         guard !Task.isCancelled else { return }
         searching = true
         defer { if !Task.isCancelled { searching = false } }
@@ -671,10 +698,14 @@ struct AddSourceView: View {
         unanswered -= 1
         if unanswered <= 0 {
             settle()
+            answered[answerKey(rankedQuery)] = rows
+            searching = false
         } else if settled {
             rows = SourceRanking.keepingShown(rows, next: rankedNow, shown: Self.firstResults)
         }
     }
+
+    private func answerKey(_ q: String) -> String { "\(q)|\(signedInToX)" }
 
     private func settle() {
         if settled {

@@ -269,6 +269,10 @@ struct SourceSearchTests {
             }
         }
         #expect(StarterSources.boardPacks.map(\.name) == ["News", "Tech", "AI", "Sports"])
+        // Subjects first, broadest first, with the leagues under Sports and the formats last.
+        let names = StarterSources.packs.map(\.name)
+        #expect(Array(names.prefix(5)) == ["News", "Tech", "AI", "Sports", "NFL"])
+        #expect(Set(names.suffix(StarterSources.formats.count)) == StarterSources.formats)
         #expect(StarterSources.boardPacks.allSatisfy { $0.sources.count == 3 })
     }
 
