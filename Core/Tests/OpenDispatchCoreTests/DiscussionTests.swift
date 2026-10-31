@@ -138,6 +138,33 @@ struct DiscussionTests {
         #expect(content.contains("own words"))
     }
 
+    @Test func aRedditPostLinkingToYouTubePlaysIt() async throws {
+        struct Check: YouTubeEmbedChecking {
+            let playable: Bool?
+            func isPlayable(videoID: String) async -> Bool? { playable }
+            func isPlayable(channelID: String) async -> Bool? { playable }
+        }
+        let post = try #require(RedditPages.post(inThread: """
+            <shreddit-post permalink="/r/sports/comments/1wtvofg/liberty/" content-href="https://www.youtube.com/watch?v=VuM9DHF6dyc" post-title="Liberty" post-type="link" domain="youtube.com">
+            <shreddit-embed html="&lt;iframe src=&quot;https://www.youtube.com/embed/VuM9DHF6dyc?feature=oembed&quot;&gt;&lt;/iframe&gt;" providerName="YouTube"></shreddit-embed>
+            </shreddit-post>
+            """))
+        #expect(post.leadImage?.contains("VuM9DHF6dyc") == true)
+        let fetch: EmbeddedPosts.Fetch = { _, _ in nil }
+        for playable in [true, nil] {
+            let embed = await DiscussionContent.embed(for: post, fetch: fetch, check: Check(playable: playable))
+            let content = try #require(RedditPages.contentHTML(post, embed: embed))
+            #expect(content.contains("<iframe") && content.contains("www.youtube-nocookie.com/embed/VuM9DHF6dyc"))
+            #expect(!content.contains("x-card"))
+            #expect(LeadImage.contentHasHero(content, hero: try #require(post.leadImage)))
+        }
+        // The NFL's and the like won't play here: a card with the video's picture opens it.
+        let blocked = await DiscussionContent.embed(for: post, fetch: fetch, check: Check(playable: false))
+        #expect(blocked == nil)
+        let card = try #require(RedditPages.contentHTML(post, embed: blocked))
+        #expect(card.contains("x-card") && card.contains("VuM9DHF6dyc/") && card.contains("watch?v=VuM9DHF6dyc") && !card.contains("<iframe"))
+    }
+
     @Test func aRedditPostLinkingToAPostShowsThatPost() throws {
         let linked = "https://bsky.app/profile/a.bsky.social/post/3mz"
         #expect(EmbeddedPosts.post(at: linked) == .social(url: linked))

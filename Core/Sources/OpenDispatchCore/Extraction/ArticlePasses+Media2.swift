@@ -47,7 +47,7 @@ extension ArticlePasses {
 
     private static let youTubeIDShape = P("^[A-Za-z0-9_-]{11}$")
 
-    private static func youTubeFigure(_ id: String, title: String? = nil) -> String {
+    static func youTubeFigure(_ id: String, title: String? = nil) -> String {
         let src = ArticleSanitizer.embedSrc("https://www.youtube.com/embed/\(id)", watchable: true)
         let t = title.flatMap { $0.isEmpty ? nil : " title=\"\(DOM.escapeAttr($0))\"" } ?? ""
         return "<figure><iframe src=\"\(DOM.escapeAttr(src))\"\(t) allow=\"fullscreen; picture-in-picture\" allowfullscreen></iframe></figure>"

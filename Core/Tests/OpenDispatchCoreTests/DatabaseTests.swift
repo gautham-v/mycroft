@@ -682,3 +682,24 @@ struct RereadRedditPostsMigrationTests {
         }
     }
 }
+
+@Suite("Reddit posts linking to YouTube read again")
+struct RereadRedditYouTubePostsMigrationTests {
+    @Test func onlyThoseAreDropped() throws {
+        let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
+        try AppDatabase.migrator.migrate(queue, upTo: "v18-reread-reddit-posts")
+        try queue.write { d in
+            try d.execute(sql: "INSERT INTO sources (title, url, feed_url, kind, \"group\", position) VALUES ('S', 'https://www.reddit.com', 'https://www.reddit.com/r/nfl/.rss', 'rss', 'blogs', 0)")
+            try d.execute(sql: """
+                INSERT INTO items (source_id, guid, url, title, published_at, content_html, content_rendered) VALUES
+                (1, 'a', 'https://www.reddit.com/r/nfl/comments/1abc/title/', 'A', ?1, '<a class="x-card" href="https://www.youtube.com/watch?v=x"></a>', 0),
+                (1, 'b', 'https://www.reddit.com/r/nfl/comments/1abd/title/', 'B', ?1, '<a class="x-card" href="https://nypost.com/a"></a>', 0)
+                """, arguments: [Fixture.base])
+        }
+        try AppDatabase.migrator.migrate(queue)
+        try queue.read { d in
+            let cached = try String?.fetchAll(d, sql: "SELECT content_html FROM items ORDER BY guid")
+            #expect(cached[0] == nil && cached[1] != nil)
+        }
+    }
+}

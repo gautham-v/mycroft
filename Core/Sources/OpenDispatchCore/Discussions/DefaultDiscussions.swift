@@ -147,7 +147,8 @@ public struct DefaultDiscussions: DiscussionLoading {
 enum DiscussionContent {
     /// The post's body; an empty paragraph for a post that is only a title, so the reader shows the title and comments
     /// rather than a failure. Nil when the post can't be read.
-    /// A Reddit post linking to a post on X, Bluesky, Mastodon and the like shows that post, read through `embedFetch`.
+    /// A Reddit post linking to a post on X, Bluesky, Mastodon and the like shows that post, read through `embedFetch`, and one
+    /// linking to a YouTube video plays it.
     static func extract(url: String, fetch: @escaping @Sendable (String) async throws -> Data, embedFetch: @escaping EmbeddedPosts.Fetch) async -> ExtractResult? {
         switch DiscussionPlace.thread(of: url) {
         case .reddit:
@@ -162,12 +163,10 @@ enum DiscussionContent {
                 }
             }
             guard let post = found else { return nil }
-            var embed: String?
-            if post.kind == .link, let linked = post.contentHref.flatMap(EmbeddedPosts.post(at:)) {
-                embed = await EmbeddedPosts.card(for: linked, fetch: embedFetch)
-            }
-            // The linked post has its own pictures, under other addresses than Reddit's preview.
-            return ExtractResult(contentHtml: RedditPages.contentHTML(post, embed: embed) ?? emptyBody, leadImage: embed == nil ? post.leadImage : nil)
+            let embed = await embed(for: post, fetch: embedFetch, check: DefaultYouTubeEmbedCheck())
+            // A linked post has its own pictures, under other addresses than Reddit's preview.
+            let lead = embed == nil || embed?.hasPrefix("<figure>") == true ? post.leadImage : nil
+            return ExtractResult(contentHtml: RedditPages.contentHTML(post, embed: embed) ?? emptyBody, leadImage: lead)
             #else
             return nil
             #endif
@@ -178,6 +177,17 @@ enum DiscussionContent {
         default:
             return nil
         }
+    }
+
+    /// What a link post shows in place of a card: the linked post, or the YouTube video's player. A video its owner won't let play
+    /// in other apps stays a card that opens it.
+    static func embed(for post: RedditPages.Post, fetch: EmbeddedPosts.Fetch, check: any YouTubeEmbedChecking) async -> String? {
+        guard post.kind == .link, let href = post.contentHref else { return nil }
+        if let id = OpenedLinks.youTubeVideoID(href) {
+            return await check.isPlayable(videoID: id) == false ? nil : ArticlePasses.youTubeFigure(id)
+        }
+        guard let linked = EmbeddedPosts.post(at: href) else { return nil }
+        return await EmbeddedPosts.card(for: linked, fetch: fetch)
     }
 
     static let emptyBody = "<p></p>"

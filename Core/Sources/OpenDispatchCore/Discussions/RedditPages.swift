@@ -152,7 +152,7 @@ enum RedditPages {
             comments: attr("comment-count").flatMap(Int.init), kind: kind, contentHref: attr("content-href"), images: images,
             bodyHTML: body.flatMap { try? $0.html() }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
             video: nonEmpty(try? player?.attr("src")).map(lastingPlaylist), poster: nonEmpty(try? player?.attr("poster")),
-            domain: attr("domain"), preview: (try? el.select("img[data-post-media-primary]").first()).flatMap(preview),
+            domain: attr("domain"), preview: (try? el.select("img[data-post-media-primary]").first()).flatMap(preview) ?? attr("content-href").flatMap(youTubePreview),
             linkDescription: (description.flatMap { try? $0.text() }).flatMap { nonEmpty($0) })
     }
 
@@ -172,6 +172,10 @@ enum RedditPages {
             .max { $0.width < $1.width }?.url
         guard let url = widest ?? nonEmpty(try? img.attr("src")) else { return nil }
         return Post.Preview(url: url, width: Int((try? img.attr("width")) ?? ""), height: Int((try? img.attr("height")) ?? ""))
+    }
+    /// Reddit shows a linked YouTube video in its own player and gives no preview for it.
+    private static func youTubePreview(_ href: String) -> Post.Preview? {
+        OpenedLinks.youTubeVideoID(href).map { Post.Preview(url: FeedParsingSupport.youtubeThumbnail(videoID: $0), width: 480, height: 360) }
     }
     private static let previewCandidate = ExtractionDOM.Pattern(#"(https?://\S+)\s+(\d+)w"#)
 

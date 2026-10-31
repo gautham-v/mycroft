@@ -353,6 +353,14 @@ public final class AppDatabase: Sendable {
                 WHERE content_html IS NOT NULL AND url LIKE '%reddit.com/r/%/comments/%'
                 """)
         }
+        // Reddit posts linking to YouTube read as a card in 1.0.45 and now play the video.
+        m.registerMigration("v19-reread-reddit-youtube-posts") { db in
+            try db.execute(sql: """
+                UPDATE items SET content_html = NULL, content_rendered = 0
+                WHERE url LIKE '%reddit.com/r/%/comments/%' AND (content_html LIKE '%youtube.com/watch%' OR content_html LIKE '%youtu.be/%'
+                  OR content_html LIKE '%youtube.com/shorts%' OR content_html LIKE '%youtube.com/live%')
+                """)
+        }
         return m
     }
 }
