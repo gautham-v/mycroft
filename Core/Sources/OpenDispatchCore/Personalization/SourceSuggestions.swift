@@ -242,8 +242,10 @@ struct SourceSuggester {
 
     /// A channel or show named after a site that was linked: "Lex Fridman" for lexfridman.com.
     private static func isNamed(_ starter: StarterSource, after host: String) -> Bool {
-        guard starter.place != .site, let label = host.split(separator: ".").first else { return false }
-        return squeezed(starter.title) == label
+        // The name just before the domain ending, since a subdomain says little: npr.brightspotcdn.com isn't NPR's own site.
+        let labels = host.split(separator: ".")
+        guard starter.place != .site, labels.count >= 2 else { return false }
+        return squeezed(starter.title) == labels[labels.count - 2]
     }
 
     /// Letters and digits only, lowercased, so "Pro Football Talk" and "profootballtalk" are the same name.
@@ -273,10 +275,10 @@ struct SourceSuggester {
         }
     }
 
-    /// Sites a piece of text links to, each once.
+    /// Sites a piece of text links to, each once. A picture's address says where it's stored, not what's being linked to.
     static func linkedHosts(in text: String) -> [String] {
         var seen = Set<String>()
-        return all(#"https?://(?:www\.)?([A-Za-z0-9.-]+\.[A-Za-z]{2,})"#, in: text).map { $0.lowercased() }.filter { seen.insert($0).inserted }
+        return all(#"(?<!src=")(?<!src=')https?://(?:www\.)?([A-Za-z0-9.-]+\.[A-Za-z]{2,})"#, in: text).map { $0.lowercased() }.filter { seen.insert($0).inserted }
     }
 
     private static let reservedPaths: Set<String> = [

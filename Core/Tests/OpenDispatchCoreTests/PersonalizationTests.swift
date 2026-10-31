@@ -228,6 +228,15 @@ struct PersonalizationTests {
         #expect(out[0].starter == lex)
     }
 
+    @Test func aPictureOrASubdomainDoesntNameASource() {
+        let npr = StarterSource(title: "NPR", host: "bsky.app", feedUrl: "https://bsky.app/profile/npr/rss", place: .bluesky)
+        let pack = StarterPack(name: "Bluesky", sources: [npr])
+        let cdn = #"<a href="https://npr.brightspotcdn.com/a.jpg">a</a>"#
+        let opened = (0..<3).map { Self.entry(url: "https://a.example/\($0)", content: cdn) }
+        #expect(SourceSuggester(opened: opened, followed: [], removed: [], catalog: [pack], formats: ["Bluesky"]).suggestions().isEmpty)
+        #expect(SourceSuggester.linkedHosts(in: #"<img src="https://a.example/1.png"> <a href="https://b.example/2">x</a> see https://c.example/3"#) == ["b.example", "c.example"])
+    }
+
     @Test func aSiteIsSuggestedOnlyFromTheCatalog() {
         let opened = (0..<3).map { Self.entry(url: "https://unknown.example/\($0)", feed: "opendispatch:topic:a", topic: "NFL", outside: true) }
         #expect(SourceSuggester(opened: opened, followed: [], removed: [], catalog: Self.noCatalog).suggestions().isEmpty)
