@@ -360,7 +360,7 @@ public enum Queries {
     }
 
     /// POST /api/sources after detection: returns the existing source for the same feed_url (existed = true),
-    /// or inserts a new one at the end of Unfiled. `group` overrides the detected group when non-empty.
+    /// or inserts a new one at the end of No Folder. `group` overrides the detected group when non-empty.
     public static func insertSource(_ db: Database, _ found: DetectedFeed, group: String? = nil, now: Date = Date()) throws -> (source: Source, existed: Bool) {
         if let existing = try source(db, feedUrl: found.feedUrl) { return (existing, true) }
         var s = Source(
@@ -382,7 +382,7 @@ public enum Queries {
         return s
     }
 
-    /// PATCH /api/sources/:id {folder_id}: move to a folder (nil = Unfiled), placed at the end of it.
+    /// PATCH /api/sources/:id {folder_id}: move to a folder (nil = No Folder), placed at the end of it.
     @discardableResult
     public static func moveSource(_ db: Database, id: Int64, toFolder folderId: Int64?) throws -> Source {
         if let folderId, try Folder.fetchOne(db, key: folderId) == nil { throw QueryError.notFound("Folder") }
@@ -519,7 +519,7 @@ public enum Queries {
         return f
     }
 
-    /// DELETE /api/folders/:id. Its sources move to Unfiled (FK ON DELETE SET NULL). False when not found.
+    /// DELETE /api/folders/:id. Its sources move to No Folder (FK ON DELETE SET NULL). False when not found.
     @discardableResult
     public static func deleteFolder(_ db: Database, id: Int64) throws -> Bool {
         try Folder.deleteOne(db, key: id)

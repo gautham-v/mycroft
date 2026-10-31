@@ -81,7 +81,7 @@ struct SettingsSourcesPane: View {
         var out = model.orderedFolders.map { f in
             (key: "f\(f.id)", label: f.title, sources: model.allSources(inFolder: f.id).filter { vis.contains($0.id) })
         }
-        out.append((key: "unfiled", label: "Unfiled", sources: model.allSources(inFolder: nil).filter { vis.contains($0.id) }))
+        out.append((key: "unfiled", label: "No Folder", sources: model.allSources(inFolder: nil).filter { vis.contains($0.id) }))
         return out.filter { !$0.sources.isEmpty }
     }
 
@@ -184,12 +184,12 @@ struct SettingsSourcesPane: View {
                 ForEach(model.orderedFolders) { f in
                     Text(f.title).tag(Int64?.some(f.id))
                 }
-                Text("Unfiled").tag(Int64?.none)
+                Text("No Folder").tag(Int64?.none)
             }
             .pickerStyle(.inline)
         } label: {
             HStack(spacing: 4) {
-                Text(model.folders.first { $0.id == s.folderId }?.title ?? "Unfiled")
+                Text(model.folders.first { $0.id == s.folderId }?.title ?? "No Folder")
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 9, weight: .semibold))

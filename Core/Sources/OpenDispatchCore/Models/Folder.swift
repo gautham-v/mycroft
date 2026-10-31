@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// User-named sidebar section. Sources with no folder show under "Unfiled".
+/// User-named sidebar section. Sources with no folder show under "No Folder".
 public struct Folder: Sendable, Hashable, Identifiable {
     /// 0 until inserted.
     public var id: Int64

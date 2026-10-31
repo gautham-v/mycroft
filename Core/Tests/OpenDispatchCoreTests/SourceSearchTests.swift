@@ -83,53 +83,166 @@ struct SourceSearchTests {
                            kind: kind, handle: handle, audience: audience)
     }
 
-    @Test func sectionsSortByPlaceAndAllKeepsTheFirstChannels() {
-        let x = result("Marques Brownlee", .page, url: "https://x.com/MKBHD", handle: "MKBHD")
-        let channels = ["One", "Two", "Three", "Four"].map { result($0, .youtube, handle: $0, audience: "2M subscribers") }
-        let s = SourceSearch.sections(query: "mkbhd", feeds: [
-            result("MKBHD blog"), result("MKBHD show", .podcast), result("MKBHD notes"), result("Unrelated", .podcast),
-        ], channels: channels, xAccounts: [x])
-        #expect(s.x == [x])
-        #expect(s.youtube.count == 4)
-        #expect(s.sites.map(\.title) == ["MKBHD blog", "MKBHD notes"])
-        // An account matched, so the show that doesn't carry the name is left out.
-        #expect(s.podcasts.map(\.title) == ["MKBHD show"])
-        #expect(s.all.map(\.title) == ["Marques Brownlee", "One", "Two", "Three", "MKBHD blog", "MKBHD show", "MKBHD notes"])
+    private func account(_ title: String, _ place: SourcePlace, handle: String, audience: String? = nil) -> SourceSearchResult {
+        SourceSearchResult(title: title, subtitle: place.name, feedUrl: "https://\(place.rawValue).example/\(handle)", kind: place == .youtube ? .youtube : place == .x ? .page : .rss,
+                           handle: handle, audience: audience, place: place)
     }
 
-    @Test func allKeepsTheFirstAccounts() {
-        let accounts = ["A", "B", "C", "D"].map { result($0, .page, url: "https://x.com/\($0)", handle: $0) }
-        let s = SourceSearch.sections(query: "name", feeds: [], channels: [], xAccounts: accounts)
-        #expect(s.x.count == 4)
-        #expect(s.all.map(\.title) == ["A", "B", "C"])
+    @Test func rankingPutsWhoWasMeantFirst() {
+        let ranked = SourceRanking.rank(query: "mkbhd", feeds: [
+            result("Waveform: The MKBHD Podcast", .podcast, subtitle: "MKBHD"), result("Unrelated show", .podcast),
+        ], accounts: [
+            account("Marques Brownlee", .x, handle: "MKBHD"),
+            account("Auto Focus", .youtube, handle: "AutoFocus", audience: "1.3M subscribers"),
+            account("Marques Brownlee", .youtube, handle: "mkbhd", audience: "21.4M subscribers"),
+            account("Marques Brownlee", .bluesky, handle: "mkbhd.com", audience: "212K followers"),
+            account("MKBHD Parody", .x, handle: "ParodyMkbhd", audience: "797 followers"),
+            account("Marques Brownlee {bot}", .bluesky, handle: "mkbhd-bridged.bsky.social", audience: "5K followers"),
+        ])
+        #expect(ranked.map(\.handle) == ["mkbhd", "MKBHD", "mkbhd.com", nil, "AutoFocus"])
+        #expect(ranked[3].title == "Waveform: The MKBHD Podcast")
     }
 
-    @Test func sectionsKeepTheFallbackWithoutAnAccount() {
-        let s = SourceSearch.sections(query: "simon willison", feeds: [result("Unrelated", .podcast)], channels: [], xAccounts: [])
-        #expect(s.podcasts.map(\.title) == ["Unrelated"])
+    @Test func aHandleUnderAnotherNameIsSomeoneElse() {
+        let ranked = SourceRanking.rank(query: "fireship", feeds: [], accounts: [
+            account("CHIEF INSPECTOR", .x, handle: "FIRESHIP"),
+            account("Fireship", .youtube, handle: "Fireship", audience: "4.32M subscribers"),
+            account("Beyond Fireship", .youtube, handle: "beyondfireship", audience: "463K subscribers"),
+            account("FireShip", .youtube, handle: "FireShip100", audience: "3 subscribers"),
+        ])
+        #expect(ranked.map(\.title) == ["Fireship", "Beyond Fireship", "CHIEF INSPECTOR"])
     }
 
-    @Test func sectionsDropTinyChannelsUnlessTheHandleIsExact() {
-        let channels = [
-            result("Fireship", .youtube, handle: "Fireship", audience: "4.32M subscribers"),
-            result("FireShip", .youtube, handle: "FireShip100", audience: "3 subscribers"),
-            result("Isracode", .youtube, handle: "fireshipai", audience: "29.4K subscribers"),
-            result("Silent", .youtube, handle: "silent"),
-        ]
-        #expect(SourceSearch.sections(query: "fireship", feeds: [], channels: channels, xAccounts: []).youtube.map(\.title) == ["Fireship", "Isracode"])
-        #expect(SourceSearch.sections(query: "@fireshipai", feeds: [], channels: channels, xAccounts: []).youtube.map(\.title) == ["Isracode"])
-        let tiny = [result("Simon W", .youtube, handle: "SimonW", audience: "8 subscribers")]
-        #expect(SourceSearch.sections(query: "@simonw", feeds: [], channels: tiny, xAccounts: []).youtube.map(\.title) == ["Simon W"])
+    @Test func theSamePersonRanksWithTheirHandle() {
+        let ranked = SourceRanking.rank(query: "karpathy", feeds: [result("Andrej Karpathy blog", subtitle: "karpathy.github.io")], accounts: [
+            account("Andrej Karpathy", .x, handle: "karpathy", audience: "4.4M followers"),
+            account("Andrej Karpathy", .youtube, handle: "AndrejKarpathy", audience: "1.74M subscribers"),
+        ])
+        #expect(ranked.map(\.place) == [.x, .youtube, .site])
     }
 
-    @Test func sectionsDropFeedlysCopiesAndXBridges() {
+    @Test func noPlaceTakesTheWholeTop() {
+        var accounts = (1...5).map { account("Name \($0)", .youtube, handle: "name\($0)", audience: "\(9 - $0)M subscribers") }
+        accounts.append(account("Name six", .bluesky, handle: "six.example", audience: "2K followers"))
+        let ranked = SourceRanking.rank(query: "name", feeds: [], accounts: accounts)
+        #expect(ranked.prefix(4).map(\.place) == [.youtube, .youtube, .youtube, .bluesky])
+        #expect(ranked.count == 6)
+    }
+
+    @Test func anAtKeepsOnlyThatHandleAmongAccounts() {
+        let ranked = SourceRanking.rank(query: "@simonw", feeds: [result("Simon W notes", subtitle: "simonw.example")], accounts: [
+            account("Simon W", .youtube, handle: "SimonW", audience: "8 subscribers"),
+            account("Simon Wilson", .youtube, handle: "SimonWilson12", audience: "2.27M subscribers"),
+        ])
+        #expect(ranked.map(\.title) == ["Simon W", "Simon W notes"])
+    }
+
+    @Test func rankingDropsFeedlysCopiesAndXBridges() {
         let url = "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA"
-        let channel = result("Fireship", .youtube, url: url, handle: "Fireship", audience: "4.32M subscribers")
-        let s = SourceSearch.sections(query: "fireship", feeds: [
+        let channel = SourceSearchResult(title: "Fireship", subtitle: "YouTube", feedUrl: url, kind: .youtube, handle: "Fireship", audience: "4.32M subscribers")
+        let ranked = SourceRanking.rank(query: "fireship", feeds: [
             result("Fireship", .youtube, url: url), result("Fireship(@fireship)", url: "https://api.xgo.ing/rss/user/1", site: "https://x.com/fireship"),
-        ], channels: [channel], xAccounts: [])
-        #expect(s.youtube == [channel])
-        #expect(s.sites.isEmpty)
+        ], accounts: [channel])
+        #expect(ranked == [channel])
+    }
+
+    @Test func theFallbackStaysWhenNothingMatches() {
+        let ranked = SourceRanking.rank(query: "simon willison", feeds: [result("Unrelated", .podcast)], accounts: [])
+        #expect(ranked.map(\.title) == ["Unrelated"])
+    }
+
+    @Test func kindsFollowThePlace() {
+        #expect(SourcePlace.reddit.readType == .post)
+        #expect(SourcePlace.bluesky.readType == .post)
+        #expect(SourcePlace.youtube.readType == .video)
+        #expect(SourcePlace.site.readType == .article)
+        #expect(SourceSearchResult(title: "a", subtitle: "b", feedUrl: "c", kind: .podcast).place == .podcast)
+    }
+
+    @Test func xCountFromTheSearchFillsInTheProfile() {
+        let profile = account("Marques Brownlee", .x, handle: "MKBHD")
+        let merged = SourceSearch.mergedXAccounts(profile: profile, named: [
+            account("Waveform", .x, handle: "WVFRM", audience: "93K followers"),
+            account("Marques Brownlee", .x, handle: "mkbhd", audience: "20M followers"),
+        ])
+        #expect(merged.map(\.handle) == ["MKBHD", "WVFRM"])
+        #expect(merged[0].audience == "20M followers")
+        #expect(SourceSearch.mergedXAccounts(profile: nil, named: [profile]) == [profile])
+    }
+
+    @Test func redditAddresses() {
+        #expect(FeedDetection.redditFeedURL("https://www.reddit.com/r/swift/") == "https://www.reddit.com/r/swift/.rss")
+        #expect(FeedDetection.redditFeedURL("https://old.reddit.com/r/swift/top/") == "https://www.reddit.com/r/swift/.rss")
+        #expect(FeedDetection.redditFeedURL("https://www.reddit.com/user/spez/") == "https://www.reddit.com/user/spez/.rss")
+        #expect(FeedDetection.redditFeedURL("https://www.reddit.com/r/swift/comments/abc/slug/") == nil)
+        #expect(FeedDetection.redditFeedURL("https://www.reddit.com/") == nil)
+        #expect(SourceSearch.redditCommunity(in: "r/swift") == "swift")
+        #expect(SourceSearch.redditCommunity(in: "swift") == nil)
+        #expect(SourceSearch.name(in: "r/swift") == "swift")
+        #expect(SourceSearch.accountLink("https://www.reddit.com/r/nfl/") == .reddit(community: "nfl"))
+        #expect(PostSource.isPostURL("https://www.reddit.com/r/nfl/"))
+    }
+
+    @Test func placesWithoutAFeed() {
+        #expect(SourceSearch.accountLink("https://www.instagram.com/natgeo/") == .instagram(handle: "natgeo"))
+        #expect(SourceSearch.accountLink("https://www.instagram.com/p/abc/") == .noFeed(place: "Instagram"))
+        #expect(SourceSearch.accountLink("https://www.threads.net/@zuck") == .noFeed(place: "Threads"))
+        #expect(SourceSearch.accountLink("https://www.tiktok.com/@natgeo") == .noFeed(place: "TikTok"))
+        #expect(SourceSearch.accountLink("https://bsky.app/profile/simonwillison.net") == .bluesky(handle: "simonwillison.net"))
+        #expect(FeedDetection.noFeedPlace("https://stratechery.com/") == nil)
+    }
+
+    @Test func detectorSaysWhenAPlaceHasNoFeed() async {
+        let detector = DefaultFeedDetector(parser: DefaultFeedParser(), scraper: DefaultPageScraper(), fetch: { _, _ in throw HTTPError.timedOut })
+        await #expect(throws: FeedDetectionError("Instagram has no public feed, so its posts can't be followed here.")) {
+            _ = try await detector.detect("https://www.instagram.com/natgeo/")
+        }
+    }
+
+    @Test func blueskySearchAddsFollowerCounts() async throws {
+        let accounts = DefaultSocialAccounts(fetch: { url, _ in
+            let body = url.contains("searchActors")
+                ? #"{"actors":[{"did":"did:plc:abc","handle":"simonwillison.net","displayName":"Simon Willison"}]}"#
+                : #"{"profiles":[{"did":"did:plc:abc","handle":"simonwillison.net","displayName":"Simon Willison","avatar":"https://cdn/a.jpg","followersCount":51536}]}"#
+            return (Data(body.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        }, redditPage: { _ in "" })
+        let r = try await accounts.bluesky("simon willison")
+        #expect(r.first?.feedUrl == "https://bsky.app/profile/did:plc:abc/rss")
+        #expect(r.first?.audience == "52K followers")
+        #expect(r.first?.place == .bluesky)
+    }
+
+    @Test func mastodonSearchLeavesOutBots() async throws {
+        let body = #"{"accounts":[{"acct":"simon@simonwillison.net","display_name":"Simon Willison","url":"https://fedi.simonwillison.net/@simon","avatar_static":"https://a/b.png","followers_count":28300,"bot":false},{"acct":"robot","display_name":"Robot","url":"https://x.example/@robot","followers_count":5,"bot":true}]}"#
+        let accounts = DefaultSocialAccounts(fetch: { url, _ in
+            (Data(body.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        }, redditPage: { _ in "" })
+        let r = try await accounts.mastodon("simon willison")
+        #expect(r.map(\.feedUrl) == ["https://fedi.simonwillison.net/@simon.rss"])
+        #expect(r.first?.handle == "simon@simonwillison.net")
+    }
+
+    @Test func redditCommunitiesPage() {
+        let html = """
+            <div class="thing subreddit"><a class="title" href="https://www.reddit.com/r/nfl/">r/nfl: NFL: National Football League Discussion</a></div>
+            <div class="thing subreddit"><a class="title" href="https://www.reddit.com/user/nfl/">u/nfl: NFL</a></div>
+            <div class="thing subreddit over18"><a class="title" href="https://www.reddit.com/r/adult/">r/adult: Adult</a></div>
+            <div class="thing subreddit"><a class="title" href="https://www.reddit.com/r/NFL_Draft/">r/NFL_Draft</a></div>
+            """
+        let found = DefaultSocialAccounts.communities(inSearch: html)
+        #expect(found.map(\.title) == ["r/nfl", "r/NFL_Draft"])
+        #expect(found[0].subtitle == "NFL: National Football League Discussion")
+        #expect(found[0].feedUrl == "https://www.reddit.com/r/nfl/.rss")
+        #expect(found[1].subtitle == "Community")
+    }
+
+    @Test func instagramPreview() {
+        let html = #"<meta property="og:title" content="National Geographic (&#064;natgeo) &#x2022; Instagram photos and videos"><meta property="og:description" content="268M Followers, 196 Following, 32K Posts"><meta property="og:image" content="https://cdn/a.jpg">"#
+        let r = DefaultSocialAccounts.instagramProfile(html: html)
+        #expect(r?.title == "National Geographic")
+        #expect(r?.handle == "natgeo")
+        #expect(r?.audience == "268M followers")
+        #expect(r?.canFollow == false)
     }
 
     @Test func subscriberCounts() {

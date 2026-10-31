@@ -1,7 +1,7 @@
 import Foundation
 
 /// How the desktop sidebar groups and orders sources (pure; the app's AppModel calls these).
-/// A source is in exactly one place: Pinned, Hidden, or its folder (nil = Unfiled). Topics are in none of them
+/// A source is in exactly one place: Pinned, Hidden, or its folder (nil = No Folder). Topics are in none of them
 /// (they have their own sidebar group, `topics`), so they are left out of every list here.
 public enum SourceList {
     /// Topics in sidebar order: creation order (position), then keyword.

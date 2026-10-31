@@ -35,6 +35,11 @@ while true; do
     # Bundle id keeps the app's original name (see App/project.yml).
     osascript -e 'tell application id "com.gauthamv.openfeed" to quit' >/dev/null 2>&1
     for i in {1..20}; do pgrep -qf "^$APP/Contents/MacOS/OpenDispatch" || break; sleep 0.5; done
+    # An open sheet makes the app ignore the polite quit, and nothing in it needs saving by hand.
+    if pgrep -qf "^$APP/Contents/MacOS/OpenDispatch"; then
+      pkill -TERM -f "^$APP/Contents/MacOS/OpenDispatch"
+      for i in {1..10}; do pgrep -qf "^$APP/Contents/MacOS/OpenDispatch" || break; sleep 0.5; done
+    fi
     if pgrep -qf "^$APP/Contents/MacOS/OpenDispatch"; then
       notify "Could not quit the running app; install skipped"
     else

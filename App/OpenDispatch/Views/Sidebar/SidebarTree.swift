@@ -19,7 +19,7 @@ enum SidebarDrag: Equatable {
 }
 
 /// Where a drop would land (sidebar.tsx `Over`): before a source row, at the end of a folder
-/// (nil = Unfiled; for a folder drag, after that folder), on a folder header (first in that folder for
+/// (nil = No Folder; for a folder drag, after that folder), on a folder header (first in that folder for
 /// sources; before it for folders), or in the gap between the last folder and the unfiled list (last
 /// for folders; first unfiled for sources). Topics move only among topics: before a topic row, or after the last one.
 enum SidebarDrop: Equatable {
@@ -41,7 +41,7 @@ enum SidebarTree {
 
     /// New full order of every source after dropping `id` at `target`, or nil when nothing changes
     /// (or the target is invalid). `folderOrder` is the folders top to bottom; `contents` maps a folder id
-    /// (nil = Unfiled) to its source ids in display order.
+    /// (nil = No Folder) to its source ids in display order.
     static func dropSource(id: Int64, at target: SidebarDrop, folderOrder: [Int64], contents: [Int64?: [Int64]]) -> [Entry]? {
         let lanes: [Int64?] = folderOrder.map { Optional($0) } + [nil]
         let original = lanes.flatMap { fid in (contents[fid] ?? []).map { Entry(id: $0, folderId: fid) } }

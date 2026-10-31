@@ -51,7 +51,7 @@ enum XAccounts {
     static func result(name: String, handle: String, followers: Int?, avatar: String?) -> SourceSearchResult {
         let url = "\(XPages.origin)/\(handle)"
         return SourceSearchResult(title: name, subtitle: "X", feedUrl: url, siteUrl: url, kind: .page, imageUrl: avatar,
-                                  handle: handle, audience: followers.map(Self.followers))
+                                  handle: handle, audience: followers.map(Self.followers), place: .x)
     }
 
     /// "4.4M followers", "248K followers", "1.2K followers".

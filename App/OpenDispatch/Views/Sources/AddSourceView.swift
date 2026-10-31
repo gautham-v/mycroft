@@ -3,15 +3,16 @@ import SwiftUI
 
 /// "Add sources" sheet: search by name, or paste one or more links.
 ///
-/// A name searches X accounts, YouTube channels, feeds (sites, newsletters) and podcasts as you type, each landing on
-/// its own, with chips to show one place; one word (or an @handle) is tried as an X handle, and any other name finds X accounts
-/// only while the app is signed in to X. A link shows one row for it above the results, by name when it is an X or YouTube
-/// account; several links (one per line, or separated by spaces or commas) show one row each with Add All. Adding doesn't close the sheet or wait for the feed: the row shows
-/// progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
-/// With nothing typed, the sheet explains what works and offers OPML import. "Add to" under the field picks the
-/// folder new sources go into (Unfiled by default; a folder's "Add Source to <Folder>…" preselects it through
+/// A name searches X accounts, YouTube channels, Bluesky, Mastodon, Reddit communities, feeds (sites, newsletters) and podcasts as you
+/// type, each landing on its own, in one list ordered by who was meant and who is followed (`SourceRanking`). Chips narrow it by what you'd
+/// read, the kinds the sidebar lists, so another place needs no new chip. One word (or an @handle) is tried as an X handle, and any other name
+/// finds X accounts only while the app is signed in to X. A link shows one row for it above the results, by name when it is an account;
+/// several links (one per line, or separated by spaces or commas) show one row each with Add All. Adding doesn't close the sheet or wait
+/// for the feed: the row shows progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
+/// With nothing typed, the sheet suggests starter sources (`StarterSources`) and offers OPML import. "Add to" in the footer picks the
+/// folder new sources go into (No Folder by default; a folder's "Add Source to <Folder>…" preselects it through
 /// `AppModel.pendingAddSourceFolderID`), and its New Folder… makes one and picks it. Picking a folder also moves
-/// what this sheet already added to Unfiled.
+/// what this sheet already added to No Folder.
 struct AddSourceView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +21,15 @@ struct AddSourceView: View {
     @State private var results: [SourceSearchResult] = []
     @State private var channels: [SourceSearchResult] = []
     @State private var xAccounts: [SourceSearchResult] = []
+    @State private var bluesky: [SourceSearchResult] = []
+    @State private var mastodon: [SourceSearchResult] = []
+    @State private var reddit: [SourceSearchResult] = []
+    /// Channels whose videos only play on YouTube, by feed URL.
+    @State private var youtubeOnly: Set<String> = []
+    /// Past the first results.
+    @State private var showsAll = false
+    /// The starter pack the empty sheet shows, by name; nil is the first with anything left to add.
+    @State private var suggestionPack: String?
     /// Who a pasted account link is, and the link.
     @State private var resolved: (link: String, account: SourceSearchResult)?
     @State private var filter = SourceFilter.all
@@ -29,7 +39,7 @@ struct AddSourceView: View {
     @State private var searchError = false
     @State private var importing = false
     @State private var importStatus: SettingsOPMLStatus?
-    /// The folder new sources go into; nil is Unfiled.
+    /// The folder new sources go into; nil is No Folder.
     @State private var folderID: Int64?
     /// The folder each add from this sheet went into (by URL), so the footer can say where they went.
     @State private var addedTo: [String: Int64?] = [:]
@@ -44,8 +54,8 @@ struct AddSourceView: View {
     private var links: [String] { SourceSearch.links(in: query) }
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var targetFolder: Folder? { folderID.flatMap { id in model.folders.first { $0.id == id } } }
-    private var sections: SourceSearchSections {
-        SourceSearch.sections(query: trimmed, feeds: results, channels: channels, xAccounts: xAccounts)
+    private var ranked: [SourceSearchResult] {
+        SourceRanking.rank(query: trimmed, feeds: results, accounts: channels + xAccounts + bluesky + mastodon + reddit)
     }
     private var resolvedAccount: SourceSearchResult? {
         guard let resolved, links == [resolved.link] else { return nil }
@@ -60,8 +70,6 @@ struct AddSourceView: View {
             header
             field
                 .padding(.top, 12)
-            destination
-                .padding(.top, 10)
             if links.isEmpty, !trimmed.isEmpty {
                 filterChips
                     .padding(.top, 10)
@@ -77,6 +85,13 @@ struct AddSourceView: View {
             .frame(height: min(contentHeight, Self.maxContentHeight))
             #endif
             .padding(.top, 4)
+            if let folderError {
+                Text(folderError)
+                    .font(OFFont.ui(12))
+                    .foregroundStyle(.ofDanger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 8)
+            }
             footer
         }
         .padding(20)
@@ -101,6 +116,8 @@ struct AddSourceView: View {
         .onChange(of: folderID) { _, folder in
             if let folder { moveUnfiledAdds(to: folder) }
         }
+        .onChange(of: trimmed) { showsAll = false }
+        .onChange(of: filter) { showsAll = false }
         .task(id: "\(trimmed)|\(signedInToX)") { await search() }
         .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
             WebSignInView(target: target, onDone: {})
@@ -174,53 +191,44 @@ struct AddSourceView: View {
         )
     }
 
-    /// "Add to" and a menu of Unfiled, the folders and New Folder…
+    /// "Add to" and a menu of No Folder, the folders and New Folder…
     private var destination: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text("Add to")
-                    .font(OFFont.ui(destinationSize))
-                    .foregroundStyle(.ofMuted)
-                Menu {
-                    Picker("Add to", selection: $folderID) {
-                        Text("Unfiled").tag(Int64?.none)
-                        ForEach(model.orderedFolders) { folder in
-                            Text(folder.title).tag(Int64?.some(folder.id))
-                        }
+        HStack(spacing: 8) {
+            Text("Add to")
+                .font(OFFont.ui(destinationSize))
+                .foregroundStyle(.ofMuted)
+            Menu {
+                Picker("Add to", selection: $folderID) {
+                    Text("No Folder").tag(Int64?.none)
+                    ForEach(model.orderedFolders) { folder in
+                        Text(folder.title).tag(Int64?.some(folder.id))
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                    Divider()
-                    Button("New Folder\u{2026}") {
-                        newFolderName = ""
-                        namingFolder = true
-                    }
-                } label: {
-                    #if os(macOS)
-                    Text(targetFolder?.title ?? "Unfiled")
-                    #else
-                    HStack(spacing: 4) {
-                        Text(targetFolder?.title ?? "Unfiled")
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .font(OFFont.ui(destinationSize, .medium))
-                    .foregroundStyle(.ofAccent)
-                    #endif
                 }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                Divider()
+                Button("New Folder\u{2026}") {
+                    newFolderName = ""
+                    namingFolder = true
+                }
+            } label: {
                 #if os(macOS)
-                .fixedSize()
+                Text(targetFolder?.title ?? "No Folder")
+                #else
+                HStack(spacing: 4) {
+                    Text(targetFolder?.title ?? "No Folder")
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .font(OFFont.ui(destinationSize, .medium))
+                .foregroundStyle(.ofAccent)
                 #endif
-                .accessibilityLabel("Add to \(targetFolder?.title ?? "Unfiled")")
             }
-            if let folderError {
-                Text(folderError)
-                    .font(OFFont.ui(12))
-                    .foregroundStyle(.ofDanger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            #if os(macOS)
+            .fixedSize()
+            #endif
+            .accessibilityLabel("Add to \(targetFolder?.title ?? "No Folder")")
         }
-        .padding(.horizontal, 4)
     }
 
     private var destinationSize: CGFloat {
@@ -251,54 +259,63 @@ struct AddSourceView: View {
                     .padding(.horizontal, 8)
                 }
                 if let resolvedAccount {
-                    row(resolvedAccount, filter: .all)
+                    row(resolvedAccount)
                 } else {
                     ForEach(links, id: \.self) { link in
                         AddSourceRow(title: Self.shortLink(link), subtitle: "Link", host: URLHost.host(of: link),
-                                     imageUrl: nil, url: link, inLibrary: false, add: add)
+                                     imageUrl: nil, url: link, inLibrary: false, note: FeedDetection.noFeedPlace(link).map(Self.noFeedNote), add: add)
                     }
                 }
                 if links.count == 1, resolvedAccount == nil, !results.isEmpty {
                     sectionLabel("Search results").padding(.horizontal, 8).padding(.top, 8)
-                    ForEach(results) { row($0, filter: .all) }
+                    ForEach(results) { row($0) }
                 }
             }
         }
     }
 
-    /// What a name found, in the chosen place.
+    /// What a name found, of the chosen kind.
     @ViewBuilder
     private var nameResults: some View {
-        let sections = sections
-        let shown = filter.results(in: sections)
+        let shown = filter.results(in: ranked)
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(shown) { row($0, filter: filter) }
-            if needsXSignIn, filter == .all || filter == .x {
+            ForEach(showsAll ? shown : Array(shown.prefix(Self.firstResults))) { row($0) }
+            if !showsAll, shown.count > Self.firstResults + 1 {
+                Button("Show \(shown.count - Self.firstResults) more") { showsAll = true }
+                    .buttonStyle(.plain)
+                    .font(OFFont.ui(13, .medium))
+                    .foregroundStyle(.ofAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+            }
+            if needsXSignIn, filter == .all || filter == .posts {
                 xSignInHint
             }
-            if shown.isEmpty, !searching, !(needsXSignIn && filter == .x) {
+            if shown.isEmpty, !searching, !(needsXSignIn && filter == .posts) {
                 note(emptyNote)
             }
         }
     }
 
-    private func row(_ result: SourceSearchResult, filter: SourceFilter) -> some View {
-        AddSourceRow(title: result.title, subtitle: Self.subtitle(result, filter: filter), host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
+    private func row(_ result: SourceSearchResult) -> some View {
+        AddSourceRow(title: result.title, subtitle: Self.subtitle(result), host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
                      imageUrl: result.imageUrl, url: result.feedUrl, inLibrary: model.hasSource(feedUrl: result.feedUrl),
-                     roundIcon: result.handle != nil, add: add)
+                     roundIcon: result.handle != nil, placeHost: result.imageUrl == nil ? nil : result.place.host,
+                     warning: youtubeOnly.contains(result.feedUrl) ? "Plays on YouTube only" : nil,
+                     note: result.canFollow ? nil : Self.noFeedNote(result.place.name), add: add)
     }
 
-    /// All, X, YouTube, Sites and Podcasts, each with its count.
+    /// All, Posts, Video, Articles and Podcasts, each with its count.
     private var filterChips: some View {
-        let sections = sections
+        let ranked = ranked
         return ScrollView(.horizontal) {
             HStack(spacing: 6) {
-                ForEach(SourceFilter.allCases) { place in
-                    let selected = filter == place
-                    Button { filter = place } label: {
+                ForEach(SourceFilter.allCases) { kind in
+                    let selected = filter == kind
+                    Button { filter = kind } label: {
                         HStack(spacing: 5) {
-                            Text(place.title)
-                            Text("\(place.results(in: sections).count)").monospacedDigit().opacity(0.6)
+                            Text(kind.title)
+                            Text("\(kind.results(in: ranked).count)").monospacedDigit().opacity(0.6)
                         }
                         .font(OFFont.ui(chipFontSize, .medium))
                         .foregroundStyle(selected ? Color.ofSurface : Color.ofBody)
@@ -337,28 +354,59 @@ struct AddSourceView: View {
             searchError
                 ? "Search isn't available right now. Paste the site's link instead."
                 : "No matches for \u{201C}\(trimmed)\u{201D}. Paste the site's link instead."
-        case .x: "No X accounts for \u{201C}\(trimmed)\u{201D}."
-        case .youtube: "No YouTube channels for \u{201C}\(trimmed)\u{201D}."
-        case .sites: "No sites for \u{201C}\(trimmed)\u{201D}."
+        case .posts: "No accounts or communities for \u{201C}\(trimmed)\u{201D}."
+        case .video: "No YouTube channels for \u{201C}\(trimmed)\u{201D}."
+        case .articles: "No sites for \u{201C}\(trimmed)\u{201D}."
         case .podcasts: "No podcasts for \u{201C}\(trimmed)\u{201D}."
         }
     }
 
+    /// Starter packs that still have something to add, and what can be added at all.
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Find sites, newsletters, YouTube channels, X accounts and podcasts by name or @handle, or paste a link. Paste several at once to add them together.")
-                .font(OFFont.ui(13))
-                .foregroundStyle(.ofMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("No feed? A news or blog listing page is checked for new posts.")
-                .font(OFFont.ui(12))
-                .foregroundStyle(.ofFaint)
-                .fixedSize(horizontal: false, vertical: true)
+        let packs = StarterSources.packs.compactMap { pack -> StarterPack? in
+            let left = pack.sources.filter { !model.hasSource(feedUrl: $0.feedUrl) || model.sourceAdds[$0.feedUrl] != nil }
+            return left.isEmpty ? nil : StarterPack(name: pack.name, sources: left)
+        }
+        let shown = packs.first { $0.name == suggestionPack } ?? packs.first
+        return VStack(alignment: .leading, spacing: 10) {
+            ReaderFlowLayout(spacingX: 10, spacingY: 4) {
+                ForEach([SourcePlace.x, .youtube, .bluesky, .reddit, .mastodon], id: \.self) { place in
+                    HStack(spacing: 4) {
+                        SourceBadge(host: place.host ?? "", title: place.name, size: 12)
+                        Text(place.name)
+                    }
+                }
+                Label("Podcasts", systemImage: "mic").labelStyle(.titleAndIcon)
+                Label("Any site", systemImage: "globe").labelStyle(.titleAndIcon)
+            }
+            .font(OFFont.ui(12))
+            .foregroundStyle(.ofMuted)
+            if let shown {
+                HStack(spacing: 2) {
+                    ForEach(packs) { pack in
+                        Button(pack.name) { suggestionPack = pack.name }
+                            .buttonStyle(.plain)
+                            .font(OFFont.ui(destinationSize, pack == shown ? .medium : .regular))
+                            .foregroundStyle(pack == shown ? Color.ofInk : Color.ofMuted)
+                            .padding(.horizontal, 9)
+                            .frame(height: chipHeight)
+                            .background(pack == shown ? Color.ofSelection : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .contentShape(Rectangle())
+                    }
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(shown.sources) { source in
+                        AddSourceRow(title: source.title, subtitle: source.host, host: source.host, imageUrl: nil, url: source.feedUrl,
+                                     inLibrary: model.hasSource(feedUrl: source.feedUrl), add: add)
+                    }
+                }
+                .padding(.horizontal, -4)
+            }
             Button("Import from another reader (OPML)…") { importing = true }
                 .buttonStyle(.plain)
                 .font(OFFont.ui(13, .medium))
                 .foregroundStyle(.ofAccent)
-                .padding(.top, 4)
+                .padding(.top, 2)
             if let importStatus {
                 Text(importStatus.text)
                     .font(OFFont.ui(12))
@@ -373,11 +421,13 @@ struct AddSourceView: View {
     private var footer: some View {
         let adding = model.sourceAdds.values.filter { $0 == .adding }.count
         let added = model.sourceAdds.values.filter { $0 == .added }.count
-        return HStack(spacing: 8) {
-            Text(Self.progress(adding: adding, added: added, folder: addsFolder))
+        return HStack(spacing: 12) {
+            destination
+            Text(Self.progress(adding: adding, added: added))
                 .font(OFFont.ui(13))
                 .foregroundStyle(.ofMuted)
                 .monospacedDigit()
+                .lineLimit(1)
             Spacer()
             Button {
                 dismiss()
@@ -447,24 +497,14 @@ struct AddSourceView: View {
 
     // MARK: Actions
 
-    /// The folder every add in progress or done went into, when they all went into the same one (nil when
-    /// they went to Unfiled, to different folders, or some started outside this sheet).
-    private var addsFolder: String? {
-        let urls = model.sourceAdds.filter { $0.value == .adding || $0.value == .added }.map(\.key)
-        guard !urls.isEmpty, urls.allSatisfy({ addedTo[$0] != nil }) else { return nil }
-        let ids = Set(urls.map { addedTo[$0]! })
-        guard ids.count == 1, let id = ids.first!, let folder = model.folders.first(where: { $0.id == id }) else { return nil }
-        return folder.title
-    }
-
     /// Starts adding `url` to the chosen folder.
     private func add(_ url: String) {
         addedTo[url] = folderID
         model.beginAddSource(url: url, folderID: folderID)
     }
 
-    /// Unfiled is where the menu starts, not a choice, and Return adds before the menu under the field has been
-    /// looked at, so the first folder picked takes what went to Unfiled. What went to a folder stays there.
+    /// No Folder is where the menu starts, not a choice, and Return adds before the menu under the field has been
+    /// looked at, so the first folder picked takes what went to No Folder. What went to a folder stays there.
     private func moveUnfiledAdds(to folder: Int64) {
         for (url, target) in addedTo where target == nil {
             addedTo[url] = folder
@@ -495,7 +535,12 @@ struct AddSourceView: View {
         }
     }
 
-    /// How much longer a name waits before asking X's People search: it opens a page in a hidden web view, which can't be
+    /// How many results show before Show More.
+    private static let firstResults = 8
+    /// How many channels are asked whether their videos play here.
+    private static let checkedChannels = 3
+
+    /// How much longer a name waits before asking X's People search or Reddit: each opens a page in a hidden web view, which can't be
     /// called off once started, so it isn't asked mid-word like the others.
     private static let xSearchDelay: Duration = .milliseconds(600)
 
@@ -512,8 +557,7 @@ struct AddSourceView: View {
         searching = true
         defer { if !Task.isCancelled { searching = false } }
         if let link = links.first {
-            channels = []
-            xAccounts = []
+            clearAccounts()
             if let account = SourceSearch.accountLink(link) {
                 results = []
                 searchError = false
@@ -528,18 +572,37 @@ struct AddSourceView: View {
             return
         }
         resolved = nil
+        if let community = SourceSearch.redditCommunity(in: q) {
+            // Typed as a community: nothing else is meant.
+            clearAccounts()
+            results = []
+            searchError = false
+            reddit = [DefaultSocialAccounts.community(community)]
+            await searchReddit(q)
+            return
+        }
         async let feeds: Void = searchFeeds(SourceSearch.name(in: q))
         async let youtube: Void = searchChannels(q)
         async let x: Void = searchX(q)
-        _ = await (feeds, youtube, x)
+        async let blueskyAccounts: Void = searchBluesky(q)
+        async let mastodonAccounts: Void = searchMastodon(q)
+        async let communities: Void = searchReddit(q)
+        _ = await (feeds, youtube, x, blueskyAccounts, mastodonAccounts, communities)
     }
 
     private func clearResults() {
         results = []
-        channels = []
-        xAccounts = []
+        clearAccounts()
         resolved = nil
         searchError = false
+    }
+
+    private func clearAccounts() {
+        channels = []
+        xAccounts = []
+        bluesky = []
+        mastodon = []
+        reddit = []
     }
 
     private func searchFeeds(_ q: String) async {
@@ -559,21 +622,44 @@ struct AddSourceView: View {
         let found = (try? await model.searchChannels(q)) ?? []
         guard !Task.isCancelled else { return }
         channels = found
+        // Ask about the ones near the top, which is all anyone reads.
+        let top = ranked.filter { $0.place == .youtube }.prefix(Self.checkedChannels)
+        for channel in top {
+            guard let plays = await model.channelPlaysHere(feedUrl: channel.feedUrl), !Task.isCancelled else { continue }
+            if plays { youtubeOnly.remove(channel.feedUrl) } else { youtubeOnly.insert(channel.feedUrl) }
+        }
+    }
+
+    private func searchBluesky(_ q: String) async {
+        let found = (try? await model.searchBluesky(q)) ?? []
+        guard !Task.isCancelled else { return }
+        bluesky = found
+    }
+
+    private func searchMastodon(_ q: String) async {
+        let found = (try? await model.searchMastodon(q)) ?? []
+        guard !Task.isCancelled else { return }
+        mastodon = found
+    }
+
+    /// Reddit's search opens a page in a hidden web view, like X's People search, so it waits the same way. A failure keeps what's there.
+    private func searchReddit(_ q: String) async {
+        try? await Task.sleep(for: Self.xSearchDelay)
+        guard !Task.isCancelled, let found = try? await model.searchReddit(q), !Task.isCancelled else { return }
+        let typed = reddit.filter { typedCommunity in !found.contains { $0.feedUrl.lowercased() == typedCommunity.feedUrl.lowercased() } }
+        reddit = typed + found
     }
 
     /// The account whose handle this could be, then, signed in, the accounts named this. An @handle asks only for that account.
     private func searchX(_ q: String) async {
-        var found: [SourceSearchResult] = []
-        if let handle = SourceSearch.xHandle(in: q), let profile = (try? await model.xProfile(handle: handle)) ?? nil {
-            found = [profile]
-        }
+        var profile: SourceSearchResult?
+        if let handle = SourceSearch.xHandle(in: q) { profile = (try? await model.xProfile(handle: handle)) ?? nil }
         guard !Task.isCancelled else { return }
-        xAccounts = found
+        xAccounts = profile.map { [$0] } ?? []
         guard signedInToX, !q.hasPrefix("@") else { return }
         try? await Task.sleep(for: Self.xSearchDelay)
         guard !Task.isCancelled, let named = try? await model.searchXAccounts(q), !Task.isCancelled else { return }
-        let handles = Set(found.compactMap { $0.handle?.lowercased() })
-        xAccounts = found + named.filter { !handles.contains($0.handle?.lowercased() ?? "") }
+        xAccounts = SourceSearch.mergedXAccounts(profile: profile, named: named)
     }
 
     private func importFile(_ url: URL) async {
@@ -603,13 +689,20 @@ struct AddSourceView: View {
         }
     }
 
-    /// A result's second line: "YouTube · @mkbhd · 21.4M subscribers", "Podcast · Publisher", a site's host. Under a chip for the
-    /// place the place's name goes.
-    static func subtitle(_ result: SourceSearchResult, filter: SourceFilter) -> String {
-        if result.kind == .podcast { return "Podcast · \(result.subtitle)" }
-        guard let handle = result.handle else { return result.subtitle }
-        let account = (["@" + handle] + [result.audience].compactMap { $0 }).joined(separator: " · ")
-        return filter == .all ? "\(result.isXAccount ? "X" : "YouTube") · \(account)" : account
+    /// A result's second line: "YouTube · @mkbhd · 21.4M subscribers", "Podcast · Publisher", "Reddit · About it", a site's host.
+    static func subtitle(_ result: SourceSearchResult) -> String {
+        switch result.place {
+        case .site: return result.subtitle
+        case .podcast: return "Podcast · \(result.subtitle)"
+        case .reddit: return "Reddit · \(result.subtitle)"
+        case .x, .youtube, .bluesky, .mastodon, .instagram:
+            let parts = [result.place.name, result.handle.map { "@" + $0 }, result.audience]
+            return parts.compactMap { $0 }.joined(separator: " · ")
+        }
+    }
+
+    static func noFeedNote(_ place: String) -> String {
+        "\(place) has no public feed, so its posts can't be followed here."
     }
 
     /// A link without its scheme or a bare trailing slash, for the row's second line.
@@ -621,29 +714,29 @@ struct AddSourceView: View {
     }
 }
 
-/// The places a name's results can be narrowed to.
+/// The kinds a name's results can be narrowed to, the ones the sidebar lists.
 enum SourceFilter: String, CaseIterable, Identifiable {
-    case all, x, youtube, sites, podcasts
+    case all, posts, video, articles, podcasts
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .all: "All"
-        case .x: "X"
-        case .youtube: "YouTube"
-        case .sites: "Sites"
+        case .posts: "Posts"
+        case .video: "Video"
+        case .articles: "Articles"
         case .podcasts: "Podcasts"
         }
     }
 
-    func results(in sections: SourceSearchSections) -> [SourceSearchResult] {
+    func results(in ranked: [SourceSearchResult]) -> [SourceSearchResult] {
         switch self {
-        case .all: sections.all
-        case .x: sections.x
-        case .youtube: sections.youtube
-        case .sites: sections.sites
-        case .podcasts: sections.podcasts
+        case .all: ranked
+        case .posts: ranked.filter { $0.readType == .post }
+        case .video: ranked.filter { $0.readType == .video }
+        case .articles: ranked.filter { $0.readType == .article }
+        case .podcasts: ranked.filter { $0.readType == .podcast }
         }
     }
 }
@@ -659,6 +752,12 @@ private struct AddSourceRow: View {
     let inLibrary: Bool
     /// A person's or channel's avatar rather than a site's or show's square.
     var roundIcon = false
+    /// The place's favicon on the avatar's corner, for a row whose avatar doesn't say where it is.
+    var placeHost: String?
+    /// Worth knowing before adding it ("Plays on YouTube only").
+    var warning: String?
+    /// Why it can't be added; the row then has no add button.
+    var note: String?
     /// Starts adding a URL to the sheet's chosen folder.
     let add: (String) -> Void
 
@@ -680,9 +779,22 @@ private struct AddSourceRow: View {
                         .font(OFFont.ui(12))
                         .foregroundStyle(.ofMuted)
                         .lineLimit(1)
+                    if let warning {
+                        Label(warning, systemImage: "arrow.up.right")
+                            .labelStyle(.titleAndIcon)
+                            .font(OFFont.ui(12))
+                            .foregroundStyle(.ofMuted)
+                            .lineLimit(1)
+                    }
+                    if let note {
+                        Text(note)
+                            .font(OFFont.ui(12))
+                            .foregroundStyle(.ofMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 8)
-                button
+                if note == nil { button }
             }
             if case .failed(let message) = state {
                 Text(message)
@@ -708,6 +820,14 @@ private struct AddSourceRow: View {
             }
             .frame(width: 28, height: 28)
             .clipShape(RoundedRectangle(cornerRadius: roundIcon ? 14 : 8, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if let placeHost {
+                    SourceBadge(host: placeHost, title: "", size: 13)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.ofSurface, lineWidth: 1.5))
+                        .offset(x: 4, y: 3)
+                }
+            }
         } else {
             SourceBadge(host: host, title: title, size: 28)
         }

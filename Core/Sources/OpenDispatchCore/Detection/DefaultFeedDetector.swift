@@ -43,6 +43,19 @@ public struct DefaultFeedDetector: FeedDetector {
         if FeedDetection.isYouTubeURL(url) {
             return try await detectYouTube(url)
         }
+        if let feedURL = FeedDetection.redditFeedURL(url) {
+            guard var r = try await tryFeed(feedURL, kind: .rss) else {
+                throw FeedDetectionError("Reddit didn't answer for that page. Try again in a moment.")
+            }
+            // Reddit's page refuses the app, and its feed's own title is a description.
+            let path = feedURL.dropFirst(RedditPages.origin.count).split(separator: "/").map(String.init)
+            r.title = path[0] == "r" ? "r/\(path[1])" : "u/\(path[1])"
+            r.url = "\(RedditPages.origin)/\(path[0])/\(path[1])/"
+            return r
+        }
+        if let place = FeedDetection.noFeedPlace(url) {
+            throw FeedDetectionError("\(place) has no public feed, so its posts can't be followed here.")
+        }
 
         let (data, res, finalURL) = try await fetchUserURL(url)
         guard Self.isOK(res) else { throw HTTPError.status(res.statusCode) }

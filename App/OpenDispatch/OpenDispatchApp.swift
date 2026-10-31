@@ -41,7 +41,10 @@ struct OpenDispatchApp: App {
                 .environment(model)
                 .environment(speech)
                 .environment(highlights)
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
+        // A link from outside (opendispatch://…) goes to the window that's open instead of opening another.
+        .handlesExternalEvents(matching: ["*"])
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 820)

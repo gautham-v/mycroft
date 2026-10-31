@@ -10,7 +10,7 @@ import SwiftUI
 /// sheet with it), Import OPML and New folder. Then each folder is a muted label over a card of its
 /// sources (badge, title, host); the label opens everything in that folder, a source row opens that
 /// source's feed (pushed, with back to Sources; from the Settings sheet, the sheet closes and the Feed
-/// shows it). Unfiled comes last and shows only when it has sources. Beyond the web page, rows swipe to
+/// shows it). No Folder comes last and shows only when it has sources. Beyond the web page, rows swipe to
 /// delete and long-press for Move to / Rename / Open site / Delete, and folder labels long-press for
 /// Rename / Delete.
 struct SourcesView: View {
@@ -140,7 +140,7 @@ struct SourcesView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
-                Text("Its sources move to Unfiled.")
+                Text("Its sources move to No Folder.")
             }
     }
 
@@ -209,7 +209,7 @@ struct SourcesView: View {
                         sourceRow(source).cardRow(.at(index, of: unfiled.count))
                     }
                 } header: {
-                    sectionLabel("Unfiled")
+                    sectionLabel("No Folder")
                         .listRowInsets(EdgeInsets())
                         .background(Color.ofSurface)
                 }
@@ -314,7 +314,7 @@ struct SourcesView: View {
             ForEach(model.orderedFolders) { folder in
                 Toggle(folder.title, isOn: moveBinding(source, to: folder.id))
             }
-            Toggle("Unfiled", isOn: moveBinding(source, to: nil))
+            Toggle("No Folder", isOn: moveBinding(source, to: nil))
             Divider()
             Button("New folder with this") { open(.newFolder(withSource: source.id)) }
         } label: {

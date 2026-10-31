@@ -582,7 +582,7 @@ func moveSource(id: Int64, toFolder: Int64?) async throws
 func reorderSources(_ order: [SourceOrderEntry]) async        // optimistic; the full list of (id, folder) in display order
 @discardableResult func createFolder(title: String, withSource: Int64? = nil) async throws -> Folder
 func renameFolder(id: Int64, title: String) async throws
-func deleteFolder(id: Int64) async throws          // its sources become Unfiled; goes home if it was open
+func deleteFolder(id: Int64) async throws          // its sources become No Folder; goes home if it was open
 func reorderFolders(_ ids: [Int64]) async          // optimistic
 
 // OPML
@@ -666,7 +666,7 @@ Design (App/OpenDispatch/Design):
 | Notify on new posts per source (app only, not in the web app) | `sources.notify_since`, Queries.setSourceNotify / takeNewPostAlerts, Model/PostNotifications.swift (done) |
 | Three-pane desktop layout, collapsible sidebar (⌘\), full-screen reader (⇧⌘F) | RootView (done) + Sidebar/Feed/Reader views |
 | macOS menus: Add Source ⌘N, Refresh ⌘R, Search ⌘F, Sidebar ⌘\, Full-screen ⇧⌘F, Shortcuts ⌘/ | OpenDispatchApp.swift OpenDispatchCommands (done) |
-| Sidebar: logo + "OpenDispatch", hide-sidebar button, views All/Saved/Articles/Posts/Video/Podcasts, folders with disclosure (collapsed state persisted), Unfiled, source rows (badge, title, error state), context menus (Rename, New folder, Delete folder (keep sources); Move to folder ✓, Unfiled, New folder with this), inline rename / new folder field, drag-and-drop of sources between folders and folder reordering, footer "Add source" + Settings (sidebar.tsx, source-tree.ts) | Views/Sidebar/SidebarView.swift (+ files in Views/Sidebar/) |
+| Sidebar: logo + "OpenDispatch", hide-sidebar button, views All/Saved/Articles/Posts/Video/Podcasts, folders with disclosure (collapsed state persisted), No Folder, source rows (badge, title, error state), context menus (Rename, New folder, Delete folder (keep sources); Move to folder ✓, No Folder, New folder with this), inline rename / new folder field, drag-and-drop of sources between folders and folder reordering, footer "Add source" + Settings (sidebar.tsx, source-tree.ts) | Views/Sidebar/SidebarView.swift (+ files in Views/Sidebar/) |
 | List header desktop: title, "updated X ago", search button/field, refresh button (spins); phone: large title, subline, back chevron in a source feed, search, refresh, view chips All/Articles/Posts/Video/Podcasts (openfeed-app.tsx, search-field.tsx) | Views/Feed/ItemListView.swift (+ ListHeader, SearchField, Chips in Views/Feed/) |
 | Item rows: 16pt badge, source · relative time, title, 64×42 thumbnail (play glyph for video, headphones + duration for podcasts), 2-line snippet on phone, X-post rows (author @handle first), selected/hover backgrounds, inset hairlines, skeleton while loading, empty ("Nothing saved yet"/"Nothing here yet"), no-results ("No results for “q”"), error with Retry, infinite scroll, scroll to top on navigation (item-row.tsx) | Views/Feed/ItemRowView.swift, ItemListView.swift |
 | Keyboard: j/k/↓/↑ move, o/Enter open original, s save, r refresh, / search, ? help, g a/s/v/p views (1 s chord), Esc; arrows scroll the reader after clicking it; single keys off while typing or on iPhone (use-keyboard.ts) | Views/Feed/KeyboardShortcuts.swift (Feed UI agent), attached in ItemListView or RootView via a modifier it defines |
@@ -925,7 +925,7 @@ App-internal types (module OpenDispatch), all in files under `Views/Sidebar/` an
 ```swift
 // Views/Sidebar/SidebarTree.swift
 enum SidebarDrag { case source(Int64), folder(Int64); var payload: String }      // what is dragged
-enum SidebarDrop { case row(Int64), end(Int64?), folder(Int64) }                  // before row / end of folder (nil = Unfiled) / on header
+enum SidebarDrop { case row(Int64), end(Int64?), folder(Int64) }                  // before row / end of folder (nil = No Folder) / on header
 enum SidebarTree {                                                                // pure port of sidebar.tsx dropSource/dropFolder
     struct Entry { id: Int64; folderId: Int64? }
     static func dropSource(id:at:folderOrder:contents:) -> [Entry]?   // full new order, nil = unchanged/invalid

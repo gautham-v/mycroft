@@ -636,7 +636,7 @@ private enum DrawerPrompt: Identifiable {
 /// The drawer: the OpenDispatch wordmark with a glass search bubble; the sidebar's views in its order (All,
 /// Articles, Posts, Video, Podcasts, Saved, Highlights, less the ones hidden in Settings); Topics, one row per
 /// followed keyword with its unread count and a + for a new one; Folders, each
-/// with its source count and a chevron that opens its sources inline, then Unfiled if any source is
+/// with its source count and a chevron that opens its sources inline, then No Folder if any source is
 /// without a folder; Settings as a glass bubble and Add source as a dark pill floating over the list. The
 /// row for what the list shows gets the soft pill; picking a view, folder or source closes the drawer.
 ///
@@ -902,7 +902,7 @@ private struct PhoneDrawer: View {
 
     // MARK: Folders and sources
 
-    /// The sources of a folder (nil = Unfiled) in sidebar order. The iPhone has no Pinned or Hidden groups, so
+    /// The sources of a folder (nil = No Folder) in sidebar order. The iPhone has no Pinned or Hidden groups, so
     /// those are listed in their folder too; the opened-links holders are not subscriptions.
     private func sources(in folderID: Int64?) -> [Source] {
         model.allSources(inFolder: folderID).filter { !$0.isOpenedLinks }
@@ -923,7 +923,7 @@ private struct PhoneDrawer: View {
         if !unfiled.isEmpty {
             let key = AppModel.folderKey(nil)
             let toggle = { toggleExpanded(key) }
-            DrawerFolderRow(title: "Unfiled", count: unfiled.count, isExpanded: expanded.contains(key), open: toggle, toggle: toggle)
+            DrawerFolderRow(title: "No Folder", count: unfiled.count, isExpanded: expanded.contains(key), open: toggle, toggle: toggle)
             if expanded.contains(key) { sourceRows(unfiled) }
         }
     }
@@ -1011,7 +1011,7 @@ private struct PhoneDrawer: View {
         if !found.isEmpty {
             DrawerSectionLabel("Sources")
             ForEach(found) { source in
-                sourceRow(source, detail: model.folders.first { $0.id == source.folderId }?.title ?? "Unfiled", indented: false)
+                sourceRow(source, detail: model.folders.first { $0.id == source.folderId }?.title ?? "No Folder", indented: false)
             }
         }
     }
@@ -1057,7 +1057,7 @@ private struct PhoneDrawer: View {
             ForEach(model.orderedFolders) { folder in
                 Toggle(folder.title, isOn: moveBinding(source, to: folder.id))
             }
-            Toggle("Unfiled", isOn: moveBinding(source, to: nil))
+            Toggle("No Folder", isOn: moveBinding(source, to: nil))
         } label: {
             Label("Move to Folder", systemImage: OFIcon.folder.rawValue)
         }
@@ -1347,7 +1347,7 @@ private struct DrawerDialogs: ViewModifier {
                 Button("Delete Folder", role: .destructive) { deleteFolder(folder) }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
-                Text("Its sources move to Unfiled.")
+                Text("Its sources move to No Folder.")
             }
             .alert(
                 pendingSourceDelete.map { "Remove \($0.title)?" } ?? "Remove source?",

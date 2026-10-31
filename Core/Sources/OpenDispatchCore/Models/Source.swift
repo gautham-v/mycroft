@@ -18,9 +18,9 @@ public struct Source: Sendable, Hashable, Identifiable {
     public var lastError: String?
     /// kind `.page`: article URLs already handled, so refreshes skip them. Stored as JSON text.
     public var seenUrls: [String]?
-    /// Sidebar folder; nil = Unfiled.
+    /// Sidebar folder; nil = No Folder.
     public var folderId: Int64?
-    /// Order within its folder (or within Unfiled).
+    /// Order within its folder (or within No Folder).
     public var position: Int
     public var createdAt: Date
     /// When the source was pinned to the sidebar's Pinned group; nil = not pinned. Pins list in this order.

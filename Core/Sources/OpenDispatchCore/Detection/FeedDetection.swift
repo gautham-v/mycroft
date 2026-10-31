@@ -93,6 +93,27 @@ public enum FeedDetection {
         return nil
     }
 
+    /// The feed of a Reddit community or user page; nil for a post or any other address.
+    public static func redditFeedURL(_ url: String) -> String? {
+        guard let c = URLComponents(string: url), let host = c.host?.lowercased(),
+              host == "reddit.com" || host.hasSuffix(".reddit.com"), !RedditPages.isThread(url) else { return nil }
+        let segments = c.path.split(separator: "/").map(String.init)
+        guard segments.count >= 2 else { return nil }
+        switch segments[0].lowercased() {
+        case "r": return "\(RedditPages.origin)/r/\(segments[1])/.rss"
+        case "user", "u": return "\(RedditPages.origin)/user/\(segments[1])/.rss"
+        default: return nil
+        }
+    }
+
+    /// The name of a place whose public pages have no feed or posts to follow, for a link to one of them.
+    public static func noFeedPlace(_ url: String) -> String? {
+        guard let host = URLComponents(string: url)?.host?.lowercased() else { return nil }
+        let places = ["instagram.com": "Instagram", "threads.net": "Threads", "threads.com": "Threads", "tiktok.com": "TikTok",
+                      "linkedin.com": "LinkedIn", "facebook.com": "Facebook", "twitch.tv": "Twitch"]
+        return places.first { host == $0.key || host.hasSuffix("." + $0.key) }?.value
+    }
+
     /// isSpotifyShowUrl: open/podcasters.spotify.com show or episode pages.
     public static func isSpotifyShowURL(_ url: String) -> Bool {
         guard let c = URLComponents(string: url), let host = c.host?.lowercased(),

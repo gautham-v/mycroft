@@ -230,7 +230,7 @@ final class AppModel {
     /// URL to prefill in the Add source sheet (deep link `opendispatch://add?url=…`); the sheet clears it.
     var pendingAddSourceURL: String?
     /// Folder the Add source sheet puts what it adds into (the drawer's "Add Source to <Folder>…"); the
-    /// sheet takes it when it opens. nil adds to Unfiled.
+    /// sheet takes it when it opens. nil adds to No Folder.
     var pendingAddSourceFolderID: Int64?
     /// Adds started from the Add sources sheet, by the URL added (a feed or a site).
     private(set) var sourceAdds: [String: SourceAddState] = [:]
@@ -511,7 +511,7 @@ final class AppModel {
         folders.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
     }
 
-    /// Sources shown in a folder (nil = Unfiled) in sidebar order: position, then title. Pinned and hidden
+    /// Sources shown in a folder (nil = No Folder) in sidebar order: position, then title. Pinned and hidden
     /// sources are listed in their own groups instead.
     func sources(inFolder folderId: Int64?) -> [Source] {
         SourceList.inFolder(sources, folderId)
@@ -1199,6 +1199,9 @@ final class AppModel {
         try await services.search.search(query)
     }
 
+    private let channelEmbedCheck: any YouTubeEmbedChecking = DefaultYouTubeEmbedCheck()
+    private var channelPlays: [String: Bool] = [:]
+
     /// YouTube channels for a name or @handle.
     func searchChannels(_ query: String) async throws -> [SourceSearchResult] {
         try await services.explore.channels(query)
@@ -1214,6 +1217,27 @@ final class AppModel {
         try await services.xAccounts.search(name)
     }
 
+    func searchBluesky(_ query: String) async throws -> [SourceSearchResult] {
+        try await services.socialAccounts.bluesky(query)
+    }
+
+    func searchMastodon(_ query: String) async throws -> [SourceSearchResult] {
+        try await services.socialAccounts.mastodon(query)
+    }
+
+    func searchReddit(_ query: String) async throws -> [SourceSearchResult] {
+        try await services.socialAccounts.reddit(query)
+    }
+
+    /// Whether a channel's videos play in this app, by its newest; nil when it can't be told. Remembered while the app runs.
+    func channelPlaysHere(feedUrl: String) async -> Bool? {
+        if let known = channelPlays[feedUrl] { return known }
+        guard let id = URLComponents(string: feedUrl)?.queryItems?.first(where: { $0.name == "channel_id" })?.value else { return nil }
+        let answer = await channelEmbedCheck.isPlayable(channelID: id)
+        channelPlays[feedUrl] = answer
+        return answer
+    }
+
     /// The account a pasted link is the page of, by name; nil when it can't be told, and the link is added as it is.
     func account(for link: SourceAccountLink) async -> SourceSearchResult? {
         switch link {
@@ -1226,6 +1250,14 @@ final class AppModel {
             // YouTube's search doesn't know channel ids, so its name comes from its feed, without an avatar.
             guard let feed = try? await services.detector.detect(FeedDetection.youtubeFeedURL(channelID: id)) else { return nil }
             return SourceSearchResult(title: feed.title, subtitle: "YouTube", feedUrl: feed.feedUrl, siteUrl: feed.url, kind: .youtube)
+        case .bluesky(let handle):
+            return (try? await services.socialAccounts.blueskyProfile(handle: handle)) ?? nil
+        case .reddit(let community):
+            return DefaultSocialAccounts.community(community)
+        case .instagram(let handle):
+            return (try? await services.socialAccounts.instagramProfile(handle: handle)) ?? nil
+        case .noFeed:
+            return nil
         }
     }
 
@@ -1418,7 +1450,7 @@ final class AppModel {
         showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t change mute: \(HTTP.message(error))"), for: .seconds(3.5))
     }
 
-    /// Move a source to a folder (nil = Unfiled), at the end of it.
+    /// Move a source to a folder (nil = No Folder), at the end of it.
     func moveSource(id: Int64, toFolder folderId: Int64?) async throws {
         try await database.moveSource(id: id, toFolder: folderId)
         await loadSources()
@@ -1456,7 +1488,7 @@ final class AppModel {
         await loadSources()
     }
 
-    /// Delete a folder; its sources move to Unfiled.
+    /// Delete a folder; its sources move to No Folder.
     func deleteFolder(id: Int64) async throws {
         try await database.deleteFolder(id: id)
         collapsedFolders.remove(String(id))

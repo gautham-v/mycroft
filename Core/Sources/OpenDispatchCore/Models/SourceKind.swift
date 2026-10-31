@@ -38,7 +38,7 @@ public enum SourceGroup {
 /// Post sources (X/Twitter, Bluesky, Threads, Mastodon profiles). Port of POST_SOURCE_RE in
 /// src/lib/folders.ts: `^https?://(www\.|mobile\.)?(x\.com|twitter\.com|bsky\.app|threads\.net|mastodon\.[a-z]+)/`, case-insensitive.
 public enum PostSource {
-    private static let hosts: Set<String> = ["x.com", "twitter.com", "bsky.app", "threads.net"]
+    private static let hosts: Set<String> = ["x.com", "twitter.com", "bsky.app", "threads.net", "reddit.com"]
 
     public static func isPostURL(_ url: String) -> Bool {
         let s = url.lowercased()

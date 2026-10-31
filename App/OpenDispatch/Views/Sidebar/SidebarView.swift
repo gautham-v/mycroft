@@ -482,7 +482,7 @@ struct SidebarView: View {
             ForEach(model.orderedFolders) { folder in
                 Toggle(folder.title, isOn: moveBinding(source, to: folder.id))
             }
-            Toggle("Unfiled", isOn: moveBinding(source, to: nil))
+            Toggle("No Folder", isOn: moveBinding(source, to: nil))
             Divider()
             Button("New Folder…") { editing = .newFolder(withSource: source.id) }
         }

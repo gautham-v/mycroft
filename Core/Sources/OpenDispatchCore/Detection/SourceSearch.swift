@@ -15,14 +15,21 @@ public struct SourceSearchResult: Sendable, Hashable, Identifiable {
     public var handle: String?
     /// How many follow it, as the place words it: "21.4M subscribers", "4.4M followers".
     public var audience: String?
+    /// How many read a feed on Feedly, which orders results but isn't shown.
+    public var readers: Int?
+    public var place: SourcePlace
 
     public var id: String { feedUrl }
 
     /// An X account, which is a scraped page source (`PageScraping`) rather than a feed.
-    public var isXAccount: Bool { kind == .page && handle != nil }
+    public var isXAccount: Bool { place == .x }
+    /// Instagram can be shown but not followed: it has no public feed.
+    public var canFollow: Bool { place != .instagram }
+    /// How its items read, which the sheet's chips filter by.
+    public var readType: SourceType { place.readType }
 
     public init(title: String, subtitle: String, feedUrl: String, siteUrl: String? = nil, kind: SourceKind, imageUrl: String? = nil,
-                handle: String? = nil, audience: String? = nil) {
+                handle: String? = nil, audience: String? = nil, readers: Int? = nil, place: SourcePlace? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.feedUrl = feedUrl
@@ -31,19 +38,9 @@ public struct SourceSearchResult: Sendable, Hashable, Identifiable {
         self.imageUrl = imageUrl
         self.handle = handle
         self.audience = audience
+        self.readers = readers
+        self.place = place ?? (kind == .youtube ? .youtube : kind == .podcast ? .podcast : .site)
     }
-}
-
-/// What "Add sources" shows for a name, by place. `all` is the first X accounts and channels (the X and YouTube filters have the
-/// rest), then sites and podcasts alternating.
-public struct SourceSearchSections: Sendable, Equatable {
-    public var x: [SourceSearchResult] = []
-    public var youtube: [SourceSearchResult] = []
-    public var sites: [SourceSearchResult] = []
-    public var podcasts: [SourceSearchResult] = []
-    public var all: [SourceSearchResult] = []
-
-    public init() {}
 }
 
 /// A pasted link to an X account or a YouTube channel, which "Add sources" can show by name before it is added.
@@ -51,6 +48,11 @@ public enum SourceAccountLink: Sendable, Equatable {
     case x(handle: String)
     case youtubeHandle(String)
     case youtubeChannel(id: String)
+    case bluesky(handle: String)
+    case reddit(community: String)
+    case instagram(handle: String)
+    /// A page on a place with no public feed to follow, by the place's name.
+    case noFeed(place: String)
 }
 
 /// Search sources by name: feeds (sites, newsletters, YouTube channels) from Feedly's public feed
@@ -129,6 +131,7 @@ public struct DefaultSourceSearch: SourceSearching {
             let title: String?
             let website: String?
             let lastUpdated: Double?
+            let subscribers: Int?
         }
         let results: [Feed]?
     }
@@ -142,14 +145,14 @@ public struct DefaultSourceSearch: SourceSearching {
         let cutoff = now().addingTimeInterval(-Self.staleAfter).timeIntervalSince1970 * 1000
         let results = (body.results ?? []).compactMap { f -> SourceSearchResult? in
             if let updated = f.lastUpdated, updated < cutoff { return nil }
-            return Self.feedResult(feedId: f.feedId, title: f.title, website: f.website)
+            return Self.feedResult(feedId: f.feedId, title: f.title, website: f.website, readers: f.subscribers)
         }
         return Array(results.prefix(Self.feedLimit))
     }
 
     /// A Feedly search hit as a result: `feed/<url>` ids, YouTube uploads playlists turned into the
     /// channel's videos.xml feed, and the long-dead gdata YouTube feeds dropped.
-    static func feedResult(feedId: String?, title: String?, website: String?) -> SourceSearchResult? {
+    static func feedResult(feedId: String?, title: String?, website: String?, readers: Int? = nil) -> SourceSearchResult? {
         guard let id = feedId, id.hasPrefix("feed/") else { return nil }
         var feedURL = String(id.dropFirst("feed/".count))
         guard let host = URLComponents(string: feedURL)?.host?.lowercased() else { return nil }
@@ -177,7 +180,7 @@ public struct DefaultSourceSearch: SourceSearching {
         }
         let shownHost = kind == .youtube ? "YouTube" : URLHost.host(of: site?.isEmpty == false ? site! : feedURL)
         if name.isEmpty { name = shownHost }
-        return SourceSearchResult(title: name, subtitle: shownHost, feedUrl: feedURL, siteUrl: site, kind: kind)
+        return SourceSearchResult(title: name, subtitle: shownHost, feedUrl: feedURL, siteUrl: site, kind: kind, readers: readers)
     }
 
     // MARK: - iTunes
@@ -234,16 +237,33 @@ public enum SourceSearch {
         return s
     }
 
+    /// A community typed as "r/name", which needs no search to be found.
+    public static func redditCommunity(in query: String) -> String? {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let m = q.wholeMatch(of: #/[rR]\/([A-Za-z0-9_]{2,21})/#) else { return nil }
+        return String(m.1)
+    }
+
+    /// X accounts from the handle lookup and from the People search, the handle's first. The search knows the follower count even when
+    /// the public profile page doesn't give it, so its count fills that in.
+    public static func mergedXAccounts(profile: SourceSearchResult?, named: [SourceSearchResult]) -> [SourceSearchResult] {
+        guard var profile else { return named }
+        let handle = profile.handle?.lowercased()
+        if profile.audience == nil { profile.audience = named.first { $0.handle?.lowercased() == handle }?.audience }
+        return [profile] + named.filter { $0.handle?.lowercased() != handle }
+    }
+
     /// The result's title or publisher contains every word of the query.
     static func matches(_ result: SourceSearchResult, query: String) -> Bool {
         let text = (result.title + " " + result.subtitle).lowercased()
         return query.lowercased().split(whereSeparator: \.isWhitespace).allSatisfy { text.contains($0) }
     }
 
-    /// The query without an "@" in front of it, which only says it is a handle.
+    /// The query without an "@" or "r/" in front of it, which only say where it is.
     public static func name(in query: String) -> String {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return q.hasPrefix("@") ? String(q.dropFirst()) : q
+        if q.hasPrefix("@") { return String(q.dropFirst()) }
+        return redditCommunity(in: q) ?? q
     }
 
     /// The X account a query could be: one word X allows as a handle, with or without the "@".
@@ -259,6 +279,11 @@ public enum SourceSearch {
         if PageScraping.isXHost(host) {
             return segments.count == 1 ? xHandle(in: segments[0]).map { .x(handle: $0) } : nil
         }
+        let bare = host.lowercased().hasPrefix("www.") ? String(host.lowercased().dropFirst(4)) : host.lowercased()
+        if bare == "bsky.app", segments.count == 2, segments[0] == "profile" { return .bluesky(handle: segments[1]) }
+        if FeedDetection.redditFeedURL(url) != nil, segments.first == "r", segments.count >= 2 { return .reddit(community: segments[1]) }
+        if bare == "instagram.com", segments.count == 1 { return .instagram(handle: segments[0]) }
+        if let place = FeedDetection.noFeedPlace(url) { return .noFeed(place: place) }
         guard FeedDetection.isYouTubeURL(url), !c.path.hasPrefix("/feeds/") else { return nil }
         if let id = FeedDetection.youtubeChannelID(fromURL: url) { return .youtubeChannel(id: id) }
         if let first = segments.first, first.hasPrefix("@"), first.count > 1 { return .youtubeHandle(String(first.dropFirst())) }
@@ -274,39 +299,4 @@ public enum SourceSearch {
         guard let text, let m = text.replacing(",", with: "").prefixMatch(of: #/([\d.]+)\s*([KMB]?)/#), let n = Double(m.1) else { return nil }
         return n * (["K": 1e3, "M": 1e6, "B": 1e9][String(m.2)] ?? 1)
     }
-
-    /// Sorts what the searches found by place. A query with an "@" keeps only the channel with that handle. Once an account
-    /// or channel matched, sites and podcasts must match by name too (the search's fallback for few matches, unrelated shows,
-    /// has no use then). Feedly's copies of a channel go, and so do its feeds of an X account, third-party bridges that the
-    /// account itself replaces.
-    public static func sections(query: String, feeds: [SourceSearchResult], channels: [SourceSearchResult],
-                                xAccounts: [SourceSearchResult]) -> SourceSearchSections {
-        let name = name(in: query)
-        let exactOnly = query.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("@")
-        let shown = channels.filter { channel in
-            if channel.handle?.lowercased() == name.lowercased() { return true }
-            return !exactOnly && (subscriberCount(channel.audience) ?? 0) >= minSubscribers
-        }
-        let channelKeys = Set(channels.map { feedKey($0.feedUrl) })
-        let rest = feeds.filter { feed in
-            if channelKeys.contains(feedKey(feed.feedUrl)) { return false }
-            if let site = feed.siteUrl.flatMap({ URLComponents(string: $0)?.host }), PageScraping.isXHost(site) { return false }
-            return (shown.isEmpty && xAccounts.isEmpty) || matches(feed, query: name)
-        }
-
-        var out = SourceSearchSections()
-        out.x = xAccounts
-        out.youtube = shown + rest.filter { $0.kind == .youtube }
-        out.podcasts = rest.filter { $0.kind == .podcast }
-        out.sites = rest.filter { $0.kind != .youtube && $0.kind != .podcast }
-        out.all = Array(out.x.prefix(allAccounts)) + out.youtube.prefix(allAccounts)
-        for i in 0..<max(out.sites.count, out.podcasts.count) {
-            if i < out.sites.count { out.all.append(out.sites[i]) }
-            if i < out.podcasts.count { out.all.append(out.podcasts[i]) }
-        }
-        return out
-    }
-
-    /// How many X accounts and how many channels `all` shows.
-    static let allAccounts = 3
 }
