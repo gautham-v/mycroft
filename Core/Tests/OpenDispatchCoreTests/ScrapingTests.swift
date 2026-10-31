@@ -279,6 +279,20 @@ struct ScrapingMetaTests {
         #expect(PageMeta.imageFromMetaMap([:], pageURL: "https://example.com/a") == nil)
     }
 
+    @Test func profilePicturesAreNotAPagesImage() {
+        for picture in ["https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:x/bafk", "https://cdn.bsky.app/img/avatar/plain/did:plc:x/bafk",
+                        "https://pbs.twimg.com/profile_images/1/a_400x400.jpg", "https://files.mastodon.social/accounts/avatars/1/2/3/original/a.png",
+                        "https://secure.gravatar.com/avatar/abc?s=96", "https://blog.example/avatar.png", "https://avatars.githubusercontent.com/u/1?v=4"] {
+            #expect(LeadImage.isAccountPicture(picture), "\(picture)")
+            #expect(PageMeta.imageFromMetaMap(["og:image": picture], pageURL: "https://example.com/a") == nil)
+        }
+        for picture in ["https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:x/bafk", "https://video.bsky.app/watch/did/bafk/thumbnail.jpg",
+                        "https://pbs.twimg.com/media/A.jpg", "https://example.com/uploads/avatar-fire-and-ash.jpg", "https://example.com/avatar-movie/poster.jpg"] {
+            #expect(!LeadImage.isAccountPicture(picture), "\(picture)")
+        }
+        #expect(PageMeta.imageFromMetaMap(["og:image": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:x/bafk"], pageURL: "https://bsky.app/a") != nil)
+    }
+
     @Test func metaReaderFirstWinsCaseInsensitive() throws {
         let doc = try SwiftSoupParse.doc(#"<meta name="Description" content="one"><meta property="description" content="two"><meta itemprop="x" content="  ">"#)
         let meta = PageMeta.meta(in: doc)

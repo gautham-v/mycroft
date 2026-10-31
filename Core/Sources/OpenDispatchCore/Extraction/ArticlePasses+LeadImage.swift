@@ -7,6 +7,12 @@ import SwiftSoup
 public enum LeadImage {
     typealias P = ExtractionDOM.Pattern
 
+    private static let accountPicture = P(#"/(?:avatars?|avatar_thumbnail|profile_images)(?:/|\.[a-z]+(?:$|\?))|//avatars\d*\."#, caseInsensitive: true)
+
+    /// A person's profile picture, not a picture of the page: what Bluesky, X, Mastodon and many blogs give as the share
+    /// image of something with no picture of its own.
+    public static func isAccountPicture(_ url: String) -> Bool { accountPicture.test(url) }
+
     // MARK: Is the lead already in the body?
 
     /// The body shows `hero` when it holds the same file (whatever the CDN size, crop or proxy), leads with the same

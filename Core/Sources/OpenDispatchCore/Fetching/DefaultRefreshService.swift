@@ -69,9 +69,11 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         self.embedCheckBudget = embedCheckBudget
     }
 
-    /// fetchFeedText: GET with the feed Accept header; non-2xx throws "HTTP <status>".
+    /// fetchFeedText: GET with the feed Accept header; non-2xx throws "HTTP <status>". A Reddit feed refused is read in the web view.
     static let liveFetch: RefreshFeedFetch = { url, timeout in
-        try await HTTP.fetchOK(url, timeout: timeout, headers: ["Accept": HTTP.feedAccept]).data
+        try await RedditFeed.read(url) {
+            try await HTTP.fetchOK(url, timeout: timeout, headers: ["Accept": HTTP.feedAccept]).data
+        }
     }
 
     // MARK: RefreshService

@@ -197,7 +197,9 @@ struct ItemRowView: View, Equatable {
 
     private var snippet: String? {
         let s = TextFormat.stripHTML(item.item.summary)
-        return s.isEmpty ? nil : s
+        // A post from a feed without titles has its text as the title too.
+        let title = item.item.title.hasSuffix("…") ? String(item.item.title.dropLast()) : item.item.title
+        return s.isEmpty || s.hasPrefix(title) ? nil : s
     }
 
     private var accessibilityText: String {

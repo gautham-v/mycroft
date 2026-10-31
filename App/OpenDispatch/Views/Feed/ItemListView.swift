@@ -453,6 +453,13 @@ private struct ListStateRows: View {
                 Text("Add something and its stories appear here.")
                     .font(OFFont.ui(13))
                     .foregroundStyle(.ofMuted)
+            } else if model.selectedView != .saved, let source = model.activeSource, let error = source.lastError {
+                Text("Couldn\u{2019}t refresh \u{201C}\(source.title)\u{201D}")
+                    .font(OFFont.ui(15, .medium))
+                    .foregroundStyle(.ofInk)
+                Text(error)
+                    .font(OFFont.ui(13))
+                    .foregroundStyle(.ofMuted)
             } else {
                 Text(model.selectedView == .saved && !model.isInSourceFeed ? "Nothing saved yet" : "Nothing here yet")
                     .font(OFFont.ui(15, .medium))

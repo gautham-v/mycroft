@@ -288,6 +288,37 @@ struct SourceSearchTests {
         #expect(found.feedUrl.hasSuffix("channel_id=UCBJycsmduvYEL83R_U4JriQ"))
     }
 
+    @Test func aRefusedRedditFeedIsReadInTheWebView() async throws {
+        let feed = #"<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>NFL: National Football League Discussion</title></feed>"#
+        final class Asked: @unchecked Sendable {
+            private let lock = NSLock()
+            private var paths: [String] = []
+            func add(_ path: String) { lock.withLock { paths.append(path) } }
+            var all: [String] { lock.withLock { paths } }
+        }
+        let asked = Asked()
+        func read(_ url: String, status: Int, page: String = feed) async throws -> Data {
+            try await RedditFeed.read(url, page: { path in
+                asked.add(path)
+                return page
+            }) { throw HTTPError.status(status) }
+        }
+        #expect(try await read("https://www.reddit.com/r/nfl/.rss", status: 429) == Data(feed.utf8))
+        #expect(asked.all == ["/r/nfl/.rss"])
+        // Only refusals, only Reddit, and only a feed.
+        await #expect(throws: HTTPError.status(404)) { try await read("https://www.reddit.com/r/none/.rss", status: 404) }
+        await #expect(throws: HTTPError.status(429)) { try await read("https://example.com/feed", status: 429) }
+        await #expect(throws: HTTPError.status(429)) { try await read("https://www.reddit.com/r/nfl/.rss", status: 429, page: "<html></html>") }
+        #expect(asked.all == ["/r/nfl/.rss", "/r/nfl/.rss"])
+
+        let detector = DefaultFeedDetector(parser: DefaultFeedParser(), scraper: DefaultPageScraper(), fetch: { url, _ in
+            (Data(), HTTPURLResponse(url: URL(string: url)!, statusCode: 429, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        }, redditPage: { _ in feed })
+        let found = try await detector.detect("https://www.reddit.com/r/nfl/")
+        #expect(found.title == "r/nfl")
+        #expect(found.feedUrl == "https://www.reddit.com/r/nfl/.rss")
+    }
+
     @Test func subscriberCounts() {
         #expect(SourceSearch.subscriberCount("21.4M subscribers") == 21_400_000)
         #expect(SourceSearch.subscriberCount("589 subscribers") == 589)

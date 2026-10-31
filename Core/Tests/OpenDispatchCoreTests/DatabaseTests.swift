@@ -602,3 +602,62 @@ struct MetaOPMLTests {
         #expect(Queries.feedKey("http://example.com") == "example.com")
     }
 }
+
+@Suite("Untitled posts")
+struct UntitledPostsMigrationTests {
+    @Test func storedPostsTakeTheirTextAsTitle() throws {
+        let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
+        try AppDatabase.migrator.migrate(queue, upTo: "v15-embed-blocked")
+        try queue.write { d in
+            try d.execute(sql: "INSERT INTO sources (title, url, feed_url, kind, \"group\", position) VALUES ('S', 'https://bsky.app', 'https://bsky.app/profile/a/rss', 'rss', 'blogs', 0)")
+            let note = "[contains quote post or other embedded content]"
+            try d.execute(sql: """
+                INSERT INTO items (source_id, guid, url, title, summary, published_at) VALUES
+                (1, 'a', 'https://bsky.app/profile/a/post/1', '(untitled)', 'On PTI right now!', ?1),
+                (1, 'b', 'https://bsky.app/profile/a/post/2', '(untitled)', ?2, ?1),
+                (1, 'c', 'https://bsky.app/profile/a/post/3', '(untitled)', ?3, ?1),
+                (1, 'd', 'https://bsky.app/profile/a/post/4', '(untitled)', NULL, ?1),
+                (1, 'e', 'https://example.com/5', '(untitled)', NULL, ?1),
+                (1, 'f', 'https://example.com/6', 'A title', 'Text', ?1)
+                """, arguments: [Fixture.base, "Agreed. \(note)", note])
+        }
+        try AppDatabase.migrator.migrate(queue)
+        try queue.read { d in
+            let titles = try String.fetchAll(d, sql: "SELECT title FROM items ORDER BY guid")
+            #expect(titles == ["On PTI right now!", "Agreed.", "Post on Bluesky", "Post on Bluesky", "(untitled)", "A title"])
+            let summaries = try String?.fetchAll(d, sql: "SELECT summary FROM items ORDER BY guid")
+            #expect(summaries == ["On PTI right now!", "Agreed.", nil, nil, nil, "Text"])
+        }
+    }
+}
+
+@Suite("Profile picture thumbnails")
+struct AccountPictureMigrationTests {
+    @Test func storedProfilePicturesGoAndAreNotAskedForAgain() throws {
+        let queue = try DatabaseQueue(configuration: AppDatabase.makeConfiguration())
+        try AppDatabase.migrator.migrate(queue, upTo: "v16-title-untitled-posts")
+        try queue.write { d in
+            try d.execute(sql: "INSERT INTO sources (title, url, feed_url, kind, \"group\", position) VALUES ('S', 'https://bsky.app', 'https://bsky.app/profile/a/rss', 'rss', 'blogs', 0)")
+            let avatar = "https://cdn.bsky.app/img/avatar_thumbnail/plain/did:plc:x/bafk"
+            try d.execute(sql: """
+                INSERT INTO items (source_id, guid, url, title, thumbnail_url, thumbnail_checked, published_at) VALUES
+                (1, 'a', 'https://bsky.app/profile/a/post/1', 'A', ?1, 1, ?5),
+                (1, 'b', 'https://x.com/a/status/2', 'B', ?2, 0, ?5),
+                (1, 'c', 'https://bsky.app/profile/a/post/3', 'C', ?3, 1, ?5),
+                (1, 'd', 'https://example.com/avatar-movie', 'D', ?4, 1, ?5)
+                """, arguments: [avatar, "https://pbs.twimg.com/profile_images/1/a_400x400.jpg", "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:x/bafk",
+                                 "https://example.com/avatar-poster.jpg", Fixture.base])
+            try d.execute(sql: """
+                INSERT INTO history (source_feed_url, item_guid, item_url, item_title, source_title, thumbnail_url)
+                VALUES ('https://bsky.app/profile/a/rss', 'a', 'https://bsky.app/profile/a/post/1', 'A', 'S', ?)
+                """, arguments: [avatar])
+        }
+        try AppDatabase.migrator.migrate(queue)
+        try queue.read { d in
+            let thumbnails = try String?.fetchAll(d, sql: "SELECT thumbnail_url FROM items ORDER BY guid")
+            #expect(thumbnails == [nil, nil, "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:x/bafk", "https://example.com/avatar-poster.jpg"])
+            #expect(try Int.fetchOne(d, sql: "SELECT count(*) FROM items WHERE thumbnail_checked = 0") == 0)
+            #expect(try Int.fetchOne(d, sql: "SELECT count(*) FROM history WHERE thumbnail_url IS NULL") == 1)
+        }
+    }
+}

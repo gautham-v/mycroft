@@ -81,7 +81,8 @@ public struct DefaultFeedParser: FeedParser {
         guard let url else { return nil }
         let guid = raw.guid ?? raw.id ?? url
         // Titles are plain text, but WordPress feeds (The Verge) put HTML entities inside CDATA: `&#8216;revolutionize`.
-        let title = S.nonEmpty(raw.title.map(S.decodeHTMLEntities)) ?? "(untitled)"
+        let feedTitle = S.nonEmpty(raw.title.map(S.decodeHTMLEntities))
+        let title = feedTitle ?? "(untitled)"
         let author = S.nonEmpty(raw.creator) ?? S.displayAuthor(raw.author, fallback: raw.itunesAuthor)
         let publishedAt = S.date(from: raw.pubDate) ?? now
 
@@ -107,7 +108,8 @@ public struct DefaultFeedParser: FeedParser {
         }
 
         let mediaContentImage = raw.mediaContents.first { a in
-            guard let u = S.nonEmpty(a["url"]) else { return false }
+            // WordPress lists the author's Gravatar among an item's media.
+            guard let u = S.nonEmpty(a["url"]), !LeadImage.isAccountPicture(u) else { return false }
             return a["medium"] == "image" || (a["type"] ?? "").hasPrefix("image/")
                 || u.range(of: #"\.(jpe?g|png|webp|gif)(\?|$)"#, options: [.regularExpression, .caseInsensitive]) != nil
         }?["url"]
@@ -117,11 +119,12 @@ public struct DefaultFeedParser: FeedParser {
             ?? raw.itunesImage ?? (audio != nil ? showArt : nil) ?? S.firstImage(html)
 
         let snippet = (raw.contentSnippet?.isEmpty == false) ? raw.contentSnippet : html
+        let summary = S.withoutEmbedNote(S.stripHTML(snippet))
         return ParsedItem(
-            guid: guid, url: url, title: title,
-            summary: S.stripHTML(snippet),
+            guid: guid, url: url, title: feedTitle ?? S.title(fromText: summary, url: url),
+            summary: summary,
             author: author, publishedAt: publishedAt,
-            thumbnailUrl: S.absolutize(thumb, base: url),
+            thumbnailUrl: S.absolutize(thumb, base: url).flatMap { LeadImage.isAccountPicture($0) ? nil : $0 },
             durationSec: audio != nil ? S.parseDuration(raw.itunesDuration) : nil,
             audioUrl: audio
         )

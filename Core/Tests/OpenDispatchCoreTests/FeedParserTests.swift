@@ -386,6 +386,42 @@ struct FeedParserRobustnessTests {
         #expect(feed.items[1].guid == "https://g.example.com/from-guid")
     }
 
+    @Test func postsWithoutTitlesReadAsTheirText() throws {
+        let long = String(repeating: "word ", count: 50).trimmingCharacters(in: .whitespaces)
+        let xml = """
+        <rss version="2.0"><channel><link>https://bsky.app/profile/a.bsky.social</link>
+        <item><link>https://bsky.app/profile/a.bsky.social/post/1</link><description>On PTI right now! 🎃</description></item>
+        <item><link>https://bsky.app/profile/a.bsky.social/post/2</link><description>\(long)</description></item>
+        <item><link>https://bsky.app/profile/a.bsky.social/post/3</link><description>Agreed.&#xA;&#xA;[contains quote post or other embedded content]</description></item>
+        <item><link>https://bsky.app/profile/a.bsky.social/post/4</link><description>&#xA;&#xA;[contains quote post or other embedded content]</description></item>
+        <item><link>https://bsky.app/profile/a.bsky.social/post/5</link></item>
+        <item><title>A title</title><link>https://bsky.app/profile/a.bsky.social/post/6</link><description>Text</description></item>
+        </channel></rss>
+        """
+        let items = try parser.parse(data(xml), kind: .rss, feedURL: "https://bsky.app/profile/did:plc:x/rss").items
+        #expect(items[0].title == "On PTI right now! 🎃")
+        #expect(items[1].title.count == 140 && items[1].title.hasSuffix("…"))
+        #expect(items[1].summary == long)
+        #expect(items[2].title == "Agreed.")
+        #expect(items[2].summary == "Agreed.")
+        #expect(items[3].title == "Post on Bluesky")
+        #expect(items[3].summary == nil)
+        #expect(items[4].title == "Post on Bluesky")
+        #expect(items[5].title == "A title")
+    }
+
+    @Test func anAuthorsGravatarIsNotAThumbnail() throws {
+        let xml = #"""
+        <rss xmlns:media="http://search.yahoo.com/mrss/"><channel><link>https://w.example.com/</link>
+        <item><title>A</title><link>https://w.example.com/a</link><media:content url="https://secure.gravatar.com/avatar/abc?s=96" medium="image"/><media:content url="https://w.example.com/photo.jpg" medium="image"/></item>
+        <item><title>B</title><link>https://w.example.com/b</link><media:thumbnail url="https://secure.gravatar.com/avatar/abc?s=96"/></item>
+        </channel></rss>
+        """#
+        let items = try parser.parse(data(xml), kind: .rss, feedURL: "https://w.example.com/feed").items
+        #expect(items[0].thumbnailUrl == "https://w.example.com/photo.jpg")
+        #expect(items[1].thumbnailUrl == nil)
+    }
+
     @Test func thumbnailPrecedence() throws {
         let xml = #"""
         <rss xmlns:media="http://search.yahoo.com/mrss/"><channel><link>https://p.example.com/</link>

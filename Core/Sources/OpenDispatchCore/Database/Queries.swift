@@ -303,12 +303,12 @@ public enum Queries {
     }
 
     /// Cache a fresh extraction (content-cache.ts `contentUpdate`). No-op when contentHtml is nil.
-    /// content_rendered is always written; thumbnail_url takes the lead image only when none is stored.
+    /// content_rendered is always written; thumbnail_url takes the lead image only when none is stored and it isn't a profile picture.
     public static func cacheContent(_ db: Database, itemId: Int64, result: ExtractResult) throws {
         guard let html = result.contentHtml else { return }
         try db.execute(sql: """
             UPDATE items SET content_html = ?, content_rendered = ?, thumbnail_url = coalesce(thumbnail_url, ?) WHERE id = ?
-            """, arguments: [html, result.rendered, result.leadImage, itemId])
+            """, arguments: [html, result.rendered, result.leadImage.flatMap { LeadImage.isAccountPicture($0) ? nil : $0 }, itemId])
     }
 
     /// Delete unsaved items published before `cutoff` (opened links: opened before it), except those

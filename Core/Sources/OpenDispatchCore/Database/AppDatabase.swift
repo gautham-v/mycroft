@@ -328,6 +328,23 @@ public final class AppDatabase: Sendable {
         m.registerMigration("v15-embed-blocked") { db in
             try db.execute(sql: "ALTER TABLE items ADD COLUMN embed_blocked BOOLEAN")
         }
+        // Posts from feeds without titles (Bluesky, Mastodon) were stored as "(untitled)", and a refresh skips stored items.
+        m.registerMigration("v16-title-untitled-posts") { db in
+            for row in try Row.fetchAll(db, sql: "SELECT id, url, summary FROM items WHERE title = '(untitled)'") {
+                let summary = FeedParsingSupport.withoutEmbedNote(row["summary"])
+                try db.execute(sql: "UPDATE items SET title = ?, summary = ? WHERE id = ?",
+                               arguments: [FeedParsingSupport.title(fromText: summary, url: row["url"]), summary, row["id"] as Int64])
+            }
+        }
+        // A post with no media had its author's profile picture as a thumbnail, from the share image of its page.
+        m.registerMigration("v17-drop-account-picture-thumbnails") { db in
+            let candidates = "WHERE thumbnail_url LIKE '%avatar%' OR thumbnail_url LIKE '%profile_images%'"
+            let urls = try String.fetchAll(db, sql: "SELECT thumbnail_url FROM items \(candidates) UNION SELECT thumbnail_url FROM history \(candidates)")
+            for url in urls where LeadImage.isAccountPicture(url) {
+                try db.execute(sql: "UPDATE items SET thumbnail_url = NULL, thumbnail_checked = 1 WHERE thumbnail_url = ?", arguments: [url])
+                try db.execute(sql: "UPDATE history SET thumbnail_url = NULL WHERE thumbnail_url = ?", arguments: [url])
+            }
+        }
         return m
     }
 }

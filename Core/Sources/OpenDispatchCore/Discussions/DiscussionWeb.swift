@@ -113,6 +113,8 @@ public final class DiscussionWeb: NSObject {
 
     private var reddit: SiteView?
     private var redditReady = false
+    /// The load passing Reddit's challenge: those asking meanwhile wait for it, since another load would cancel it.
+    private var redditWarming: Task<SiteView, any Error>?
     /// Post pages fetched in the last few minutes: the reader asks for a post's body and its comments separately.
     private var redditPages: [String: (at: Date, html: String)] = [:]
     private static let pageLifetime: TimeInterval = 180
@@ -165,26 +167,32 @@ public final class DiscussionWeb: NSObject {
     }
 
     private func redditView(warmingWith path: String, force: Bool) async throws -> SiteView {
-        let view: SiteView
-        if let existing = reddit, !existing.terminated {
-            view = existing
-        } else {
-            view = await newView(.reddit)
-            reddit = view
+        if let redditWarming { return try await redditWarming.value }
+        if let view = reddit, !view.terminated, redditReady, !force { return view }
+        // A page load passes the challenge; the page asked for is as good as any, unless it isn't a page.
+        let page = path.hasPrefix("/svc/") || path.contains("/.rss") ? "/" : path
+        let warming = Task { @MainActor in
+            defer { redditWarming = nil }
+            let view: SiteView
+            if let existing = reddit, !existing.terminated {
+                view = existing
+            } else {
+                view = await newView(.reddit)
+                reddit = view
+            }
             redditReady = false
+            try await view.load(URL(string: RedditPages.origin + page)!)
+            try await view.waitUntil(timeout: 15) { view in
+                let state = try await view.call("""
+                    return document.readyState === "complete" && !document.querySelector("input[name=solution]") && location.hostname.endsWith("reddit.com")
+                    """, in: Self.world)
+                return state as? Bool == true
+            }
+            redditReady = true
+            return view
         }
-        if redditReady && !force { return view }
-        // A page load passes the challenge; the page asked for is as good as any.
-        let page = path.hasPrefix("/svc/") ? "/" : path
-        try await view.load(URL(string: RedditPages.origin + page)!)
-        try await view.waitUntil(timeout: 15) { view in
-            let state = try await view.call("""
-                return document.readyState === "complete" && !document.querySelector("input[name=solution]") && location.hostname.endsWith("reddit.com")
-                """, in: Self.world)
-            return state as? Bool == true
-        }
-        redditReady = true
-        return view
+        redditWarming = warming
+        return try await warming.value
     }
 
     nonisolated static func isRedditBlock(status: Int, text: String) -> Bool {
@@ -196,7 +204,7 @@ public final class DiscussionWeb: NSObject {
 
     private func fetch(_ path: String, form: [String: String]?, in view: SiteView) async throws -> (status: Int, text: String) {
         let script = """
-            const options = { credentials: "include" };
+            const options = { credentials: "include", cache: "no-cache" };
             if (post) {
               const csrf = (document.cookie.match(/(?:^|; )csrf_token=([^;]+)/) || [])[1] || "";
               const body = new URLSearchParams(form);

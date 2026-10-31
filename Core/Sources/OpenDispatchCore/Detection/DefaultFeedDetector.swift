@@ -12,18 +12,21 @@ public struct DefaultFeedDetector: FeedDetector {
     let parser: any FeedParser
     let scraper: any PageScraper
     let fetch: Fetch
+    let redditPage: RedditFeed.Page
 
     public init(parser: any FeedParser, scraper: any PageScraper) {
         self.init(parser: parser, scraper: scraper, fetch: { url, headers in
             try await HTTP.fetch(url, timeout: FeedDetection.timeout, headers: headers)
-        })
+        }, redditPage: RedditFeed.livePage)
     }
 
     /// Tests inject a fake network.
-    init(parser: any FeedParser, scraper: any PageScraper, fetch: @escaping Fetch) {
+    init(parser: any FeedParser, scraper: any PageScraper, fetch: @escaping Fetch,
+         redditPage: @escaping RedditFeed.Page = { _ in throw DiscussionError.unavailable }) {
         self.parser = parser
         self.scraper = scraper
         self.fetch = fetch
+        self.redditPage = redditPage
     }
 
     public func detect(_ input: String) async throws -> DetectedFeed {
@@ -45,9 +48,18 @@ public struct DefaultFeedDetector: FeedDetector {
             return try await detectYouTube(url)
         }
         if let feedURL = FeedDetection.redditFeedURL(url) {
-            guard var r = try await tryFeed(feedURL, kind: .rss) else {
-                throw FeedDetectionError("Reddit didn't answer for that page. Try again in a moment.")
+            let unanswered = FeedDetectionError("Reddit didn't answer for that page. Try again in a moment.")
+            let body: Data
+            do {
+                body = try await RedditFeed.read(feedURL, page: redditPage) { [fetch] in
+                    let (data, res) = try await fetch(feedURL, ["Accept": HTTP.feedAccept])
+                    guard Self.isOK(res) else { throw HTTPError.status(res.statusCode) }
+                    return data
+                }
+            } catch HTTPError.status {
+                throw unanswered
             }
+            guard var r = try await tryFeed(feedURL, kind: .rss, body: body) else { throw unanswered }
             // Reddit's page refuses the app, and its feed's own title is a description.
             let path = feedURL.dropFirst(RedditPages.origin.count).split(separator: "/").map(String.init)
             r.title = path[0] == "r" ? "r/\(path[1])" : "u/\(path[1])"

@@ -82,6 +82,18 @@ public enum FeedParsingSupport {
         return cut.replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression) + "…"
     }
 
+    /// The title of an item whose feed gives none, as Bluesky's and Mastodon's don't: its text, clipped as an X post's is, or for a
+    /// post with no text (only a picture or a quoted post) what it is.
+    public static func title(fromText text: String?, url: String) -> String {
+        ScrapingText.clip(text, 140) ?? SocialPosts.network(of: url).map { "Post on \($0.name)" } ?? "(untitled)"
+    }
+
+    /// Text without the line Bluesky's feed writes in place of a quoted post or other embed; nil when that was all of it.
+    public static func withoutEmbedNote(_ text: String?) -> String? {
+        nonEmpty(text?.replacingOccurrences(of: "[contains quote post or other embedded content]", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// decodeEntities in parse.ts: only &lt; &gt; &quot; &#39; &#x27; &nbsp; &amp; (in that order, &amp; last).
     public static func decodeBasicEntities(_ s: String) -> String {
         guard s.contains("&") else { return s }

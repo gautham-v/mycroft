@@ -240,3 +240,36 @@ enum RedditPages {
         return html.isEmpty ? nil : html
     }
 }
+
+/// A community's or user's feed. Reddit answers a plain request for one about once a minute and with a 429 after that (adding a
+/// source reads its feed twice), but gives a page it has let in a hundred requests, so a refused request is asked again from inside
+/// the hidden web view.
+enum RedditFeed {
+    typealias Page = @Sendable (_ path: String) async throws -> String
+
+    static let livePage: Page = { path in
+        #if canImport(WebKit)
+        return try await DiscussionWeb.shared.redditHTML(path)
+        #else
+        throw DiscussionError.unavailable
+        #endif
+    }
+
+    /// The body `direct` reads, or for a Reddit address it was refused, the web view's; any other failure is `direct`'s.
+    static func read(_ url: String, page: Page = livePage, direct: () async throws -> Data) async throws -> Data {
+        do {
+            return try await direct()
+        } catch HTTPError.status(let code) where code == 403 || code == 429 {
+            guard let path = path(of: url), let text = try? await page(path), FeedDetection.looksLikeFeed(text) else {
+                throw HTTPError.status(code)
+            }
+            return Data(text.utf8)
+        }
+    }
+
+    private static func path(of url: String) -> String? {
+        guard let parts = URLComponents(string: url), let host = parts.host?.lowercased(),
+              host == "reddit.com" || host.hasSuffix(".reddit.com") else { return nil }
+        return parts.percentEncodedPath + (parts.percentEncodedQuery.map { "?\($0)" } ?? "")
+    }
+}
