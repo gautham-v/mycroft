@@ -369,6 +369,16 @@ struct YouTubeEmbedCheckTests {
         #expect(DefaultYouTubeEmbedCheck.isPlayable(embedPage: "<html></html>") == nil)
     }
 
+    @Test func aFlakyFeedIsAskedAgain() async {
+        let tries = Counter()
+        let check = DefaultYouTubeEmbedCheck(fetch: { url, _ in
+            let failing = url.contains("/feeds/") ? tries.next() < 2 : false
+            let body = url.contains("/feeds/") ? "<yt:videoId>a</yt:videoId>" : #""previewPlayabilityStatus":{"status":"OK"}"#
+            return (Data(body.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: failing ? 404 : 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        })
+        #expect(await check.isPlayable(channelID: "UCx") == true)
+    }
+
     @Test func channelAsksAboutItsNewestVideo() async {
         let check = DefaultYouTubeEmbedCheck(fetch: { url, _ in
             let body = url.contains("/feeds/")
@@ -378,5 +388,15 @@ struct YouTubeEmbedCheckTests {
         })
         #expect(await check.isPlayable(channelID: "UCx") == false)
         #expect(await check.isPlayable(videoID: "older") == true)
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    func next() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        n += 1
+        return n - 1
     }
 }

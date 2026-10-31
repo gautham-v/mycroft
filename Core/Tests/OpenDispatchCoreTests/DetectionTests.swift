@@ -267,7 +267,7 @@ struct DefaultFeedDetectorTests {
 
     @Test func youtubeFeedMissing() async throws {
         let net = FakeNet { u in u.contains("/feeds/") ? .init(status: 404) : .init(body: DetectFixture.ytChannelPage) }
-        await #expect(throws: FeedDetectionError("YouTube feed not available for this channel")) {
+        await #expect(throws: FeedDetectionError("YouTube's feed for this channel isn't answering. Try again in a moment.")) {
             try await detector(net).detect("https://www.youtube.com/@fireship")
         }
     }

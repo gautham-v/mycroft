@@ -38,9 +38,14 @@ public struct DefaultYouTubeEmbedCheck: YouTubeEmbedChecking {
     }
 
     public func isPlayable(channelID: String) async -> Bool? {
-        guard let (data, res) = try? await fetch(FeedDetection.youtubeFeedURL(channelID: channelID), [:]), (200..<300).contains(res.statusCode),
-              let id = Self.newestVideoID(inFeed: HTTP.text(data, response: res)) else { return nil }
-        return await isPlayable(videoID: id)
+        for attempt in 0..<FeedDetection.youtubeFeedAttempts {
+            if attempt > 0 { try? await Task.sleep(for: FeedDetection.youtubeFeedRetryDelay) }
+            if let (data, res) = try? await fetch(FeedDetection.youtubeFeedURL(channelID: channelID), [:]), (200..<300).contains(res.statusCode),
+               let id = Self.newestVideoID(inFeed: HTTP.text(data, response: res)) {
+                return await isPlayable(videoID: id)
+            }
+        }
+        return nil
     }
 
     private static let status = ExtractionDOM.Pattern(#"previewPlayabilityStatus\W+status\W+([A-Z_]+)"#)

@@ -93,6 +93,10 @@ public enum FeedDetection {
         return nil
     }
 
+    /// YouTube's channel feeds fail at times for channels that exist, so they get a few tries.
+    public static let youtubeFeedAttempts = 4
+    public static let youtubeFeedRetryDelay: Duration = .milliseconds(400)
+
     /// The feed of a Reddit community or user page; nil for a post or any other address.
     public static func redditFeedURL(_ url: String) -> String? {
         guard let c = URLComponents(string: url), let host = c.host?.lowercased(),

@@ -93,7 +93,7 @@ public struct DefaultFeedDetector: FeedDetector {
     private func detectYouTube(_ url: String) async throws -> DetectedFeed {
         if let c = URLComponents(string: url), c.path.hasPrefix("/feeds/videos.xml"),
            let id = c.queryItems?.first(where: { $0.name == "channel_id" })?.value, !id.isEmpty,
-           let r = try await tryFeed(FeedDetection.youtubeFeedURL(channelID: id), kind: .youtube) {
+           let r = try await tryYouTubeFeed(channelID: id) {
             return r
         }
         var id = FeedDetection.youtubeChannelID(fromURL: url)
@@ -106,10 +106,19 @@ public struct DefaultFeedDetector: FeedDetector {
             id = FeedDetection.findChannelID(inHTML: HTTP.text(data, response: res))
         }
         guard let id else { throw FeedDetectionError("Could not find YouTube channel id") }
-        guard let r = try await tryFeed(FeedDetection.youtubeFeedURL(channelID: id), kind: .youtube) else {
-            throw FeedDetectionError("YouTube feed not available for this channel")
+        guard let r = try await tryYouTubeFeed(channelID: id) else {
+            throw FeedDetectionError("YouTube's feed for this channel isn't answering. Try again in a moment.")
         }
         return r
+    }
+
+    /// YouTube's channel feeds answer 404 or 500 at times for channels that exist, and answer the next request.
+    private func tryYouTubeFeed(channelID: String) async throws -> DetectedFeed? {
+        for attempt in 0..<FeedDetection.youtubeFeedAttempts {
+            if attempt > 0 { try await Task.sleep(for: FeedDetection.youtubeFeedRetryDelay) }
+            if let r = try await tryFeed(FeedDetection.youtubeFeedURL(channelID: channelID), kind: .youtube) { return r }
+        }
+        return nil
     }
 
     // MARK: - Feeds
