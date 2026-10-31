@@ -42,6 +42,12 @@ public protocol RefreshService: Sendable {
     /// upserts items, records per-source errors, backfills thumbnails, then prunes old unsaved items.
     func refreshAll(force: Bool) async throws -> RefreshResult
 
+    /// Fetches the sources never fetched on this device, whatever the stale rule says: iCloud brings a source without its
+    /// items, and it may come while a refresh that has already read its sources is running. Reports `.sourceFinished` for each;
+    /// a source whose fetch fails still counts as fetched, with its error recorded.
+    @discardableResult
+    func refreshUnfetched(progress: @escaping @Sendable (RefreshProgress) -> Void) async throws -> [SourceRefreshResult]
+
     /// refreshSource(src): fetch one source now (used right after adding one). Returns items added.
     /// Records last_fetched_at / last_error on the source; rethrows the fetch error.
     @discardableResult func refreshSource(id: Int64) async throws -> Int

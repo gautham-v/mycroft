@@ -363,6 +363,7 @@ the webhook URL in meta (`MetaKey.webhookURL`). Readwise save: POST https://read
 ```swift
 public protocol RefreshService: Sendable {
     func refreshAll(force: Bool) async throws -> RefreshResult
+    @discardableResult func refreshUnfetched(progress: @escaping @Sendable (RefreshProgress) -> Void) async throws -> [SourceRefreshResult]  // sources with no last_fetched_at; no stale rule
     @discardableResult func refreshSource(id: Int64) async throws -> Int     // items added
 }
 public struct RefreshResult: Sendable, Hashable { ran: Bool; lastRefreshAt: Date?; results: [SourceRefreshResult]; pruned: Int }

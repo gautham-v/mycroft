@@ -460,6 +460,10 @@ private struct ListStateRows: View {
                 Text(error)
                     .font(OFFont.ui(13))
                     .foregroundStyle(.ofMuted)
+            } else if model.selectedView != .saved, let source = model.activeSource, source.lastFetchedAt == nil {
+                Text("Loading \u{201C}\(source.title)\u{201D}")
+                    .font(OFFont.ui(15, .medium))
+                    .foregroundStyle(.ofInk)
             } else {
                 Text(model.selectedView == .saved && !model.isInSourceFeed ? "Nothing saved yet" : "Nothing here yet")
                     .font(OFFont.ui(15, .medium))

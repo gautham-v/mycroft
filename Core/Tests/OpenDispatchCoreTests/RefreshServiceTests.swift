@@ -434,6 +434,34 @@ struct RefreshServiceTests {
         #expect(try await svc.refreshAll(force: true).ran)
     }
 
+    @Test func unfetchedSourcesAreFetchedWhenARefreshIsNotDue() async throws {
+        let db = try Fixture.db()
+        try Fixture.source(db)
+        let svc = makeService(db) { _ in RefreshFixture.rss([.init(guid: "a", link: "https://blog.example.com/a", title: "A")]) }
+        #expect(try await svc.refreshAll(force: false).ran)
+
+        // A source arrives from iCloud after the refresh read its list.
+        let synced = try Fixture.source(db, feedUrl: "https://synced.example.com/feed")
+        #expect(try await !svc.refreshAll(force: false).ran)
+        #expect(try itemRows(db, sourceId: synced.id).isEmpty)
+
+        let results = try await svc.refreshUnfetched { _ in }
+        #expect(results.map(\.sourceId) == [synced.id])
+        #expect(results.first?.added == 1)
+        // Fetched now, so asked again it has nothing to do.
+        #expect(try await svc.refreshUnfetched { _ in }.isEmpty)
+    }
+
+    @Test func aFailedFirstFetchIsNotRetriedUntilARefreshIsDue() async throws {
+        let db = try Fixture.db()
+        let source = try Fixture.source(db)
+        let svc = makeService(db) { _ in throw HTTPError.status(500) }
+        let results = try await svc.refreshUnfetched { _ in }
+        #expect(results.map(\.ok) == [false])
+        #expect(try await db.source(id: source.id)?.lastError != nil)
+        #expect(try await svc.refreshUnfetched { _ in }.isEmpty)
+    }
+
     @Test func concurrentCallsClaimOnce() async throws {
         let db = try Fixture.db()
         try Fixture.source(db)

@@ -275,6 +275,7 @@ final class AppModel {
     private(set) var counts: ItemCounts = .empty
     private(set) var lastRefreshAt: Date?
     private(set) var isRefreshing = false
+    private var syncedSourcesWaiting = false
     private(set) var lastRefreshResult: RefreshResult?
     private(set) var integrations = IntegrationsState()
     /// Bumped per item by Reload Article; the reader showing that item re-extracts when it changes.
@@ -1023,6 +1024,19 @@ final class AppModel {
         } catch {
             await loadStats()
         }
+        await fetchUnfetchedSources()
+    }
+
+    /// Sources never fetched here, which iCloud brought without items. They aren't left for the next refresh that's due; those
+    /// that arrive during this are fetched too.
+    private func fetchUnfetchedSources() async {
+        repeat {
+            syncedSourcesWaiting = false
+            let results = try? await services.refresh.refreshUnfetched { [weak self] event in
+                Task { @MainActor in self?.handleRefreshProgress(event) }
+            }
+            if results?.isEmpty == false { await reloadAll() }
+        } while syncedSourcesWaiting
     }
 
     /// Fetch one source (sidebar "Refresh Source"), then reload what changed.
@@ -1807,14 +1821,6 @@ final class AppModel {
         await sync.syncNow()
     }
 
-    private func fetchSyncedSources(_ ids: [Int64]) async {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        for id in ids { _ = try? await services.refresh.refreshSource(id: id) }
-        isRefreshing = false
-        await reloadAll()
-    }
-
     private func mirrorSettingsForSync() {
         let json = settings.syncJSON
         Task { try? await database.setMeta(MetaKey.syncedSettings, json) }
@@ -1838,9 +1844,10 @@ final class AppModel {
             if let id = selectedFolderID, !folders.contains(where: { $0.id == id }) { goHome() }
             await loadItems(reset: true)
             // Sources added on another device have no items here yet. In a task of its own, since this
-            // runs inside the sync engine's event handling.
+            // runs inside the sync engine's event handling; a refresh already running fetches them when it ends.
             if !r.addedSourceIDs.isEmpty {
-                Task { await self.fetchSyncedSources(r.addedSourceIDs) }
+                syncedSourcesWaiting = true
+                Task { await self.refresh(force: false) }
             }
         }
     }

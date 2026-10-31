@@ -101,12 +101,32 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         let all = try await database.reader.read { try Queries.sources($0) }
         progress(.started(at: now, total: all.count))
 
-        var results = [SourceRefreshResult?](repeating: nil, count: all.count)
+        let results = await fetchAll(all, progress: progress)
+
+        let pruned = try await database.pruneOldItems()
+        await checkVideos(sourceIds: Self.fetchedVideoSources(all, results), storedSince: now)
+        let result = RefreshResult(ran: true, lastRefreshAt: now, results: results, pruned: pruned)
+        progress(.finished(result))
+        return result
+    }
+
+    @discardableResult
+    public func refreshUnfetched(progress: @escaping @Sendable (RefreshProgress) -> Void) async throws -> [SourceRefreshResult] {
+        let started = Date()
+        let sources = try await database.reader.read { try Queries.sources($0).filter { $0.lastFetchedAt == nil } }
+        let results = await fetchAll(sources, progress: progress)
+        await checkVideos(sourceIds: Self.fetchedVideoSources(sources, results), storedSince: started)
+        return results
+    }
+
+    /// Fetches `sources`, `concurrency` at a time, reporting each as it finishes; the results are in their order.
+    private func fetchAll(_ sources: [Source], progress: @escaping @Sendable (RefreshProgress) -> Void) async -> [SourceRefreshResult] {
+        var results = [SourceRefreshResult?](repeating: nil, count: sources.count)
         await withTaskGroup(of: (Int, SourceRefreshResult).self) { group in
             var next = 0
             func startNext() {
-                guard next < all.count else { return }
-                let i = next, src = all[i]
+                guard next < sources.count else { return }
+                let i = next, src = sources[i]
                 next += 1
                 group.addTask {
                     do {
@@ -117,22 +137,21 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
                     }
                 }
             }
-            for _ in 0..<min(concurrency, all.count) { startNext() }
+            for _ in 0..<min(concurrency, sources.count) { startNext() }
             var completed = 0
             while let (i, r) = await group.next() {
                 results[i] = r
                 completed += 1
-                progress(.sourceFinished(r, completed: completed, total: all.count))
+                progress(.sourceFinished(r, completed: completed, total: sources.count))
                 startNext()
             }
         }
+        return results.compactMap { $0 }
+    }
 
-        let pruned = try await database.pruneOldItems()
-        let fetched = Set(results.compactMap { $0?.ok == true ? $0?.sourceId : nil })
-        await checkVideos(sourceIds: all.filter { $0.kind == .youtube && fetched.contains($0.id) }.map(\.id), storedSince: now)
-        let result = RefreshResult(ran: true, lastRefreshAt: now, results: results.compactMap { $0 }, pruned: pruned)
-        progress(.finished(result))
-        return result
+    private static func fetchedVideoSources(_ sources: [Source], _ results: [SourceRefreshResult]) -> [Int64] {
+        let fetched = Set(results.filter(\.ok).map(\.sourceId))
+        return sources.filter { $0.kind == .youtube && fetched.contains($0.id) }.map(\.id)
     }
 
     @discardableResult
