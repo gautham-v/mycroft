@@ -257,13 +257,18 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     func fetchSourceFeed(_ src: Source) async throws -> ParsedFeed {
         let candidates = [src.feedUrl] + (fallbacks[src.feedUrl] ?? [])
         var lastError: any Error = HTTPError.invalidURL(src.feedUrl)
+        // YouTube's channel feeds fail at times for channels that exist.
+        let attempts = src.kind == .youtube ? FeedDetection.youtubeFeedAttempts : 1
         for url in candidates {
-            do {
-                let data = try await Self.withDeadline(feedTimeout) { [fetch, feedTimeout] in try await fetch(url, feedTimeout) }
-                return try parser.parse(data, kind: src.kind, feedURL: url)
-            } catch {
-                if error is CancellationError { throw error }
-                lastError = error
+            for attempt in 0..<attempts {
+                if attempt > 0 { try await Task.sleep(for: FeedDetection.youtubeFeedRetryDelay) }
+                do {
+                    let data = try await Self.withDeadline(feedTimeout) { [fetch, feedTimeout] in try await fetch(url, feedTimeout) }
+                    return try parser.parse(data, kind: src.kind, feedURL: url)
+                } catch {
+                    if error is CancellationError { throw error }
+                    lastError = error
+                }
             }
         }
         throw lastError

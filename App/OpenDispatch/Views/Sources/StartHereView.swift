@@ -15,7 +15,7 @@ struct StartHereView: View {
             searchField
                 .padding(.top, 10)
                 .padding(.bottom, 18)
-            ForEach(StarterSources.packs) { pack in
+            ForEach(StarterSources.boardPacks) { pack in
                 Rectangle().fill(Color.ofHairline).frame(height: 1)
                 StarterPackRow(pack: pack)
             }

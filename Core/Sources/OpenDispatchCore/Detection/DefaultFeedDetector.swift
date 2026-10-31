@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 
 /// Port of `detectFeed` (src/lib/feed-detect.ts): Apple Podcasts shows (iTunes lookup), Spotify
 /// rejection, YouTube channels (videos.xml feed, /channel/UC… or channelId in the page HTML), the
@@ -91,12 +92,11 @@ public struct DefaultFeedDetector: FeedDetector {
     // MARK: - YouTube
 
     private func detectYouTube(_ url: String) async throws -> DetectedFeed {
-        if let c = URLComponents(string: url), c.path.hasPrefix("/feeds/videos.xml"),
-           let id = c.queryItems?.first(where: { $0.name == "channel_id" })?.value, !id.isEmpty,
-           let r = try await tryYouTubeFeed(channelID: id) {
-            return r
-        }
         var id = FeedDetection.youtubeChannelID(fromURL: url)
+        if let c = URLComponents(string: url), c.path.hasPrefix("/feeds/videos.xml"),
+           let feedID = c.queryItems?.first(where: { $0.name == "channel_id" })?.value, !feedID.isEmpty {
+            id = feedID
+        }
         if id == nil {
             let (data, res, _) = try await fetchUserURL(url, headers: [
                 "Accept-Language": "en-US,en;q=0.9",
@@ -106,10 +106,20 @@ public struct DefaultFeedDetector: FeedDetector {
             id = FeedDetection.findChannelID(inHTML: HTTP.text(data, response: res))
         }
         guard let id else { throw FeedDetectionError("Could not find YouTube channel id") }
-        guard let r = try await tryYouTubeFeed(channelID: id) else {
+        if let r = try await tryYouTubeFeed(channelID: id) { return r }
+        // The channel exists if its page says so; the source is added now and a later refresh reads the feed.
+        let page = "https://www.youtube.com/channel/\(id)"
+        guard let (data, res) = try? await fetch(page, ["Accept-Language": "en-US,en;q=0.9", "Cookie": "CONSENT=YES+1"]), Self.isOK(res),
+              let title = Self.youtubeTitle.firstMatch(HTTP.text(data, response: res))?[1].map(Self.decoded), !title.isEmpty else {
             throw FeedDetectionError("YouTube's feed for this channel isn't answering. Try again in a moment.")
         }
-        return r
+        return DetectedFeed(title: title, url: page, feedUrl: FeedDetection.youtubeFeedURL(channelID: id), kind: .youtube, group: SourceGroup.youtube)
+    }
+
+    private static let youtubeTitle = ExtractionDOM.Pattern(#"<meta property="og:title" content="([^"]+)""#)
+
+    private static func decoded(_ text: String) -> String {
+        (try? SwiftSoup.Entities.unescape(text)) ?? text
     }
 
     /// YouTube's channel feeds answer 404 or 500 at times for channels that exist, and answer the next request.

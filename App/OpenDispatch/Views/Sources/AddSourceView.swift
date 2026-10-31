@@ -21,11 +21,21 @@ struct AddSourceView: View {
     @State private var results: [SourceSearchResult] = []
     @State private var channels: [SourceSearchResult] = []
     @State private var xAccounts: [SourceSearchResult] = []
+    @State private var xProfile: SourceSearchResult?
+    @State private var xNamed: [SourceSearchResult] = []
     @State private var bluesky: [SourceSearchResult] = []
     @State private var mastodon: [SourceSearchResult] = []
     @State private var reddit: [SourceSearchResult] = []
     /// Channels whose videos only play on YouTube, by feed URL.
     @State private var youtubeOnly: Set<String> = []
+    /// What a name found, in order. Waits for the searches to answer (or `settleDelay`), so the list doesn't reorder as each lands, and
+    /// after that only what's below the first rows changes.
+    @State private var rows: [SourceSearchResult] = []
+    @State private var settled = false
+    /// The name `rows` are for.
+    @State private var rankedQuery = ""
+    /// How many searches for the current name haven't answered.
+    @State private var unanswered = 0
     /// Past the first results.
     @State private var showsAll = false
     /// The starter pack the empty sheet shows, by name; nil is the first with anything left to add.
@@ -54,9 +64,6 @@ struct AddSourceView: View {
     private var links: [String] { SourceSearch.links(in: query) }
     private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var targetFolder: Folder? { folderID.flatMap { id in model.folders.first { $0.id == id } } }
-    private var ranked: [SourceSearchResult] {
-        SourceRanking.rank(query: trimmed, feeds: results, accounts: channels + xAccounts + bluesky + mastodon + reddit)
-    }
     private var resolvedAccount: SourceSearchResult? {
         guard let resolved, links == [resolved.link] else { return nil }
         return resolved.account
@@ -277,45 +284,53 @@ struct AddSourceView: View {
     /// What a name found, of the chosen kind.
     @ViewBuilder
     private var nameResults: some View {
-        let shown = filter.results(in: ranked)
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(showsAll ? shown : Array(shown.prefix(Self.firstResults))) { row($0) }
-            if !showsAll, shown.count > Self.firstResults + 1 {
-                Button("Show \(shown.count - Self.firstResults) more") { showsAll = true }
-                    .buttonStyle(.plain)
-                    .font(OFFont.ui(13, .medium))
-                    .foregroundStyle(.ofAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+        if rows.isEmpty, !settled {
+            ExploreSkeleton(style: .rows)
+                .padding(8)
+        } else {
+            let shown = filter.results(in: rows)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(showsAll ? shown : Array(shown.prefix(Self.firstResults))) { row($0) }
+                if !showsAll, shown.count > Self.firstResults + 1 {
+                    Button("Show \(shown.count - Self.firstResults) more") { showsAll = true }
+                        .buttonStyle(.plain)
+                        .font(OFFont.ui(13, .medium))
+                        .foregroundStyle(.ofAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                }
+                if needsXSignIn, filter == .all || filter == .posts {
+                    xSignInHint
+                }
+                if shown.isEmpty, !searching, !(needsXSignIn && filter == .posts) {
+                    note(emptyNote)
+                }
             }
-            if needsXSignIn, filter == .all || filter == .posts {
-                xSignInHint
-            }
-            if shown.isEmpty, !searching, !(needsXSignIn && filter == .posts) {
-                note(emptyNote)
-            }
+            // The last name's results stay until this one's are ready, faded, rather than the list going blank between searches.
+            .opacity(settled ? 1 : 0.5)
         }
     }
 
     private func row(_ result: SourceSearchResult) -> some View {
-        AddSourceRow(title: result.title, subtitle: Self.subtitle(result), host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
-                     imageUrl: result.imageUrl, url: result.feedUrl, inLibrary: model.hasSource(feedUrl: result.feedUrl),
-                     roundIcon: result.handle != nil, placeHost: result.imageUrl == nil ? nil : result.place.host,
-                     warning: youtubeOnly.contains(result.feedUrl) ? "Plays on YouTube only" : nil,
+        AddSourceRow(title: result.title, subtitle: Self.subtitle(result, playsOnlyOnYouTube: youtubeOnly.contains(result.feedUrl)),
+                     host: URLHost.host(of: result.siteUrl ?? result.feedUrl), imageUrl: result.imageUrl, url: result.feedUrl,
+                     inLibrary: model.hasSource(feedUrl: result.feedUrl), roundIcon: result.handle != nil,
+                     placeHost: result.imageUrl == nil ? nil : result.place.host,
                      note: result.canFollow ? nil : Self.noFeedNote(result.place.name), add: add)
     }
 
     /// All, Posts, Video, Articles and Podcasts, each with its count.
     private var filterChips: some View {
-        let ranked = ranked
-        return ScrollView(.horizontal) {
+        ScrollView(.horizontal) {
             HStack(spacing: 6) {
                 ForEach(SourceFilter.allCases) { kind in
                     let selected = filter == kind
                     Button { filter = kind } label: {
                         HStack(spacing: 5) {
                             Text(kind.title)
-                            Text("\(kind.results(in: ranked).count)").monospacedDigit().opacity(0.6)
+                            if settled || !rows.isEmpty {
+                                Text("\(kind.results(in: rows).count)").monospacedDigit().opacity(0.6)
+                            }
                         }
                         .font(OFFont.ui(chipFontSize, .medium))
                         .foregroundStyle(selected ? Color.ofSurface : Color.ofBody)
@@ -361,10 +376,14 @@ struct AddSourceView: View {
         }
     }
 
-    /// Starter packs that still have something to add, and what can be added at all.
+    /// Starter packs of free sources, leaving out what's in the library and any site this device has learned is walled, and what can be
+    /// added at all. Search still finds walled sites; this is only for suggesting them.
     private var emptyState: some View {
         let packs = StarterSources.packs.compactMap { pack -> StarterPack? in
-            let left = pack.sources.filter { !model.hasSource(feedUrl: $0.feedUrl) || model.sourceAdds[$0.feedUrl] != nil }
+            let left = pack.sources.filter { source in
+                guard !model.isWalled(source) else { return false }
+                return !model.hasSource(feedUrl: source.feedUrl) || model.sourceAdds[source.feedUrl] != nil
+            }
             return left.isEmpty ? nil : StarterPack(name: pack.name, sources: left)
         }
         let shown = packs.first { $0.name == suggestionPack } ?? packs.first
@@ -382,25 +401,7 @@ struct AddSourceView: View {
             .font(OFFont.ui(12))
             .foregroundStyle(.ofMuted)
             if let shown {
-                HStack(spacing: 2) {
-                    ForEach(packs) { pack in
-                        Button(pack.name) { suggestionPack = pack.name }
-                            .buttonStyle(.plain)
-                            .font(OFFont.ui(destinationSize, pack == shown ? .medium : .regular))
-                            .foregroundStyle(pack == shown ? Color.ofInk : Color.ofMuted)
-                            .padding(.horizontal, 9)
-                            .frame(height: chipHeight)
-                            .background(pack == shown ? Color.ofSelection : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            .contentShape(Rectangle())
-                    }
-                }
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(shown.sources) { source in
-                        AddSourceRow(title: source.title, subtitle: source.host, host: source.host, imageUrl: nil, url: source.feedUrl,
-                                     inLibrary: model.hasSource(feedUrl: source.feedUrl), add: add)
-                    }
-                }
-                .padding(.horizontal, -4)
+                suggestions(packs: packs, shown: shown)
             }
             Button("Import from another reader (OPML)…") { importing = true }
                 .buttonStyle(.plain)
@@ -416,6 +417,69 @@ struct AddSourceView: View {
         }
         .padding(.horizontal, 4)
         .padding(.top, 4)
+    }
+
+    /// The categories and the chosen one's sources: side by side on the Mac, where a sideways row is hard to scroll with a mouse, and a
+    /// row of chips over the list on iOS.
+    @ViewBuilder
+    private func suggestions(packs: [StarterPack], shown: StarterPack) -> some View {
+        #if os(macOS)
+        HStack(alignment: .top, spacing: 8) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(packs) { categoryButton($0, selected: $0 == shown).frame(maxWidth: .infinity, alignment: .leading) }
+                }
+            }
+            .frame(width: Self.categoryColumn)
+            ScrollView {
+                suggestionRows(shown)
+            }
+            .id(shown.id)
+        }
+        .frame(height: Self.suggestionsHeight)
+        #else
+        ScrollView(.horizontal) {
+            HStack(spacing: 2) {
+                ForEach(packs) { categoryButton($0, selected: $0 == shown) }
+            }
+        }
+        .scrollIndicators(.hidden)
+        suggestionRows(shown)
+            .padding(.horizontal, -4)
+        #endif
+    }
+
+    private func categoryButton(_ pack: StarterPack, selected: Bool) -> some View {
+        Button { suggestionPack = pack.name } label: {
+            Text(pack.name)
+                .font(OFFont.ui(destinationSize, selected ? .medium : .regular))
+                .foregroundStyle(selected ? Color.ofInk : Color.ofMuted)
+                .lineLimit(1)
+                .padding(.horizontal, 9)
+                .frame(maxWidth: categoryButtonWidth, alignment: .leading)
+                .frame(height: chipHeight)
+                .background(selected ? Color.ofSelection : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var categoryButtonWidth: CGFloat? {
+        #if os(macOS)
+        .infinity
+        #else
+        nil
+        #endif
+    }
+
+    private func suggestionRows(_ pack: StarterPack) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(pack.sources) { source in
+                AddSourceRow(title: source.title, subtitle: source.detail, host: source.host, imageUrl: source.imageUrl, url: source.feedUrl,
+                             inLibrary: model.hasSource(feedUrl: source.feedUrl), roundIcon: source.place == .youtube,
+                             placeHost: source.place == .youtube ? source.place.host : nil, add: add)
+            }
+        }
     }
 
     private var footer: some View {
@@ -537,12 +601,16 @@ struct AddSourceView: View {
 
     /// How many results show before Show More.
     private static let firstResults = 8
+    /// The searches a name starts: feeds, channels, X's handle and names, Bluesky, Mastodon, Reddit.
+    private static let searchCount = 7
+    /// How long a name's results wait for every search before showing what has answered.
+    private static let settleDelay: Duration = .milliseconds(1800)
     /// How many channels are asked whether their videos play here.
     private static let checkedChannels = 3
 
     /// How much longer a name waits before asking X's People search or Reddit: each opens a page in a hidden web view, which can't be
     /// called off once started, so it isn't asked mid-word like the others.
-    private static let xSearchDelay: Duration = .milliseconds(600)
+    private static let xSearchDelay: Duration = .milliseconds(400)
 
     /// Debounced search for a name (or a single link, which may also be a name like "node.js").
     private func search() async {
@@ -572,27 +640,67 @@ struct AddSourceView: View {
             return
         }
         resolved = nil
+        clearAccounts()
+        results = []
+        searchError = false
+        settled = false
+        rankedQuery = q
         if let community = SourceSearch.redditCommunity(in: q) {
             // Typed as a community: nothing else is meant.
-            clearAccounts()
-            results = []
-            searchError = false
             reddit = [DefaultSocialAccounts.community(community)]
+            settle()
+            unanswered = 1
             await searchReddit(q)
             return
         }
+        unanswered = Self.searchCount
         async let feeds: Void = searchFeeds(SourceSearch.name(in: q))
         async let youtube: Void = searchChannels(q)
-        async let x: Void = searchX(q)
+        async let xHandle: Void = searchXHandle(q)
+        async let xNames: Void = searchXNames(q)
         async let blueskyAccounts: Void = searchBluesky(q)
         async let mastodonAccounts: Void = searchMastodon(q)
         async let communities: Void = searchReddit(q)
-        _ = await (feeds, youtube, x, blueskyAccounts, mastodonAccounts, communities)
+        async let deadline: Void = settleAtDeadline()
+        _ = await (feeds, youtube, xHandle, xNames, blueskyAccounts, mastodonAccounts, communities, deadline)
+    }
+
+    /// One search answered: everything answered settles the list, and once settled, what's new goes below the first rows.
+    private func landed() {
+        guard !Task.isCancelled else { return }
+        unanswered -= 1
+        if unanswered <= 0 {
+            settle()
+        } else if settled {
+            rows = SourceRanking.keepingShown(rows, next: rankedNow, shown: Self.firstResults)
+        }
+    }
+
+    private func settle() {
+        if settled {
+            rows = SourceRanking.keepingShown(rows, next: rankedNow, shown: Self.firstResults)
+        } else {
+            settled = true
+            rows = rankedNow
+        }
+    }
+
+    private func settleAtDeadline() async {
+        try? await Task.sleep(for: Self.settleDelay)
+        guard !Task.isCancelled, !settled else { return }
+        settle()
+    }
+
+    private var rankedNow: [SourceSearchResult] {
+        SourceRanking.rank(query: rankedQuery, feeds: results, accounts: channels + xAccounts + bluesky + mastodon + reddit)
     }
 
     private func clearResults() {
         results = []
         clearAccounts()
+        rows = []
+        settled = false
+        unanswered = 0
         resolved = nil
         searchError = false
     }
@@ -600,6 +708,8 @@ struct AddSourceView: View {
     private func clearAccounts() {
         channels = []
         xAccounts = []
+        xProfile = nil
+        xNamed = []
         bluesky = []
         mastodon = []
         reddit = []
@@ -616,14 +726,16 @@ struct AddSourceView: View {
             results = []
             searchError = true
         }
+        if links.isEmpty { landed() }
     }
 
     private func searchChannels(_ q: String) async {
         let found = (try? await model.searchChannels(q)) ?? []
         guard !Task.isCancelled else { return }
         channels = found
+        landed()
         // Ask about the ones near the top, which is all anyone reads.
-        let top = ranked.filter { $0.place == .youtube }.prefix(Self.checkedChannels)
+        let top = rankedNow.filter { $0.place == .youtube }.prefix(Self.checkedChannels)
         for channel in top {
             guard let plays = await model.channelPlaysHere(feedUrl: channel.feedUrl), !Task.isCancelled else { continue }
             if plays { youtubeOnly.remove(channel.feedUrl) } else { youtubeOnly.insert(channel.feedUrl) }
@@ -634,32 +746,51 @@ struct AddSourceView: View {
         let found = (try? await model.searchBluesky(q)) ?? []
         guard !Task.isCancelled else { return }
         bluesky = found
+        landed()
     }
 
     private func searchMastodon(_ q: String) async {
         let found = (try? await model.searchMastodon(q)) ?? []
         guard !Task.isCancelled else { return }
         mastodon = found
+        landed()
     }
 
     /// Reddit's search opens a page in a hidden web view, like X's People search, so it waits the same way. A failure keeps what's there.
     private func searchReddit(_ q: String) async {
         try? await Task.sleep(for: Self.xSearchDelay)
-        guard !Task.isCancelled, let found = try? await model.searchReddit(q), !Task.isCancelled else { return }
-        let typed = reddit.filter { typedCommunity in !found.contains { $0.feedUrl.lowercased() == typedCommunity.feedUrl.lowercased() } }
-        reddit = typed + found
+        guard !Task.isCancelled else { return }
+        if let found = try? await model.searchReddit(q) {
+            guard !Task.isCancelled else { return }
+            let typed = reddit.filter { typedCommunity in !found.contains { $0.feedUrl.lowercased() == typedCommunity.feedUrl.lowercased() } }
+            reddit = typed + found
+        }
+        landed()
     }
 
-    /// The account whose handle this could be, then, signed in, the accounts named this. An @handle asks only for that account.
-    private func searchX(_ q: String) async {
+    /// The account whose handle this could be.
+    private func searchXHandle(_ q: String) async {
         var profile: SourceSearchResult?
         if let handle = SourceSearch.xHandle(in: q) { profile = (try? await model.xProfile(handle: handle)) ?? nil }
         guard !Task.isCancelled else { return }
-        xAccounts = profile.map { [$0] } ?? []
-        guard signedInToX, !q.hasPrefix("@") else { return }
-        try? await Task.sleep(for: Self.xSearchDelay)
-        guard !Task.isCancelled, let named = try? await model.searchXAccounts(q), !Task.isCancelled else { return }
-        xAccounts = SourceSearch.mergedXAccounts(profile: profile, named: named)
+        xProfile = profile
+        xAccounts = SourceSearch.mergedXAccounts(profile: profile, named: xNamed)
+        landed()
+    }
+
+    /// Signed in, the accounts named this. An @handle asks only for that account.
+    private func searchXNames(_ q: String) async {
+        xNamed = []
+        if signedInToX, !q.hasPrefix("@") {
+            try? await Task.sleep(for: Self.xSearchDelay)
+            guard !Task.isCancelled else { return }
+            if let named = try? await model.searchXAccounts(q) {
+                guard !Task.isCancelled else { return }
+                xNamed = named
+                xAccounts = SourceSearch.mergedXAccounts(profile: xProfile, named: named)
+            }
+        }
+        landed()
     }
 
     private func importFile(_ url: URL) async {
@@ -677,6 +808,9 @@ struct AddSourceView: View {
 
     /// Tallest the results get on macOS before they scroll.
     static let maxContentHeight: CGFloat = 400
+    /// The empty sheet's category column and its height on macOS.
+    static let categoryColumn: CGFloat = 118
+    static let suggestionsHeight: CGFloat = 310
 
     /// "Added 2", "Adding 1…", "Added 1, adding 1…", with " to <Folder>" before any ellipsis when `folder` is given.
     static func progress(adding: Int, added: Int, folder: String? = nil) -> String {
@@ -689,15 +823,16 @@ struct AddSourceView: View {
         }
     }
 
-    /// A result's second line: "YouTube · @mkbhd · 21.4M subscribers", "Podcast · Publisher", "Reddit · About it", a site's host.
-    static func subtitle(_ result: SourceSearchResult) -> String {
+    /// A result's second line: "YouTube · @mkbhd · 21.4M subscribers", "Podcast · Publisher", "Reddit · About it", a site's host. A channel
+    /// that only plays on YouTube says so in place of the place, keeping the row its height when the answer comes in.
+    static func subtitle(_ result: SourceSearchResult, playsOnlyOnYouTube: Bool = false) -> String {
         switch result.place {
         case .site: return result.subtitle
         case .podcast: return "Podcast · \(result.subtitle)"
         case .reddit: return "Reddit · \(result.subtitle)"
         case .x, .youtube, .bluesky, .mastodon, .instagram:
-            let parts = [result.place.name, result.handle.map { "@" + $0 }, result.audience]
-            return parts.compactMap { $0 }.joined(separator: " · ")
+            let lead = playsOnlyOnYouTube ? "Plays on YouTube only" : result.place.name
+            return [lead, result.handle.map { "@" + $0 }, result.audience].compactMap { $0 }.joined(separator: " · ")
         }
     }
 
@@ -754,8 +889,6 @@ private struct AddSourceRow: View {
     var roundIcon = false
     /// The place's favicon on the avatar's corner, for a row whose avatar doesn't say where it is.
     var placeHost: String?
-    /// Worth knowing before adding it ("Plays on YouTube only").
-    var warning: String?
     /// Why it can't be added; the row then has no add button.
     var note: String?
     /// Starts adding a URL to the sheet's chosen folder.
@@ -779,13 +912,6 @@ private struct AddSourceRow: View {
                         .font(OFFont.ui(12))
                         .foregroundStyle(.ofMuted)
                         .lineLimit(1)
-                    if let warning {
-                        Label(warning, systemImage: "arrow.up.right")
-                            .labelStyle(.titleAndIcon)
-                            .font(OFFont.ui(12))
-                            .foregroundStyle(.ofMuted)
-                            .lineLimit(1)
-                    }
                     if let note {
                         Text(note)
                             .font(OFFont.ui(12))

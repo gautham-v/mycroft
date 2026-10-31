@@ -245,6 +245,45 @@ struct SourceSearchTests {
         #expect(r?.canFollow == false)
     }
 
+    @Test func shownRowsStayPutWhenMoreLand() {
+        let a = account("A", .x, handle: "a"), b = account("B", .x, handle: "b"), c = account("C", .x, handle: "c"), d = account("D", .x, handle: "d")
+        // D ranks first now but lands late, so it goes below the two rows on screen.
+        #expect(SourceRanking.keepingShown([a, b, c], next: [d, b, a, c], shown: 2).map(\.title) == ["A", "B", "D", "C"])
+        // A row's newer details still come through.
+        var richer = a
+        richer.audience = "2K followers"
+        #expect(SourceRanking.keepingShown([a], next: [richer], shown: 2).first?.audience == "2K followers")
+    }
+
+    @Test func startersAreFreeAndWellFormed() {
+        #expect(StarterSources.packs.count >= 30)
+        for pack in StarterSources.packs {
+            #expect(pack.sources.count >= 3, "\(pack.name)")
+            #expect(Set(pack.sources.map(\.feedUrl)).count == pack.sources.count, "\(pack.name)")
+            for source in pack.sources {
+                #expect(URL(string: source.feedUrl) != nil)
+                if source.place == .site {
+                    #expect(!TopicPaywalls.isPaywalled("https://\(source.host)/"), "\(source.title) is on the paywalled list")
+                    #expect(!TopicPaywalls.isPaywalled(source.feedUrl), "\(source.title) is on the paywalled list")
+                }
+            }
+        }
+        #expect(StarterSources.boardPacks.map(\.name) == ["News", "Tech", "AI", "Sports"])
+        #expect(StarterSources.boardPacks.allSatisfy { $0.sources.count == 3 })
+    }
+
+    @Test func aFeedThatStaysDownStillAddsTheChannel() async throws {
+        let detector = DefaultFeedDetector(parser: DefaultFeedParser(), scraper: DefaultPageScraper(), fetch: { url, _ in
+            let isPage = url.contains("/channel/")
+            let body = isPage ? #"<meta property="og:title" content="Marques &amp; Co">"# : ""
+            return (Data(body.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: isPage ? 200 : 404, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        })
+        let found = try await detector.detect("https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ")
+        #expect(found.title == "Marques & Co")
+        #expect(found.kind == .youtube)
+        #expect(found.feedUrl.hasSuffix("channel_id=UCBJycsmduvYEL83R_U4JriQ"))
+    }
+
     @Test func subscriberCounts() {
         #expect(SourceSearch.subscriberCount("21.4M subscribers") == 21_400_000)
         #expect(SourceSearch.subscriberCount("589 subscribers") == 589)

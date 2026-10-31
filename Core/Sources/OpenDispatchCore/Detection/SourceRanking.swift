@@ -126,6 +126,14 @@ public enum SourceRanking {
         return top + rest
     }
 
+    /// The next ranking with the rows on screen left where they are: results that land late (a hidden web view's search) go below them
+    /// even if they rank higher, since a list that reorders under the pointer is worse than a good match one scroll down.
+    public static func keepingShown(_ current: [SourceSearchResult], next: [SourceSearchResult], shown: Int) -> [SourceSearchResult] {
+        let kept = current.prefix(shown).map { row in next.first { $0.id == row.id } ?? row }
+        let keptIDs = Set(kept.map(\.id))
+        return kept + next.filter { !keptIDs.contains($0.id) }
+    }
+
     private enum Tier: Int, Comparable {
         case related = 1, nameMatch, exact
         static func < (a: Tier, b: Tier) -> Bool { a.rawValue < b.rawValue }

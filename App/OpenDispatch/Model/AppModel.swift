@@ -911,6 +911,15 @@ final class AppModel {
         return status(url: item.item.url, publisher: item.source.isTopic ? item.item.author : nil)
     }
 
+    /// Whether a suggested source's site is known or has been learned to be walled, whatever the marking setting. Signed-in sites aren't.
+    func isWalled(_ source: StarterSource) -> Bool {
+        guard source.place == .site else { return false }
+        switch Paywalls.status(url: "https://\(source.host)/", signedIn: accounts.signedInSites, book: settings.paywalls) {
+        case .walled, .metered: return true
+        case .free, .signedIn: return false
+        }
+    }
+
     /// The same mark for an Explore article, whose outlet is the publisher (an aggregator carries it under its own address).
     func paywallStatus(of article: ExploreArticle) -> PaywallStatus {
         guard settings.paywallTreatment != .show else { return .free }
