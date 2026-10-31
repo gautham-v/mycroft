@@ -4,8 +4,8 @@ import SwiftUI
 /// "Add sources" sheet: search by name, or paste one or more links.
 ///
 /// A name searches X accounts, YouTube channels, Bluesky, Mastodon, Reddit communities, feeds (sites, newsletters) and podcasts as you
-/// type, each landing on its own, in one list ordered by who was meant and who is followed (`SourceRanking`). Chips narrow it by what you'd
-/// read, the kinds the sidebar lists, so another place needs no new chip. One word (or an @handle) is tried as an X handle, and any other name
+/// type, each landing on its own, in one list ordered by who was meant and who is followed (`SourceRanking`). Filters narrow it by what you'd
+/// read, the kinds the sidebar lists, so another place needs no new filter. One word (or an @handle) is tried as an X handle, and any other name
 /// finds X accounts only while the app is signed in to X. A link shows one row for it above the results, by name when it is an account;
 /// several links (one per line, or separated by spaces or commas) show one row each with Add All. Adding doesn't close the sheet or wait
 /// for the feed: the row shows progress and the source appears in the sidebar once it is detected (`AppModel.beginAddSource`).
@@ -13,6 +13,9 @@ import SwiftUI
 /// folder new sources go into (No Folder by default; a folder's "Add Source to <Folder>…" preselects it through
 /// `AppModel.pendingAddSourceFolderID`), and its New Folder… makes one and picks it. Picking a folder also moves
 /// what this sheet already added to No Folder.
+///
+/// On the Mac it is two panes: a full-height column of categories that becomes the filters while a name is typed, and the field and list
+/// beside it. On iPhone and iPad it is one column, with the filters and categories as rows of chips. Text is three styles (`SheetFont`).
 struct AddSourceView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -58,8 +61,10 @@ struct AddSourceView: View {
     @State private var namingFolder = false
     @State private var newFolderName = ""
     @State private var folderError: String?
-    /// Height of the list or intro, which sizes the sheet on macOS.
-    @State private var contentHeight: CGFloat = 0
+    #if os(macOS)
+    /// Fixed when the sheet opens, so it doesn't jump as results land.
+    @State private var sheetHeight = AddSourceView.fittingHeight
+    #endif
     @FocusState private var fieldFocused: Bool
 
     /// Links in the field (empty when it holds a name).
@@ -75,42 +80,7 @@ struct AddSourceView: View {
     private var needsXSignIn: Bool { !signedInToX && links.isEmpty && trimmed.count >= 2 && SourceSearch.xHandle(in: trimmed) == nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            field
-                .padding(.top, 12)
-            if links.isEmpty, !trimmed.isEmpty {
-                filterChips
-                    .padding(.top, 10)
-            }
-            ScrollView {
-                content
-                    .padding(.vertical, 8)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-            }
-            .scrollIndicators(.automatic)
-            #if os(macOS)
-            // The sheet fits what it shows (the short intro, or the results up to a cap).
-            .frame(height: min(contentHeight, Self.maxContentHeight))
-            #endif
-            .padding(.top, 4)
-            if let folderError {
-                Text(folderError)
-                    .font(OFFont.ui(12))
-                    .foregroundStyle(.ofDanger)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 8)
-            }
-            footer
-        }
-        .padding(20)
-        #if os(macOS)
-        .frame(width: 460)
-        #else
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        #endif
+        layout
         .background(Color.ofSurface)
         .onAppear {
             if let pending = model.pendingAddSourceURL {
@@ -150,28 +120,230 @@ struct AddSourceView: View {
         }
     }
 
+    // MARK: Layout
+
+    #if os(macOS)
+    /// The column, then the field, the list and the footer beside it.
+    private var layout: some View {
+        HStack(spacing: 0) {
+            sidebar
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    field
+                    closeButton
+                }
+                .padding(.leading, 20)
+                .padding(.trailing, 12)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+                ScrollView {
+                    content
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 22)
+                }
+                .id(listIdentity)
+                .scrollIndicators(.automatic)
+                .mask(fadingOut)
+                folderErrorText
+                    .padding(.horizontal, 20)
+                footer
+            }
+        }
+        .frame(width: Self.sheetWidth, height: sheetHeight)
+    }
+
+    /// The title, then what narrows the list: the categories, or the filters while a name is typed.
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Add sources")
+                .font(SheetFont.title)
+                .foregroundStyle(.ofInk)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 12)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    if links.isEmpty, !trimmed.isEmpty {
+                        filterRows
+                    } else {
+                        categoryRows
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 22)
+            }
+            .scrollIndicators(.automatic)
+            .mask(fadingOut)
+            VStack(alignment: .leading, spacing: 6) {
+                importButton("Import OPML\u{2026}")
+                importStatusText
+            }
+            .padding(.horizontal, 19)
+            .padding(.top, 10)
+            .padding(.bottom, 14)
+        }
+        .frame(width: Self.columnWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.ofGround)
+        .overlay(alignment: .trailing) { Rectangle().fill(Color.ofHairline).frame(width: 1) }
+    }
+
+    /// The list starts at its top again when the category changes.
+    private var listIdentity: String {
+        trimmed.isEmpty ? shownPack(in: suggestionPacks)?.name ?? "" : "results"
+    }
+
+    /// A scroller's last rows fade out, which says there is more where a hard edge wouldn't.
+    private var fadingOut: some View {
+        VStack(spacing: 0) {
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: 26)
+        }
+    }
+
+    /// For You, the subjects, then the formats. Picking one clears any link in the field, since the list then shows the category.
+    @ViewBuilder
+    private var categoryRows: some View {
+        let packs = suggestionPacks
+        let shown = trimmed.isEmpty ? shownPack(in: packs) : nil
+        ForEach(packs.filter { $0.name == Self.forYouPack }) { categoryRow($0, selected: $0 == shown) }
+        sectionLabel("Subjects")
+            .padding(.horizontal, 9)
+            .padding(.top, 6)
+        ForEach(packs.filter { $0.name != Self.forYouPack && !StarterSources.formats.contains($0.name) }) { categoryRow($0, selected: $0 == shown) }
+        sectionLabel("By format")
+            .padding(.horizontal, 9)
+            .padding(.top, 6)
+        ForEach(packs.filter { StarterSources.formats.contains($0.name) }) { pack in
+            categoryRow(pack, selected: pack == shown)
+        }
+    }
+
+    private func categoryRow(_ pack: StarterPack, selected: Bool) -> some View {
+        AddSourceNavRow(title: pack.name, selected: selected, fills: true, action: {
+            suggestionPack = pack.name
+            query = ""
+        }, icon: { formatIcon(pack.name) })
+    }
+
+    /// A format's mark in the column, so the places read as places. A subject has none.
+    @ViewBuilder
+    private func formatIcon(_ name: String) -> some View {
+        if let place = [SourcePlace.x, .youtube, .bluesky, .reddit].first(where: { $0.name == name }) {
+            SourceBadge(host: place.host ?? "", title: place.name, size: 16)
+        } else if let symbol = ["Podcasts": "mic", "Newsletters": "envelope"][name] {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(.ofMuted)
+                .frame(width: 16, height: 16)
+        }
+    }
+
+    /// All, Posts, Video, Articles and Podcasts, each with its count.
+    private var filterRows: some View {
+        ForEach(SourceFilter.allCases) { kind in
+            AddSourceNavRow(title: kind.title, selected: filter == kind, count: filterCount(kind), fills: true, action: { filter = kind }, icon: { EmptyView() })
+        }
+    }
+
+    /// As tall as it can be up to the usual, in a window that may be shorter than that.
+    private static var fittingHeight: CGFloat {
+        guard let window = NSApp.mainWindow else { return tallest }
+        return max(shortest, min(tallest, window.contentLayoutRect.height - 24))
+    }
+    #else
+    private var layout: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Add sources")
+                    .font(SheetFont.title)
+                    .foregroundStyle(.ofInk)
+                Spacer()
+                closeButton
+            }
+            field
+                .padding(.top, 12)
+            if links.isEmpty, !trimmed.isEmpty {
+                filterChips
+                    .padding(.top, 10)
+            }
+            ScrollView {
+                content
+                    .padding(.vertical, 8)
+            }
+            .scrollIndicators(.automatic)
+            .padding(.top, 4)
+            folderErrorText
+            footer
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    /// All, Posts, Video, Articles and Podcasts, each with its count.
+    private var filterChips: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 2) {
+                ForEach(SourceFilter.allCases) { kind in
+                    AddSourceNavRow(title: kind.title, selected: filter == kind, count: filterCount(kind), fills: false, action: { filter = kind }, icon: { EmptyView() })
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+    #endif
+
     // MARK: Parts
 
-    private var header: some View {
-        HStack {
-            Text("Add sources")
-                .font(OFFont.ui(17, .semibold))
-                .tracking(-0.17)
-                .foregroundStyle(.ofInk)
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                OFIcon.close.image
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(.ofMuted)
-                    .frame(width: closeSize, height: closeSize)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
-            .keyboardShortcut(.cancelAction)
+    private var closeButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            OFIcon.close.image
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(.ofMuted)
+                .frame(width: closeSize, height: closeSize)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close")
+        .keyboardShortcut(.cancelAction)
+    }
+
+    @ViewBuilder
+    private var folderErrorText: some View {
+        if let folderError {
+            Text(folderError)
+                .font(SheetFont.meta)
+                .foregroundStyle(.ofDanger)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private func importButton(_ title: String) -> some View {
+        Button(title) { importing = true }
+            .buttonStyle(.plain)
+            .font(SheetFont.meta)
+            .foregroundStyle(.ofMuted)
+    }
+
+    @ViewBuilder
+    private var importStatusText: some View {
+        if let importStatus {
+            Text(importStatus.text)
+                .font(SheetFont.meta)
+                .foregroundStyle(importStatus.error ? Color.ofDanger : Color.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// How many of a name's results a filter shows, once there are any to count.
+    private func filterCount(_ kind: SourceFilter) -> Int? {
+        settled || !rows.isEmpty ? kind.results(in: rows).count : nil
     }
 
     private var field: some View {
@@ -181,8 +353,8 @@ struct AddSourceView: View {
                 .foregroundStyle(.ofFaint)
             TextField("Search by name or @handle, or paste links", text: $query)
                 .textFieldStyle(.plain)
-                .font(OFFont.ui(15))
-                .foregroundStyle(.ofBody)
+                .font(SheetFont.primary)
+                .foregroundStyle(.ofInk)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
@@ -196,7 +368,7 @@ struct AddSourceView: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 44)
+        .frame(height: fieldHeight)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.ofGround))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -206,9 +378,9 @@ struct AddSourceView: View {
 
     /// "Add to" and a menu of No Folder, the folders and New Folder…
     private var destination: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Text("Add to")
-                .font(OFFont.ui(destinationSize))
+                .font(SheetFont.meta)
                 .foregroundStyle(.ofMuted)
             Menu {
                 Picker("Add to", selection: $folderID) {
@@ -227,29 +399,24 @@ struct AddSourceView: View {
             } label: {
                 #if os(macOS)
                 Text(targetFolder?.title ?? "No Folder")
+                    .font(SheetFont.meta)
+                    .foregroundStyle(.ofInk)
                 #else
                 HStack(spacing: 4) {
                     Text(targetFolder?.title ?? "No Folder")
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                 }
-                .font(OFFont.ui(destinationSize, .medium))
-                .foregroundStyle(.ofAccent)
+                .font(SheetFont.meta)
+                .foregroundStyle(.ofInk)
                 #endif
             }
             #if os(macOS)
+            .menuStyle(.borderlessButton)
             .fixedSize()
             #endif
             .accessibilityLabel("Add to \(targetFolder?.title ?? "No Folder")")
         }
-    }
-
-    private var destinationSize: CGFloat {
-        #if os(iOS)
-        15
-        #else
-        13
-        #endif
     }
 
     @ViewBuilder
@@ -266,8 +433,8 @@ struct AddSourceView: View {
                         Spacer()
                         Button("Add All") { links.forEach(add) }
                             .buttonStyle(.plain)
-                            .font(OFFont.ui(13, .medium))
-                            .foregroundStyle(.ofAccent)
+                            .font(SheetFont.metaMedium)
+                            .foregroundStyle(.ofInk)
                     }
                     .padding(.horizontal, 8)
                 }
@@ -300,8 +467,8 @@ struct AddSourceView: View {
                 if !showsAll, shown.count > Self.firstResults + 1 {
                     Button("Show \(shown.count - Self.firstResults) more") { showsAll = true }
                         .buttonStyle(.plain)
-                        .font(OFFont.ui(13, .medium))
-                        .foregroundStyle(.ofAccent)
+                        .font(SheetFont.metaMedium)
+                        .foregroundStyle(.ofInk)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                 }
@@ -325,45 +492,17 @@ struct AddSourceView: View {
                      note: result.canFollow ? nil : Self.noFeedNote(result.place.name), add: add)
     }
 
-    /// All, Posts, Video, Articles and Podcasts, each with its count.
-    private var filterChips: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
-                ForEach(SourceFilter.allCases) { kind in
-                    let selected = filter == kind
-                    Button { filter = kind } label: {
-                        HStack(spacing: 5) {
-                            Text(kind.title)
-                            if settled || !rows.isEmpty {
-                                Text("\(kind.results(in: rows).count)").monospacedDigit().opacity(0.6)
-                            }
-                        }
-                        .font(OFFont.ui(chipFontSize, .medium))
-                        .foregroundStyle(selected ? Color.ofSurface : Color.ofBody)
-                        .padding(.horizontal, chipPadding)
-                        .frame(height: chipHeight)
-                        .background(selected ? Color.ofInk : Color.ofCode, in: Capsule())
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-                }
-            }
-        }
-        .scrollIndicators(.hidden)
-    }
-
     private var xSignInHint: some View {
         HStack(spacing: 10) {
             Text("Sign in to X to find accounts by name, or type the @handle.")
-                .font(OFFont.ui(13))
+                .font(SheetFont.meta)
                 .foregroundStyle(.ofMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Sign In") { signingIn = .account(.x) }
                 .buttonStyle(.plain)
-                .font(OFFont.ui(13, .medium))
-                .foregroundStyle(.ofAccent)
+                .font(SheetFont.metaMedium)
+                .foregroundStyle(.ofInk)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
@@ -383,8 +522,9 @@ struct AddSourceView: View {
     }
 
     /// Starter packs of free sources, leaving out what's in the library and any site this device has learned is walled, and what can be
-    /// added at all. Search still finds walled sites; this is only for suggesting them.
-    private var emptyState: some View {
+    /// added at all. Search still finds walled sites; this is only for suggesting them. For You comes first when History points anywhere,
+    /// and is what the sheet opens on. Its rows are `forYouRows`.
+    private var suggestionPacks: [StarterPack] {
         let catalog = StarterSources.packs.compactMap { pack -> StarterPack? in
             let left = pack.sources.filter { source in
                 guard !model.isWalled(source) else { return false }
@@ -392,10 +532,25 @@ struct AddSourceView: View {
             }
             return left.isEmpty ? nil : StarterPack(name: pack.name, sources: left)
         }
-        // For You comes first when History points anywhere, and is what the sheet opens on. Its rows are `forYouRows`.
-        let suggested = model.shownSuggestions
-        let packs = suggested.isEmpty ? catalog : [StarterPack(name: Self.forYouPack, sources: [])] + catalog
-        let shown = packs.first { $0.name == suggestionPack } ?? packs.first
+        return model.shownSuggestions.isEmpty ? catalog : [StarterPack(name: Self.forYouPack, sources: [])] + catalog
+    }
+
+    private func shownPack(in packs: [StarterPack]) -> StarterPack? {
+        packs.first { $0.name == suggestionPack } ?? packs.first
+    }
+
+    #if os(macOS)
+    /// The chosen category's sources; the column beside them does the choosing.
+    @ViewBuilder
+    private var emptyState: some View {
+        if let shown = shownPack(in: suggestionPacks) {
+            suggestionRows(shown)
+        }
+    }
+    #else
+    private var emptyState: some View {
+        let packs = suggestionPacks
+        let shown = shownPack(in: packs)
         return VStack(alignment: .leading, spacing: 10) {
             ReaderFlowLayout(spacingX: 10, spacingY: 4) {
                 ForEach([SourcePlace.x, .youtube, .bluesky, .reddit, .mastodon], id: \.self) { place in
@@ -414,81 +569,28 @@ struct AddSourceView: View {
                 .buttonStyle(.plain)
                 Label("Any site", systemImage: "globe").labelStyle(.titleAndIcon)
             }
-            .font(OFFont.ui(12))
+            .font(SheetFont.meta)
             .foregroundStyle(.ofMuted)
             if let shown {
-                suggestions(packs: packs, shown: shown)
+                ScrollView(.horizontal) {
+                    HStack(spacing: 2) {
+                        ForEach(packs) { pack in
+                            AddSourceNavRow(title: pack.name, selected: pack == shown, fills: false, action: { suggestionPack = pack.name }, icon: { EmptyView() })
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                suggestionRows(shown)
+                    .padding(.horizontal, -4)
             }
-            Button("Import from another reader (OPML)…") { importing = true }
-                .buttonStyle(.plain)
-                .font(OFFont.ui(13, .medium))
-                .foregroundStyle(.ofAccent)
+            importButton("Import from another reader (OPML)\u{2026}")
                 .padding(.top, 2)
-            if let importStatus {
-                Text(importStatus.text)
-                    .font(OFFont.ui(12))
-                    .foregroundStyle(importStatus.error ? Color.ofDanger : Color.ofMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            importStatusText
         }
         .padding(.horizontal, 4)
         .padding(.top, 4)
     }
-
-    /// The categories and the chosen one's sources: side by side on the Mac, where a sideways row is hard to scroll with a mouse, and a
-    /// row of chips over the list on iOS.
-    @ViewBuilder
-    private func suggestions(packs: [StarterPack], shown: StarterPack) -> some View {
-        #if os(macOS)
-        HStack(alignment: .top, spacing: 8) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(packs.filter { !StarterSources.formats.contains($0.name) }) { categoryButton($0, selected: $0 == shown) }
-                    sectionLabel("By format").padding(.horizontal, 9).padding(.top, 8)
-                    ForEach(packs.filter { StarterSources.formats.contains($0.name) }) { categoryButton($0, selected: $0 == shown) }
-                }
-            }
-            .frame(width: Self.categoryColumn)
-            ScrollView {
-                suggestionRows(shown)
-            }
-            .id(shown.id)
-        }
-        .frame(height: Self.suggestionsHeight)
-        #else
-        ScrollView(.horizontal) {
-            HStack(spacing: 2) {
-                ForEach(packs) { categoryButton($0, selected: $0 == shown) }
-            }
-        }
-        .scrollIndicators(.hidden)
-        suggestionRows(shown)
-            .padding(.horizontal, -4)
-        #endif
-    }
-
-    private func categoryButton(_ pack: StarterPack, selected: Bool) -> some View {
-        Button { suggestionPack = pack.name } label: {
-            Text(pack.name)
-                .font(OFFont.ui(destinationSize, selected ? .medium : .regular))
-                .foregroundStyle(selected ? Color.ofInk : Color.ofMuted)
-                .lineLimit(1)
-                .padding(.horizontal, 9)
-                .frame(maxWidth: categoryButtonWidth, alignment: .leading)
-                .frame(height: chipHeight)
-                .background(selected ? Color.ofSelection : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var categoryButtonWidth: CGFloat? {
-        #if os(macOS)
-        .infinity
-        #else
-        nil
-        #endif
-    }
+    #endif
 
     /// What History points to: first what was opened or linked, then neighbours in the subjects the user reads.
     private var forYouRows: some View {
@@ -502,7 +604,7 @@ struct AddSourceView: View {
                 sectionLabel(group.title).padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 4)
                 ForEach(group.rows) { suggestion in
                     let result = suggestion.result
-                    AddSourceRow(title: result.title, subtitle: result.subtitle, host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
+                    AddSourceRow(title: result.title, subtitle: Self.placeLine(title: result.title, subtitle: result.subtitle), host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
                                  imageUrl: result.imageUrl, url: result.feedUrl, inLibrary: model.hasSource(feedUrl: result.feedUrl),
                                  roundIcon: result.handle != nil || result.place == .youtube,
                                  placeHost: result.imageUrl == nil ? nil : result.place.host, reason: suggestion.reason, add: add)
@@ -538,7 +640,7 @@ struct AddSourceView: View {
         return HStack(spacing: 12) {
             destination
             Text(Self.progress(adding: adding, added: added))
-                .font(OFFont.ui(13))
+                .font(SheetFont.meta)
                 .foregroundStyle(.ofMuted)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -547,57 +649,52 @@ struct AddSourceView: View {
                 dismiss()
             } label: {
                 Text("Done")
-                    .font(OFFont.ui(14, .medium))
+                    .font(SheetFont.primaryMedium)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
-                    .frame(height: 36)
+                    .frame(height: doneHeight)
                     .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.ofAccent))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
         .padding(.top, 12)
+        #if os(macOS)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+        #endif
         .overlay(alignment: .top) { Rectangle().fill(Color.ofHairline).frame(height: 1) }
     }
 
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(OFFont.ui(11, .semibold))
-            .tracking(0.6)
+        Text(text)
+            .font(SheetFont.metaMedium)
             .foregroundStyle(.ofMuted)
             .padding(.vertical, 6)
     }
 
     private func note(_ text: String) -> some View {
         Text(text)
-            .font(OFFont.ui(13))
+            .font(SheetFont.meta)
             .foregroundStyle(.ofMuted)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 8)
             .padding(.vertical, 12)
     }
 
-    private var chipFontSize: CGFloat {
+    private var fieldHeight: CGFloat {
         #if os(iOS)
-        14
+        44
         #else
-        12.5
+        38
         #endif
     }
 
-    private var chipPadding: CGFloat {
+    private var doneHeight: CGFloat {
         #if os(iOS)
-        13
+        36
         #else
-        10
-        #endif
-    }
-
-    private var chipHeight: CGFloat {
-        #if os(iOS)
         32
-        #else
-        26
         #endif
     }
 
@@ -873,14 +970,22 @@ struct AddSourceView: View {
 
     // MARK: Formatting
 
-    /// Tallest the results get on macOS before they scroll.
-    static let maxContentHeight: CGFloat = 400
     /// The category of suggestions from History.
     static let forYouPack = "For You"
 
-    /// The empty sheet's category column and its height on macOS.
-    static let categoryColumn: CGFloat = 118
-    static let suggestionsHeight: CGFloat = 310
+    #if os(macOS)
+    static let sheetWidth: CGFloat = 780
+    static let columnWidth: CGFloat = 200
+    /// The usual height, and the least it shrinks to in a short window (the smallest is 560).
+    static let tallest: CGFloat = 640
+    static let shortest: CGFloat = 460
+    #endif
+
+    /// A suggestion's place, leaving out a handle the title already is: "X" for @Eagles, not "X · @Eagles".
+    static func placeLine(title: String, subtitle: String) -> String {
+        let repeated = " · \(title)"
+        return title.hasPrefix("@") && subtitle.hasSuffix(repeated) ? String(subtitle.dropLast(repeated.count)) : subtitle
+    }
 
     /// "Added 2", "Adding 1…", "Added 1, adding 1…", with " to <Folder>" before any ellipsis when `folder` is given.
     static func progress(adding: Int, added: Int, folder: String? = nil) -> String {
@@ -946,6 +1051,64 @@ enum SourceFilter: String, CaseIterable, Identifiable {
     }
 }
 
+/// The sheet's three text styles: the title once, rows and what you pick at the sizes of the app's sidebar, and everything else at the size
+/// of its metadata. `metaMedium` is that last size for a label or a small action.
+private enum SheetFont {
+    static let title = OFFont.ui(17, .semibold)
+    static let primary = OFFont.ui(14.5)
+    static let primaryMedium = OFFont.ui(14.5, .medium)
+    static let meta = OFFont.ui(13)
+    static let metaMedium = OFFont.ui(13, .medium)
+}
+
+/// A category or filter: a row of the Mac's column, or a chip in a sideways row on iOS. Selected looks the same in both.
+private struct AddSourceNavRow<Icon: View>: View {
+    let title: String
+    let selected: Bool
+    var count: Int?
+    /// Takes the column's width, with any count at its far edge.
+    let fills: Bool
+    let action: () -> Void
+    @ViewBuilder let icon: () -> Icon
+
+    @State private var hovering = false
+
+    private var height: CGFloat {
+        #if os(iOS)
+        32
+        #else
+        28
+        #endif
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                icon()
+                Text(title)
+                    .font(selected ? SheetFont.primaryMedium : SheetFont.primary)
+                    .foregroundStyle(.ofInk)
+                    .lineLimit(1)
+                if fills { Spacer(minLength: 8) }
+                if let count {
+                    Text("\(count)")
+                        .font(SheetFont.meta)
+                        .foregroundStyle(.ofMuted)
+                        .monospacedDigit()
+                }
+            }
+            .padding(.horizontal, 9)
+            .frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
+            .frame(height: height)
+            .background(selected ? Color.ofSelection : hovering ? Color.ofHover : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
 /// One result or pasted link: icon, title, subtitle, and an add button that shows the add's progress.
 private struct AddSourceRow: View {
     let title: String
@@ -975,25 +1138,28 @@ private struct AddSourceRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 icon
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(OFFont.ui(14, .medium))
-                        .foregroundStyle(.ofInk)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(OFFont.ui(12))
+                VStack(alignment: .leading, spacing: 2) {
+                    // With a reason, the place moves up beside the name and the reason takes the second line, so every row is two lines.
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text(title)
+                            .font(SheetFont.primaryMedium)
+                            .foregroundStyle(.ofInk)
+                            .lineLimit(1)
+                        if reason != nil {
+                            Text(subtitle)
+                                .font(SheetFont.meta)
+                                .foregroundStyle(.ofMuted)
+                                .lineLimit(1)
+                        }
+                    }
+                    Text(reason ?? subtitle)
+                        .font(SheetFont.meta)
                         .foregroundStyle(.ofMuted)
-                        .lineLimit(1)
+                        .lineLimit(reason == nil ? 1 : 2)
                     if let note {
                         Text(note)
-                            .font(OFFont.ui(12))
+                            .font(SheetFont.meta)
                             .foregroundStyle(.ofMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let reason {
-                        Text(reason)
-                            .font(OFFont.ui(12))
-                            .foregroundStyle(.ofBody)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1002,10 +1168,10 @@ private struct AddSourceRow: View {
             }
             if case .failed(let message) = state {
                 Text(message)
-                    .font(OFFont.ui(12))
+                    .font(SheetFont.meta)
                     .foregroundStyle(.ofDanger)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 38)
+                    .padding(.leading, 42)
             }
         }
         .padding(.horizontal, 8)
@@ -1017,23 +1183,23 @@ private struct AddSourceRow: View {
     @ViewBuilder
     private var icon: some View {
         if let imageUrl, let u = URL(string: imageUrl) {
-            CachedAsyncImage(url: u, maxPixelSize: 56) { image in
+            CachedAsyncImage(url: u, maxPixelSize: 64) { image in
                 image.resizable().scaledToFill()
             } placeholder: { _ in
                 Color.ofCode
             }
-            .frame(width: 28, height: 28)
-            .clipShape(RoundedRectangle(cornerRadius: roundIcon ? 14 : 8, style: .continuous))
+            .frame(width: 32, height: 32)
+            .clipShape(RoundedRectangle(cornerRadius: roundIcon ? 16 : 9, style: .continuous))
             .overlay(alignment: .bottomTrailing) {
                 if let placeHost {
-                    SourceBadge(host: placeHost, title: "", size: 13)
+                    SourceBadge(host: placeHost, title: "", size: 14)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.ofSurface, lineWidth: 1.5))
                         .offset(x: 4, y: 3)
                 }
             }
         } else {
-            SourceBadge(host: host, title: title, size: 28)
+            SourceBadge(host: host, title: title, size: 32)
         }
     }
 
