@@ -1434,7 +1434,7 @@ final class AppModel {
     /// Out of the feeds, by its own setting or its folder's.
     func isMuted(_ source: Source) -> Bool { source.isMuted || mutingFolder(of: source) != nil }
 
-    /// The banner over the current list when it is a muted source or a folder with muted sources in it.
+    /// The banner over the current list when it is a muted source or folder.
     var mutedListNote: MutedListNote? {
         guard !showsHighlights, !showsHistory else { return nil }
         if let id = selectedSourceID, let source = sources.first(where: { $0.id == id }), !source.isTopic {
@@ -1444,10 +1444,7 @@ final class AppModel {
             return source.isMuted ? MutedListNote(text: "Muted. Not in your feeds.", actionTitle: "Unmute", unmute: .source(id)) : nil
         }
         guard let id = selectedFolderID, let folder = folders.first(where: { $0.id == id }) else { return nil }
-        if folder.isMuted { return MutedListNote(text: "Muted. Not in your feeds.", actionTitle: "Unmute Folder", unmute: .folder(id)) }
-        let list = allSources(inFolder: id)
-        let muted = list.filter(\.isMuted).count
-        return muted > 0 ? MutedListNote(text: "\(muted) of \(list.count) sources muted. All show here.") : nil
+        return folder.isMuted ? MutedListNote(text: "Muted. Not in your feeds.", actionTitle: "Unmute Folder", unmute: .folder(id)) : nil
     }
 
     /// Mute in Feeds: the source's items leave All, Articles, Posts, Video and Podcasts and it stays in the sidebar.

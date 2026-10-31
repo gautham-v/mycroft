@@ -237,7 +237,7 @@ struct SettingsPlaybackPane: View {
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
-            SettingsPaneHeading(title: "Playback", hint: "Video autoplay and layout for YouTube sources, and the voice for reading articles aloud.")
+            SettingsPaneHeading(title: "Playback", hint: "Video autoplay for YouTube sources and posts, layout for YouTube, and the voice for reading articles aloud.")
             SettingsCard {
                 SettingsRow(label: "Autoplay on select", hint: "Start playing when you open a video") {
                     toggle("Autoplay on select", isOn: $model.settings.autoplay)

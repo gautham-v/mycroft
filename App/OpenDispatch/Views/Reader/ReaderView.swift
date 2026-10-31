@@ -92,6 +92,8 @@ struct ReaderItemView: View {
     private var isPodcast: Bool { item.source.kind == .podcast && item.item.audioUrl != nil }
     /// Posts (X, Bluesky, Mastodon, LinkedIn, Threads, Instagram) have no headline: the extracted markup carries the author row, text and cards.
     private var isPost: Bool { TextFormat.isSocialPost(item.item.url) && content != .failed }
+    /// A post's video starts when it is opened, as a YouTube item's does; an article's waits for play.
+    private var playsVideoAlone: Bool { isPost || DiscussionPlace.thread(of: item.item.url) == .reddit }
     private var itemURL: URL? { URL(string: item.item.url) }
 
     private var contentHTML: String? {
@@ -385,7 +387,10 @@ struct ReaderItemView: View {
                     ReaderArticleWebView(html: bodyHTML ?? "", hero: visibleHero, baseURL: itemURL, appearance: appearance,
                                          post: isPost ? ReaderHTML.Post(published: item.item.publishedAt, host: itemURL?.host) : nil,
                                          onReload: { model.reloadArticle(item) },
-                                         onCopyMarkdown: { model.copyMarkdown(item: item) }, speechPage: speechPage)
+                                         onCopyMarkdown: { model.copyMarkdown(item: item) }, speechPage: speechPage,
+                                         allowsAutoplay: playsVideoAlone, autoplay: playsVideoAlone && settings.autoplay && model.autoplayItemID == item.id)
+                        // Whether a page may start a video is fixed when its web view is made.
+                        .id(playsVideoAlone)
                 }
             case .loading:
                 VStack(alignment: .leading, spacing: 0) {

@@ -45,7 +45,7 @@ enum ReaderHTML {
 
     /// The full document. `hero` is an image URL shown above the content (already de-duplicated by the caller).
     /// `post` is set for posts; the age is as of loading.
-    @MainActor static func document(body: String, hero: String?, appearance a: Appearance, post: Post? = nil) -> String {
+    @MainActor static func document(body: String, hero: String?, appearance a: Appearance, post: Post? = nil, autoplay: Bool = false) -> String {
         let themeAttr: String = switch a.theme {
         case .system: ""
         case .light: " data-theme=\"light\""
@@ -54,7 +54,8 @@ enum ReaderHTML {
         let heroTag = hero.map { "<img src=\"\(ReaderWebSupport.escapeAttribute($0))\" alt=\"\">" } ?? ""
         // The page sends no Referer: X's media servers refuse one from another site (an embedded post's avatar, still and
         // video in an article). Embedded players still get the page's origin, which YouTube needs.
-        let body = body.replacingOccurrences(of: "<iframe ", with: "<iframe referrerpolicy=\"strict-origin-when-cross-origin\" ")
+        let body = (autoplay ? autoplayingPlayer(body) : body)
+            .replacingOccurrences(of: "<iframe ", with: "<iframe referrerpolicy=\"strict-origin-when-cross-origin\" ")
         return """
         <!doctype html>
         <html\(themeAttr)>
@@ -70,6 +71,18 @@ enum ReaderHTML {
         </body>
         </html>
         """
+    }
+
+    /// `body` with the YouTube player it opens with set to start by itself; unchanged when a video comes first or there is none.
+    private static func autoplayingPlayer(_ body: String) -> String {
+        guard let frame = body.range(of: #"<iframe [^>]*src="https://www\.youtube-nocookie\.com/embed/[^>]*>"#, options: .regularExpression),
+              body.range(of: "<video")?.lowerBound ?? frame.upperBound > frame.lowerBound else { return body }
+        var tag = String(body[frame])
+        guard let src = tag.range(of: #"src="[^"]*""#, options: .regularExpression) else { return body }
+        let address = tag[src].dropLast()
+        tag.replaceSubrange(src, with: address + (address.contains("?") ? "&amp;" : "?") + "autoplay=1\"")
+        tag = tag.replacingOccurrences(of: "allow=\"", with: "allow=\"autoplay; ")
+        return body.replacingCharacters(in: frame, with: tag)
     }
 
     /// Script run in our own content world: reports the article's height (for fitting the view) whenever
@@ -100,6 +113,23 @@ enum ReaderHTML {
         } catch (err) {}
       });
       report();
+    })();
+    """
+
+    /// Reports where each video is as it plays (`ReaderPostMedia`). GIFs loop and aren't followed.
+    static let videoScript = """
+    (function () {
+      document.querySelectorAll('article video:not([loop])').forEach(function (v) {
+        var last = 0;
+        function report(time) { window.webkit.messageHandlers.openDispatchVideo.postMessage({ src: v.src, time: time }); }
+        v.addEventListener('timeupdate', function () {
+          if (Math.abs(v.currentTime - last) < 1) return;
+          last = v.currentTime;
+          report(last);
+        });
+        v.addEventListener('pause', function () { report(v.currentTime); });
+        v.addEventListener('ended', function () { report(0); });
+      });
     })();
     """
 
@@ -184,6 +214,9 @@ struct ReaderArticleWebView: View {
     var onCopyMarkdown: (() -> Void)? = nil
     /// Read aloud's bridge to this web view (ReaderSpeechPage.swift).
     var speechPage: ReaderSpeechPage? = nil
+    /// A page may start a video by itself (posts, not articles), and this one should now (Autoplay on select).
+    var allowsAutoplay = false
+    var autoplay = false
 
     @Environment(HighlightStore.self) private var highlights
     @Environment(\.highlightArticle) private var article
@@ -191,6 +224,7 @@ struct ReaderArticleWebView: View {
     /// The images opened full screen from a tap (iPhone).
     @State private var gallery: ReaderImageGallery?
     @State private var bridge = ReaderHighlightBridge()
+    @State private var media = ReaderPostMedia()
     /// Where the scroll marker sits in the article, for scrolling the reader to a highlight.
     @State private var markerY: CGFloat = 0
 
@@ -203,7 +237,7 @@ struct ReaderArticleWebView: View {
     var body: some View {
         ReaderArticleWebViewRepresentable(
             html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post, onReload: onReload,
-            onCopyMarkdown: onCopyMarkdown, bridge: bridge,
+            onCopyMarkdown: onCopyMarkdown, bridge: bridge, media: media, allowsAutoplay: allowsAutoplay, autoplay: autoplay,
             highlight: article.map { ReaderHighlightState(store: highlights, article: $0, highlights: highlights.highlights(forKey: $0.key)) },
             speechPage: speechPage,
             onImage: { gallery = $0 }
@@ -212,6 +246,7 @@ struct ReaderArticleWebView: View {
         }
         .frame(height: max(height, 1))
         .frame(maxWidth: .infinity)
+        .onDisappear { media.pause() }
         // The web view doesn't scroll itself, so the page reports where a highlight is and an invisible
         // marker is put there for the reader's ScrollView to scroll to.
         .overlay(alignment: .topLeading) {
@@ -255,6 +290,40 @@ struct ReaderArticleWebView: View {
     }
 }
 
+/// A page's videos: where they were left, kept for the session, so coming back to a post picks up there; playing the first when
+/// the page opens; and pausing them all when the reader leaves.
+@MainActor
+final class ReaderPostMedia {
+    weak var webView: WKWebView?
+    private static var positions: [String: Double] = [:]
+
+    func record(_ message: Any) {
+        guard let body = message as? [String: Any], let src = body["src"] as? String, let time = (body["time"] as? NSNumber)?.doubleValue else { return }
+        Self.positions[src] = time > 0 ? time : nil
+    }
+
+    func start(autoplay: Bool) {
+        guard let webView, autoplay || !Self.positions.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: Self.positions), let left = String(data: data, encoding: .utf8) else { return }
+        // ObjC entry point: the Swift overlay variant needs libswiftWebKit.dylib, absent on iOS 18.
+        webView.__evaluateJavaScript("""
+            (function () {
+              var left = \(left);
+              var videos = document.querySelectorAll('article video:not([loop])');
+              videos.forEach(function (v) {
+                var time = left[v.src];
+                if (!time) return;
+                if (v.readyState >= 1) v.currentTime = time;
+                else v.addEventListener('loadedmetadata', function () { v.currentTime = time; }, { once: true });
+              });
+              if (\(autoplay) && videos.length) { var p = videos[0].play(); if (p) p.catch(function () {}); }
+            })();
+            """, inFrame: nil, in: .defaultClient) { _, _ in }
+    }
+
+    func pause() { webView?.pauseAllMediaPlayback(completionHandler: nil) }
+}
+
 @MainActor
 final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var onHeight: (CGFloat) -> Void
@@ -265,16 +334,25 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     var onCopyMarkdown: (() -> Void)?
     var onImage: ((ReaderImageGallery) -> Void)?
     let bridge: ReaderHighlightBridge
+    let media: ReaderPostMedia
     var speechPage: ReaderSpeechPage?
+    /// Whether this page's first video starts by itself, and whether the page has finished loading.
+    private var autoplay = false
+    private var pageLoaded = false
 
-    init(onHeight: @escaping (CGFloat) -> Void, bridge: ReaderHighlightBridge) {
+    init(onHeight: @escaping (CGFloat) -> Void, bridge: ReaderHighlightBridge, media: ReaderPostMedia) {
         self.onHeight = onHeight
         self.bridge = bridge
+        self.media = media
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "openDispatchImage" {
             if let gallery = ReaderImageGallery(message: message.body) { onImage?(gallery) }
+            return
+        }
+        if message.name == "openDispatchVideo" {
+            media.record(message.body)
             return
         }
         guard message.name == "openDispatchHeight" else { return }
@@ -297,27 +375,35 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         bridge.pageDidLoad()
+        pageLoaded = true
+        media.start(autoplay: autoplay)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         // Reload on the next update; highlights repaint and read aloud stops, as for a new document.
         loadedKey = nil
+        pageLoaded = false
         bridge.pageWillLoad()
         speechPage?.documentWillChange()
         webView.reload()
     }
 
-    func makeWebView() -> WKWebView {
-        let config = ReaderWebSupport.configuration(autoplay: false, dataStore: ReaderWebSupport.articleDataStore)
+    /// `allowsAutoplay`: a page may start a video by itself, which is fixed when the web view is made.
+    func makeWebView(allowsAutoplay: Bool) -> WKWebView {
+        let config = ReaderWebSupport.configuration(autoplay: allowsAutoplay, dataStore: ReaderWebSupport.articleDataStore)
         let world = WKContentWorld.defaultClient
         let controller = config.userContentController
         controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchHeight")
         controller.addUserScript(WKUserScript(source: ReaderHTML.fitScript, injectionTime: .atDocumentEnd,
                                               forMainFrameOnly: true, in: world))
+        controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchVideo")
+        controller.addUserScript(WKUserScript(source: ReaderHTML.videoScript, injectionTime: .atDocumentEnd,
+                                              forMainFrameOnly: true, in: world))
         bridge.install(in: config)
         speechPage?.install(in: controller, world: world)
         let webView = ReaderFittedWebView(frame: .zero, configuration: config)
         bridge.attach(webView)
+        media.webView = webView
         speechPage?.attach(webView)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -370,15 +456,20 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
     #endif
 
     func update(_ webView: WKWebView, html: String, hero: String?, baseURL: URL?, appearance: ReaderHTML.Appearance,
-                post: ReaderHTML.Post?) {
+                post: ReaderHTML.Post?, autoplay: Bool) {
         let key = "\(baseURL?.absoluteString ?? "")\n\(hero ?? "")\n\(html.count)\n\(html.hashValue)"
+        // Clicking the post already shown as the list's first item opens it: play it now.
+        let opened = autoplay && !self.autoplay && pageLoaded && key == loadedKey
+        self.autoplay = autoplay
+        if opened { media.start(autoplay: true) }
         if key != loadedKey {
             loadedKey = key
+            pageLoaded = false
             self.appearance = appearance
             documentURL = baseURL
             bridge.pageWillLoad()
             speechPage?.documentWillChange()
-            webView.loadHTMLString(ReaderHTML.document(body: html, hero: hero, appearance: appearance, post: post), baseURL: baseURL)
+            webView.loadHTMLString(ReaderHTML.document(body: html, hero: hero, appearance: appearance, post: post, autoplay: autoplay), baseURL: baseURL)
         } else if appearance != self.appearance {
             self.appearance = appearance
             // ObjC entry point: the Swift overlay variant needs libswiftWebKit.dylib, absent on iOS 18.
@@ -397,16 +488,19 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     let onReload: (() -> Void)?
     let onCopyMarkdown: (() -> Void)?
     let bridge: ReaderHighlightBridge
+    let media: ReaderPostMedia
+    let allowsAutoplay: Bool
+    let autoplay: Bool
     let highlight: ReaderHighlightState?
     let speechPage: ReaderSpeechPage?
     let onImage: (ReaderImageGallery) -> Void
     let onHeight: (CGFloat) -> Void
 
-    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge) }
+    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge, media: media) }
 
     func makeNSView(context: Context) -> WKWebView {
         context.coordinator.speechPage = speechPage
-        return context.coordinator.makeWebView()
+        return context.coordinator.makeWebView(allowsAutoplay: allowsAutoplay)
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
@@ -416,7 +510,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
         context.coordinator.onImage = onImage
         if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
-        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post)
+        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post, autoplay: autoplay)
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {
@@ -424,6 +518,8 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
         view.configuration.userContentController.removeAllScriptMessageHandlers()
         view.navigationDelegate = nil
         view.uiDelegate = nil
+        // Out of the window a web view plays on until it is released, which can be a while: blank it.
+        view.loadHTMLString("", baseURL: nil)
     }
 }
 #else
@@ -436,16 +532,19 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
     let onReload: (() -> Void)?
     let onCopyMarkdown: (() -> Void)?
     let bridge: ReaderHighlightBridge
+    let media: ReaderPostMedia
+    let allowsAutoplay: Bool
+    let autoplay: Bool
     let highlight: ReaderHighlightState?
     let speechPage: ReaderSpeechPage?
     let onImage: (ReaderImageGallery) -> Void
     let onHeight: (CGFloat) -> Void
 
-    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge) }
+    func makeCoordinator() -> ReaderArticleCoordinator { ReaderArticleCoordinator(onHeight: onHeight, bridge: bridge, media: media) }
 
     func makeUIView(context: Context) -> WKWebView {
         context.coordinator.speechPage = speechPage
-        return context.coordinator.makeWebView()
+        return context.coordinator.makeWebView(allowsAutoplay: allowsAutoplay)
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
@@ -455,7 +554,7 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
         context.coordinator.onImage = onImage
         if let highlight { bridge.update(highlight) }
         context.coordinator.speechPage = speechPage
-        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post)
+        context.coordinator.update(view, html: html, hero: hero, baseURL: baseURL, appearance: appearance, post: post, autoplay: autoplay)
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {
@@ -463,6 +562,8 @@ private struct ReaderArticleWebViewRepresentable: UIViewRepresentable {
         view.configuration.userContentController.removeAllScriptMessageHandlers()
         view.navigationDelegate = nil
         view.uiDelegate = nil
+        // Out of the window a web view plays on until it is released, which can be a while: blank it.
+        view.loadHTMLString("", baseURL: nil)
     }
 }
 #endif
