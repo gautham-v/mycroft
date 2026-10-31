@@ -246,3 +246,24 @@ struct FirstRunTests {
         #expect(folders.isEmpty)
     }
 }
+
+@Suite("YouTube embed check")
+struct YouTubeEmbedCheckTests {
+    @Test func embedPageStatus() {
+        #expect(DefaultYouTubeEmbedCheck.isPlayable(embedPage: #"x\"previewPlayabilityStatus\":{\"status\":\"UNPLAYABLE\",\"reason\":\"Video unavailable\"}"#) == false)
+        #expect(DefaultYouTubeEmbedCheck.isPlayable(embedPage: #"x"previewPlayabilityStatus":{"status":"OK","playableInEmbed":true}"#) == true)
+        #expect(DefaultYouTubeEmbedCheck.isPlayable(embedPage: #""previewPlayabilityStatus":{"status":"LOGIN_REQUIRED"}"#) == nil)
+        #expect(DefaultYouTubeEmbedCheck.isPlayable(embedPage: "<html></html>") == nil)
+    }
+
+    @Test func channelAsksAboutItsNewestVideo() async {
+        let check = DefaultYouTubeEmbedCheck(fetch: { url, _ in
+            let body = url.contains("/feeds/")
+                ? "<feed><entry><yt:videoId>newest</yt:videoId></entry><entry><yt:videoId>older</yt:videoId></entry></feed>"
+                : (url.hasSuffix("/embed/newest") ? #""previewPlayabilityStatus":{"status":"UNPLAYABLE"}"# : #""previewPlayabilityStatus":{"status":"OK"}"#)
+            return (Data(body.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
+        })
+        #expect(await check.isPlayable(channelID: "UCx") == false)
+        #expect(await check.isPlayable(videoID: "older") == true)
+    }
+}
