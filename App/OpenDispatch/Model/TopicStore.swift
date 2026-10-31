@@ -34,6 +34,8 @@ final class TopicStore {
     /// first count arrives and while no topic is open.
     private(set) var filterCounts: [TopicContentFilter: Int] = [:]
 
+    /// A topic was added or removed.
+    @ObservationIgnored var onIDsChange: () -> Void = {}
     @ObservationIgnored private let database: AppDatabase
     @ObservationIgnored private var observations: [Task<Void, Never>] = []
     @ObservationIgnored private var countsTopic: Int64?
@@ -75,7 +77,10 @@ final class TopicStore {
     private func apply(_ topics: [Source]) {
         self.topics = topics
         let ids = Set(topics.map(\.id))
-        if ids != self.ids { self.ids = ids }
+        if ids != self.ids {
+            self.ids = ids
+            onIDsChange()
+        }
     }
 
     /// Reads the topics now, for a caller that just changed them and needs the result before the observation lands.

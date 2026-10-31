@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
-/// One reader pane: the active tab's item, a new tab, or the empty state. In split view a click anywhere
+/// One reader pane: the active tab's item, the Start here board, a new tab, or the empty state. In split view a click anywhere
 /// in the pane (the article's web view included) focuses it, so the list and j/k act on it.
 struct ReaderPaneView: View {
     let pane: Int
@@ -16,6 +16,8 @@ struct ReaderPaneView: View {
             if let item = model.activeItem(inPane: pane) {
                 ReaderItemView(item: item, pane: pane)
                     .id(item.id)
+            } else if model.panes.indices.contains(pane), model.isStartHere(model.panes[pane].activeTab) {
+                StartHerePane(pane: pane)
             } else if model.panes.indices.contains(pane), model.panes[pane].activeTab.isNew {
                 NewTabView(pane: pane)
             } else {
@@ -280,9 +282,10 @@ struct ReaderTabStrip: View {
         let item = model.item(for: tab)
         let isHovered = hovered == tab.id
         let opening = tab.isNew ? tab.openingURL : nil
-        let title = opening.map(URLHost.host(of:)) ?? (tab.isNew ? "Explore" : item?.item.title ?? "Nothing selected")
-        // The window's only tab, already empty, has nothing to close.
-        let closable = count > 1 || model.isSplit || !tab.isNew
+        let startHere = model.isStartHere(tab)
+        let title = opening.map(URLHost.host(of:)) ?? (tab.isNew ? "Explore" : startHere ? "Start here" : item?.item.title ?? "Nothing selected")
+        // The window's only tab, already empty, has nothing to close, and the board stays while the library is empty.
+        let closable = (count > 1 || model.isSplit || !tab.isNew) && !(startHere && model.isLibraryEmpty)
         return Group {
             if tab.isPinned {
                 Group {

@@ -132,6 +132,8 @@ private struct PillBackground: ViewModifier {
 @MainActor final class ListAnchor {
     /// Rows the list has above its items (the iPhone's title row).
     var leadingRows = 0
+    /// Rows land where they fall instead: a list filling for the first time (the iPhone's Start here board mustn't scroll away).
+    var isPaused = false
     /// Told the first item row on screen when it changes.
     var onTopRow: (Int64?) -> Void = { _ in }
     private weak var collectionView: UICollectionView?
@@ -186,7 +188,7 @@ private struct PillBackground: ViewModifier {
 
     private func landed(_ cv: UICollectionView) {
         shown = expected
-        if Date() < revealUntil {
+        if isPaused || Date() < revealUntil {
             record(cv)
         } else {
             holdUntil = Date().addingTimeInterval(0.6)
