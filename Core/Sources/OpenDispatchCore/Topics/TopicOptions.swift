@@ -100,17 +100,20 @@ public struct TopicOptions: Codable, Sendable, Hashable {
     /// Unused: a topic no longer leaves paywalled sites out; the lists show, mark or hide their articles by the global
     /// Paywalled articles setting (`PaywallTreatment`). Kept so the field still encodes, decodes and syncs with older versions.
     public var skipPaywalled: Bool
+    /// "Block": sites, accounts, subreddits, channels and shows whose results are dropped (`Topic.blockKey`).
+    public var blocked: [String]
 
     public init(keyword: String, excluded: [String] = [], notableOnly: Bool = false, places: TopicPlaces = .defaults,
-                skipPaywalled: Bool = true) {
+                skipPaywalled: Bool = true, blocked: [String] = []) {
         self.keyword = keyword
         self.excluded = excluded
         self.notableOnly = notableOnly
         self.places = places
         self.skipPaywalled = skipPaywalled
+        self.blocked = blocked
     }
 
-    private enum CodingKeys: String, CodingKey { case keyword, excluded, notableOnly, places, skipPaywalled }
+    private enum CodingKeys: String, CodingKey { case keyword, excluded, notableOnly, places, skipPaywalled, blocked }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -119,15 +122,30 @@ public struct TopicOptions: Codable, Sendable, Hashable {
         notableOnly = try c.decodeIfPresent(Bool.self, forKey: .notableOnly) ?? false
         places = try c.decodeIfPresent(TopicPlaces.self, forKey: .places) ?? .defaults
         skipPaywalled = try c.decodeIfPresent(Bool.self, forKey: .skipPaywalled) ?? true
+        blocked = try c.decodeIfPresent([String].self, forKey: .blocked) ?? []
     }
 
-    /// Keyword and excluded words trimmed, blanks and repeats (any case) dropped.
+    /// An empty block list isn't written, so a topic with none keeps the text it has always synced as.
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(keyword, forKey: .keyword)
+        try c.encode(excluded, forKey: .excluded)
+        try c.encode(notableOnly, forKey: .notableOnly)
+        try c.encode(places, forKey: .places)
+        try c.encode(skipPaywalled, forKey: .skipPaywalled)
+        if !blocked.isEmpty { try c.encode(blocked, forKey: .blocked) }
+    }
+
+    /// Keyword, excluded words and block list trimmed, blanks and repeats (any case) dropped.
     public var cleaned: TopicOptions {
         var o = self
         o.keyword = keyword.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         var seen = Set<String>()
         o.excluded = excluded.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+        var seenBlocked = Set<String>()
+        o.blocked = blocked.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seenBlocked.insert($0.lowercased()).inserted }
         return o
     }
 

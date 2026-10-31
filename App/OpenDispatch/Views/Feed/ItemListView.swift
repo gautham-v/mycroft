@@ -715,6 +715,11 @@ private struct RowMenu: View {
             Button(goToTitle, systemImage: "dot.radiowaves.up.forward") { model.navigate(sourceID: item.source.id) }
         }
         MuteRowMenuItem(item: item, icons: true)
+        RemoveRowMenuItem(item: item, icons: true)
+        if model.blockTarget(for: item) != nil {
+            Divider()
+            BlockRowMenuItem(item: item, icons: true)
+        }
     }
 
     /// A topic's item goes to its topic (named by keyword); any other to its source.
@@ -772,6 +777,11 @@ private struct RowMenu: View {
         if !item.source.isTopic, !item.source.isOpenedLinks {
             Divider()
             MuteRowMenuItem(item: item)
+            RemoveRowMenuItem(item: item)
+        }
+        if model.blockTarget(for: item) != nil {
+            Divider()
+            BlockRowMenuItem(item: item)
         }
     }
 

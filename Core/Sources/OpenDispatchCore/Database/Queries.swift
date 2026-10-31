@@ -43,6 +43,8 @@ public enum Queries {
         if q.view != .saved, q.sourceId == nil { c.append(!OpenedLinks.feedURLs.contains(src[Source.Columns.feedUrl])) }
         // Topic items stay out of the curated views: they list in their topic, Saved and History.
         if q.view != .saved, q.sourceId == nil { c.append(kind != SourceKind.topic.rawValue) }
+        // A source being removed (its Undo is still up) is already gone from every list.
+        if !q.excludedSourceIds.isEmpty { c.append(!Array(q.excludedSourceIds).contains(Item.Columns.sourceId)) }
         // Muted sources and folders stay out of the feeds; their own lists, Saved and a search still show them.
         if q.view != .saved, q.sourceId == nil, q.folderId == nil, q.searchTerms.isEmpty {
             c.append(src[Source.Columns.isMuted] == false)
@@ -68,6 +70,13 @@ public enum Queries {
             } else {
                 c.append(Item.Columns.sourceId == s)
             }
+        }
+        // Saved rows stay; the rest leave as soon as they're blocked, whether or not a cleanup has deleted them yet.
+        if let options = topic?.topicOptions, !options.blocked.isEmpty {
+            let blocked = SQL("""
+                opendispatch_topic_blocked(\(Item.Columns.guid), \(Item.Columns.url), \(Item.Columns.author), \(Item.Columns.videoId), \(Item.Columns.audioUrl), \(options.blocked.joined(separator: "\n")))
+                """).sqlExpression
+            c.append(Item.Columns.isSaved == true || !blocked)
         }
         if let expression = topicFilterCondition(q.topicFilter) { c.append(expression) }
         if let f = q.folderId { c.append(src[Source.Columns.folderId] == f) }

@@ -67,15 +67,28 @@ extension Queries {
         s.title = o.keyword
         s.topicOptions = o
         try s.update(db)
-        // What matches is decided by the keyword and the leave-out words alone, so other edits (notify, places, Show)
-        // can't turn a stored item into a non-match.
-        guard before?.keyword != o.keyword || before?.excluded != o.excluded else { return s }
+        // What matches is decided by the keyword, the leave-out words and the block list alone, so other edits (notify, places,
+        // Show) can't turn a stored item into a non-match.
+        guard before?.keyword != o.keyword || before?.excluded != o.excluded || before?.blocked != o.blocked else { return s }
         try removeStaleTopicItems(db, topic: s, languages: nil, checkPlaces: false)
         return s
     }
 
+    /// Change a topic's block list alone, leaving its stored items: the list already leaves blocked rows out, and until
+    /// `tidyTopic` deletes them the change can be taken back. Throws `notFound` for an unknown id and `invalid` for a source that
+    /// isn't a topic.
+    @discardableResult
+    public static func setTopicBlocked(_ db: Database, id: Int64, blocked: [String]) throws -> Source {
+        guard var s = try Source.fetchOne(db, key: id) else { throw QueryError.notFound("Topic") }
+        guard s.isTopic, var options = s.topicOptions else { throw QueryError.invalid("Not a topic") }
+        options.blocked = blocked
+        s.topicOptions = options.cleaned
+        try s.update(db)
+        return s
+    }
+
     /// Remove a topic's stored items that its current rules would not store: the keyword not in the title, a leave-out word in the
-    /// title or summary, a place now turned off (Reddit, say), and with `languages` a
+    /// title or summary, a blocked site or account, a place now turned off (Reddit, say), and with `languages` a
     /// title in a language the user doesn't read. Saved and highlighted items stay. Stories left without their lead pass to
     /// their next article. Returns how many items were removed.
     @discardableResult
@@ -83,7 +96,7 @@ extension Queries {
         guard let options = topic.topicOptions else { return 0 }
         let matcher = TopicMatcher(options)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT id, guid, title, summary, video_id, audio_url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
+            SELECT id, guid, url, author, title, summary, video_id, audio_url FROM items WHERE source_id = ? AND is_saved = 0 AND NOT EXISTS (
               SELECT 1 FROM highlights h WHERE h.source_feed_url = ? AND h.item_guid = items.guid)
             """, arguments: [topic.id, topic.feedUrl])
         let stale = rows.filter { row in
@@ -92,7 +105,7 @@ extension Queries {
             if checkPlaces, !options.places.isSearched(place) { return true }
             if place.matchesText ? !matcher.matches(title: title, summary: row["summary"]) : !matcher.matchesTitle(title, summary: row["summary"]) { return true }
             if let languages, languages.rejects(title) { return true }
-            return false
+            return options.isBlocked(guid: row["guid"], url: row["url"], author: row["author"], videoId: row["video_id"], audioUrl: row["audio_url"])
         }.map { $0["id"] as Int64 }
         var readLeads = Set<Int64>()
         let chunks = stride(from: 0, to: stale.count, by: 500).map { Array(stale[$0..<min($0 + 500, stale.count)]) }

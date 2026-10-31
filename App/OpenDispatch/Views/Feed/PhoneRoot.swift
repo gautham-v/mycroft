@@ -1357,7 +1357,7 @@ private struct DrawerDialogs: ViewModifier {
                 Button("Remove Source", role: .destructive) { deleteSource(source) }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
-                Text("Removing a source also removes its items.")
+                Text("Removing a source also removes its items, including any you saved.")
             }
             .alert(
                 pendingTopicDelete.map { "Remove \($0.title)?" } ?? "Remove topic?",

@@ -30,6 +30,22 @@ extension AppDatabase {
         }
     }
 
+    /// Change a topic's block list, keeping its stored items until `tidyTopic`.
+    @discardableResult
+    public func setTopicBlocked(id: Int64, blocked: [String]) async throws -> Source {
+        try await writer.write { db in try Queries.setTopicBlocked(db, id: id, blocked: blocked) }
+    }
+
+    /// Delete what one topic's keyword, leave-out words and block list no longer allow. Stories that lose their lead pass to their
+    /// next article. Returns how many items were removed.
+    @discardableResult
+    public func tidyTopic(id: Int64) async throws -> Int {
+        try await writer.write { db in
+            guard let topic = try Source.fetchOne(db, key: id), topic.isTopic else { return 0 }
+            return try Queries.removeStaleTopicItems(db, topic: topic, languages: nil, checkPlaces: false)
+        }
+    }
+
     /// The topic with this keyword (ignoring case and diacritics), or nil.
     public func topic(keyword: String) async throws -> Source? {
         try await reader.read { db in try Queries.topic(db, keyword: keyword) }

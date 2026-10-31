@@ -39,7 +39,7 @@ struct SettingsSourcesPane: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsPaneHeading(title: "Sources", hint: "Pick a folder to move a source. Removing a source also removes its items.")
+            SettingsPaneHeading(title: "Sources", hint: "Pick a folder to move a source. Removing a source also removes its items, including any you saved.")
             // TimelineView doesn't stack several children: without the VStack the folder groups draw on
             // top of each other.
             TimelineView(.periodic(from: .now, by: 30)) { context in

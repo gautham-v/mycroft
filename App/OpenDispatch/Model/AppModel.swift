@@ -90,13 +90,32 @@ enum MuteTarget: Equatable, Sendable {
     case folder(Int64)
 }
 
-/// The confirmation at the bottom of the window after muting or unmuting, with Undo (`MuteToastOverlay`).
-struct MuteToast: Equatable, Identifiable, Sendable {
+/// What a toast's Undo takes back.
+enum UndoAction: Equatable, Sendable {
+    /// Sets the source or folder back to this.
+    case mute(MuteTarget, to: Bool)
+    /// A source held for the toast's 6 s and deleted after it. `reopens`: its own list was showing.
+    case removeSource(Int64, reopens: Bool)
+    /// An entry added to a topic's block list; what it covers is deleted after the toast.
+    case block(topic: Int64, key: String)
+}
+
+/// The confirmation at the bottom of the window after a row or sidebar action, with Undo (`UndoToastOverlay`).
+struct UndoToast: Equatable, Identifiable, Sendable {
     let id = UUID()
     var message: String
-    var target: MuteTarget
-    /// What Undo sets it back to.
-    var undoTo: Bool
+    var action: UndoAction
+}
+
+/// Removing a source from a row when that would delete saved items: asked first (`UndoToastOverlay`).
+struct SourceRemovalRequest: Equatable, Sendable {
+    var source: Source
+    var items: Int
+    var saved: Int
+
+    var message: String {
+        "Removing a source also removes its \(items) items, including \(saved) you saved."
+    }
 }
 
 /// What the banner over a muted source's or folder's list says (`MutedListBanner`).
@@ -282,7 +301,9 @@ final class AppModel {
     private(set) var articleReloads: [Int64: Int] = [:]
     /// The Copy as Markdown confirmation while it shows; nil otherwise.
     private(set) var copyToast: CopyToast?
-    private(set) var muteToast: MuteToast?
+    private(set) var undoToast: UndoToast?
+    /// Showing the question before a row's Remove deletes saved items.
+    var sourceRemovalToConfirm: SourceRemovalRequest?
 
     /// Reader settings, theme, playback. Persisted on change, and mirrored into the database for iCloud sync.
     var settings: AppSettings {
@@ -344,7 +365,10 @@ final class AppModel {
     /// The copy in flight and the timer that clears its toast; a newer copy replaces both.
     @ObservationIgnored private var copyTask: Task<Void, Never>?
     @ObservationIgnored private var toastTimer: Task<Void, Never>?
-    @ObservationIgnored private var muteToastTimer: Task<Void, Never>?
+    @ObservationIgnored private var undoToastTimer: Task<Void, Never>?
+    /// Sources removed from a row whose Undo is still up: out of the sidebar and every list, deleted when the toast ends.
+    /// Quitting before then keeps them.
+    @ObservationIgnored private var heldSourceRemovals: Set<Int64> = []
     @ObservationIgnored private var started = false
     @ObservationIgnored private var applyingSyncedSettings = false
     @ObservationIgnored private var syncToggle: Task<Void, Never>?
@@ -447,7 +471,8 @@ final class AppModel {
         ItemQuery(view: selectedView, sourceId: selectedSourceID, folderId: selectedFolderID, search: searchQuery,
                   hideReadBefore: hidesReadItems ? hideReadCutoff : nil,
                   topicFilter: isTopicSelected ? topicFilter : .all, order: listOrder,
-                  hidesBlockedVideos: settings.blockedVideoTreatment == .hide && !showsBlockedVideos)
+                  hidesBlockedVideos: settings.blockedVideoTreatment == .hide && !showsBlockedVideos,
+                  excludedSourceIds: heldSourceRemovals)
     }
 
     /// Feed order applies to All, its type views and topics; a source, folder, Saved and a search stay newest first.
@@ -1267,7 +1292,7 @@ final class AppModel {
     func loadSources() async {
         do {
             let (s, f) = try await database.sourcesAndFolders()
-            sources = s
+            sources = heldSourceRemovals.isEmpty ? s : s.filter { !heldSourceRemovals.contains($0.id) }
             folders = f
             libraryDidChange()
             counts = try await database.counts()
@@ -1468,9 +1493,9 @@ final class AppModel {
             await reloadAfterMute()
             guard showsToast else { return }
             let place = source.isHidden ? "under Hidden" : source.folderId.flatMap { f in folders.first { $0.id == f }?.title }.map { "in \($0)" } ?? "in the sidebar"
-            showMuteToast(MuteToast(
+            showUndoToast(UndoToast(
                 message: muted ? "Muted \(source.shortTitle). Still \(place)." : "Unmuted \(source.shortTitle). Back in your feeds.",
-                target: .source(id), undoTo: !muted))
+                action: .mute(.source(id), to: !muted)))
         } catch {
             showMuteFailure(error)
         }
@@ -1483,11 +1508,11 @@ final class AppModel {
             await reloadAfterMute()
             guard showsToast else { return }
             let count = allSources(inFolder: id).count
-            showMuteToast(MuteToast(
+            showUndoToast(UndoToast(
                 message: muted
                     ? "Muted \(folder.title). \(count == 1 ? "Its source stays" : "Its \(count) sources stay") in the sidebar."
                     : "Unmuted \(folder.title). Back in your feeds.",
-                target: .folder(id), undoTo: !muted))
+                action: .mute(.folder(id), to: !muted)))
         } catch {
             showMuteFailure(error)
         }
@@ -1502,14 +1527,100 @@ final class AppModel {
     }
 
     /// The toast's Undo.
-    func undoMute() async {
-        guard let toast = muteToast else { return }
-        muteToastTimer?.cancel()
-        muteToast = nil
-        switch toast.target {
-        case .source(let id): await setSourceMuted(id: id, muted: toast.undoTo, showsToast: false)
-        case .folder(let id): await setFolderMuted(id: id, muted: toast.undoTo, showsToast: false)
+    func undoLastAction() async {
+        guard let toast = undoToast else { return }
+        undoToastTimer?.cancel()
+        undoToast = nil
+        switch toast.action {
+        case .mute(.source(let id), let to): await setSourceMuted(id: id, muted: to, showsToast: false)
+        case .mute(.folder(let id), let to): await setFolderMuted(id: id, muted: to, showsToast: false)
+        case .removeSource(let id, let reopens):
+            heldSourceRemovals.remove(id)
+            await loadSources()
+            if reopens { navigate(sourceID: id) } else { await reloadAfterMute() }
+        case .block(let topicID, let key):
+            guard let options = topicStore.topic(id: topicID)?.topicOptions else { return }
+            do {
+                try await database.setTopicBlocked(id: topicID, blocked: options.blocked.filter { $0 != key })
+                await topicStore.reload()
+                await reloadAfterMute()
+            } catch {
+                showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t unblock \(key): \(HTTP.message(error))"), for: .seconds(3.5))
+            }
         }
+    }
+
+    // MARK: Remove and block from a row
+
+    /// A row's Remove: the source leaves at once with Undo in the toast, after asking first if that would delete saved items.
+    func removeSourceFromRow(_ source: Source) async {
+        do {
+            let counts = try await database.itemCounts(sourceId: source.id)
+            if counts.saved > 0 {
+                sourceRemovalToConfirm = SourceRemovalRequest(source: source, items: counts.items, saved: counts.saved)
+            } else {
+                await holdSourceRemoval(source)
+            }
+        } catch {
+            showRemovalFailure(error)
+        }
+    }
+
+    /// Takes the source out of the sidebar and the lists and starts its toast; `settle` deletes it when the toast ends.
+    func holdSourceRemoval(_ source: Source) async {
+        heldSourceRemovals.insert(source.id)
+        let reopens = selectedSourceID == source.id
+        showUndoToast(UndoToast(message: "Removed \(source.shortTitle).", action: .removeSource(source.id, reopens: reopens)))
+        await loadSources()
+        if reopens { goHome() } else { await reloadAfterMute() }
+    }
+
+    /// The topic a row's Block applies to, and what it would name: a topic's own row, or in a topic's list one of the user's own
+    /// sources' matching rows. Nil when there's nothing to block or it is blocked already (a saved row stays listed).
+    func blockTarget(for item: FeedItem) -> (topic: Source, key: String)? {
+        guard let key = item.topicBlockKey,
+              let topic = item.source.isTopic ? topicStore.topic(id: item.source.id) : activeTopic,
+              let options = topic.topicOptions, !Topic.isBlocked(key, by: options.blocked) else { return nil }
+        return (topic, key)
+    }
+
+    /// A row's Block: the rows it covers leave the topic's list at once with Undo in the toast; `settle` deletes them after.
+    func block(_ key: String, inTopic topic: Source) async {
+        guard let options = topicStore.topic(id: topic.id)?.topicOptions else { return }
+        do {
+            try await database.setTopicBlocked(id: topic.id, blocked: options.blocked + [key])
+            await topicStore.reload()
+            showUndoToast(UndoToast(message: "Blocked \(key) in \(topic.title).", action: .block(topic: topic.id, key: key)))
+            await reloadAfterMute()
+        } catch {
+            showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t block \(key): \(HTTP.message(error))"), for: .seconds(3.5))
+        }
+    }
+
+    /// The toast ended without Undo: what it held happens now.
+    private func settle(_ action: UndoAction) async {
+        switch action {
+        case .mute:
+            break
+        case .removeSource(let id, _):
+            do {
+                try await deleteSource(id: id)
+                heldSourceRemovals.remove(id)
+            } catch {
+                heldSourceRemovals.remove(id)
+                await loadSources()
+                await reloadAfterMute()
+                showRemovalFailure(error)
+            }
+        case .block(let topicID, _):
+            _ = try? await database.tidyTopic(id: topicID)
+            await topicStore.reload()
+            if selectedSourceID == topicID { await reloadAfterMute() }
+        }
+    }
+
+    private func showRemovalFailure(_ error: Error) {
+        showToast(CopyToast(kind: .failed, message: "Couldn\u{2019}t remove the source: \(HTTP.message(error))"), for: .seconds(3.5))
     }
 
     private func reloadAfterMute() async {
@@ -1517,14 +1628,18 @@ final class AppModel {
         await loadItems(reset: true, keepingDepth: true, countsNewRows: false)
     }
 
-    private func showMuteToast(_ toast: MuteToast) {
-        muteToastTimer?.cancel()
-        muteToast = toast
+    /// A new toast takes the place of one still up, whose action then stands.
+    private func showUndoToast(_ toast: UndoToast) {
+        undoToastTimer?.cancel()
+        if let replaced = undoToast { Task { await settle(replaced.action) } }
+        undoToast = toast
         announce(toast.message)
         let id = toast.id
-        muteToastTimer = Task { [weak self] in
+        undoToastTimer = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
-            if !Task.isCancelled, self?.muteToast?.id == id { self?.muteToast = nil }
+            guard !Task.isCancelled, let self, undoToast?.id == id else { return }
+            undoToast = nil
+            await settle(toast.action)
         }
     }
 
@@ -2457,6 +2572,8 @@ extension ItemQuery {
     /// changing lists, and whether it hides videos that won't play here, which Show on its footer turns off in place.
     var listIdentity: ItemQuery {
         var q = self
+        // Rows of a source being removed leave the list; it stays the same list.
+        q.excludedSourceIds = []
         if q.hideReadBefore != nil { q.hideReadBefore = .distantPast }
         q.hidesBlockedVideos = false
         return q

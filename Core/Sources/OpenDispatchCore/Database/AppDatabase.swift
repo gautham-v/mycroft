@@ -30,6 +30,7 @@ public final class AppDatabase: Sendable {
         config.prepareDatabase { db in
             db.add(function: AppDatabase.isPostFunction)
             db.add(function: AppDatabase.topicMatchFunction)
+            db.add(function: AppDatabase.topicBlockedFunction)
         }
         return config
     }
@@ -48,6 +49,15 @@ public final class AppDatabase: Sendable {
         let excluded = (String.fromDatabaseValue(values[3]) ?? "").split(separator: "\n").map(String.init)
         let title = String.fromDatabaseValue(values[0]) ?? ""
         return TopicMatcherCache.shared.matcher(keyword: keyword, excluded: excluded).matches(title: title, summary: String.fromDatabaseValue(values[1]))
+    }
+
+    /// `opendispatch_topic_blocked(guid, url, author, video_id, audio_url, blocked)` → 1 when the row comes from somewhere on a
+    /// topic's block list (`blocked`, joined by newlines), so its list leaves the row out in SQL and keyset paging stays correct.
+    public static let topicBlockedFunction = DatabaseFunction("opendispatch_topic_blocked", argumentCount: 6, pure: true) { values in
+        guard let guid = String.fromDatabaseValue(values[0]), let url = String.fromDatabaseValue(values[1]),
+              let key = Topic.blockKey(guid: guid, url: url, author: String.fromDatabaseValue(values[2]),
+                                       videoId: String.fromDatabaseValue(values[3]), audioUrl: String.fromDatabaseValue(values[4])) else { return false }
+        return Topic.isBlocked(key, by: (String.fromDatabaseValue(values[5]) ?? "").split(separator: "\n").map(String.init))
     }
 
     /// Directory holding the database: Application Support/OpenDispatch (inside the sandbox container on macOS).

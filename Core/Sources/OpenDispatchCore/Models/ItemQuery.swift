@@ -55,6 +55,8 @@ public struct ItemQuery: Sendable, Hashable {
     /// Videos that won't play here (`Item.embedBlocked`) leave the list, unless it's Saved, a search or a topic's
     /// (`Queries.hidesBlockedVideos`).
     public var hidesBlockedVideos: Bool
+    /// Sources to leave out of the list: ones being removed, whose Undo is still up.
+    public var excludedSourceIds: Set<Int64>
 
     public static let defaultLimit = 50
     public static let maxQueryLength = 200
@@ -64,7 +66,7 @@ public struct ItemQuery: Sendable, Hashable {
         view: FeedView = .all, sourceId: Int64? = nil, folderId: Int64? = nil, filter: FeedFilter? = nil,
         search: String = "", cursor: ItemCursor? = nil, limit: Int = ItemQuery.defaultLimit, since: Date? = nil,
         hideReadBefore: Date? = nil, topicFilter: TopicContentFilter = .all, order: FeedOrder = .latest,
-        hidesBlockedVideos: Bool = false
+        hidesBlockedVideos: Bool = false, excludedSourceIds: Set<Int64> = []
     ) {
         self.view = view
         self.sourceId = sourceId
@@ -78,6 +80,7 @@ public struct ItemQuery: Sendable, Hashable {
         self.topicFilter = topicFilter
         self.order = order
         self.hidesBlockedVideos = hidesBlockedVideos
+        self.excludedSourceIds = excludedSourceIds
     }
 
     /// The search terms actually matched.

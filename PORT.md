@@ -1128,7 +1128,7 @@ subscriptions, so refresh, unread counts, Mark All as Read, Notify on New Matche
 History treat it like any source. Migration `v8-topics` rebuilds `sources` (new CHECK) and adds `topic_options` (JSON).
 - Identity: `feed_url` = `opendispatch:topic:<uuid>` (`Topic.newFeedURL()`, `Source.isTopic`), never derived from the keyword; `title` = the keyword as
   typed (it follows edits); `url` = `Topic.siteURL`; `group` = `SourceGroup.topics`. Options: `Source.topicOptions: TopicOptions` (keyword, `excluded`,
-  `notableOnly`, `places: TopicPlaces` (news, hackerNews, reddit, media, subscriptions), `skipPaywalled`); encoded with sorted keys; missing keys decode as defaults.
+  `notableOnly`, `places: TopicPlaces` (news, hackerNews, reddit, media, subscriptions), `skipPaywalled`, `blocked`: sites, @accounts, r/subreddits, channels and shows, see `Topic.blockKey`); encoded with sorted keys, `blocked` only when it has entries so existing topics keep their synced text; missing keys decode as defaults.
 - Lists: `Queries.sources` still returns topics (refresh and sync need them). `Queries.subscriptions` / `AppDatabase.sources()` / `sourcesAndFolders()` leave
   them out (sidebar tree, Settings, Sources tab, add-source duplicate check); `Queries.topics` / `AppDatabase.topics()` / `observeTopics()` list them.
   `SourceList` functions skip topics (`SourceList.topics` lists them). OPML export skips them. Unread counts: `Queries.unreadCounts` / `AppDatabase.unreadCounts()` /

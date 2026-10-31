@@ -121,6 +121,14 @@ extension AppDatabase {
         try await writer.write { db in try Queries.takeNewPostAlerts(db) }
     }
 
+    /// How many items a source has, and how many of them are saved: what removing it would delete.
+    public func itemCounts(sourceId: Int64) async throws -> (items: Int, saved: Int) {
+        try await reader.read { db in
+            let row = try Row.fetchOne(db, sql: "SELECT COUNT(*) AS n, COALESCE(SUM(is_saved), 0) AS saved FROM items WHERE source_id = ?", arguments: [sourceId])
+            return (row?["n"] ?? 0, row?["saved"] ?? 0)
+        }
+    }
+
     @discardableResult
     public func deleteSource(id: Int64) async throws -> Bool {
         try await writer.write { db in try Queries.deleteSource(db, id: id) }

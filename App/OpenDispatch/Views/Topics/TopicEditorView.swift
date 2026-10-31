@@ -1,14 +1,16 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// The sheet for a new topic and for editing one (Mac, iPad and iPhone): the keyword, words to leave out,
-/// Everything or Notable only, which places to search, skipping paywalled sites and Notify on New Matches.
-/// Adding stores the topic, selects it and searches it at once; Done saves an edit, which searches again when
+/// The sheet for a new topic and for editing one (Mac, iPad and iPhone): the keyword and Notify on New Matches, then under
+/// Advanced, whose collapsed row sums it up, words to leave out, Everything or Notable only, which places to search and what is
+/// blocked (blocking happens from a row's menu; this is where it is taken back). New Topic opens with Advanced closed, Edit Topic
+/// with it open. Adding stores the topic, selects it and searches it at once; Done saves an edit, which searches again when
 /// the keyword or the places changed. An existing topic can also be removed from here.
 struct TopicEditorView: View {
     let request: TopicEditorRequest
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var keyword: String
     @State private var leaveOut: String
@@ -22,7 +24,12 @@ struct TopicEditorView: View {
     @State private var subscriptions: Bool
     /// Not edited here any more (the lists mark or hide paywalled articles); kept as it was so synced topics round-trip.
     private let skipPaywalled: Bool
+    @State private var blocked: [String]
     @State private var notify: Bool
+    @State private var showsAdvanced: Bool
+    #if os(iOS)
+    @State private var detent: PresentationDetent
+    #endif
     @State private var saving = false
     @State private var error: String?
     @State private var confirmingRemove = false
@@ -31,14 +38,21 @@ struct TopicEditorView: View {
     init(request: TopicEditorRequest) {
         self.request = request
         let options: TopicOptions
+        let opensAdvanced: Bool
         switch request {
         case .new(let start):
             options = start
+            opensAdvanced = false
             _notify = State(initialValue: false)
         case .edit(let topic):
             options = topic.topicOptions ?? TopicOptions(keyword: topic.title)
+            opensAdvanced = true
             _notify = State(initialValue: topic.notifies)
         }
+        _showsAdvanced = State(initialValue: opensAdvanced)
+        #if os(iOS)
+        _detent = State(initialValue: opensAdvanced ? .large : .medium)
+        #endif
         _keyword = State(initialValue: options.keyword)
         _leaveOut = State(initialValue: options.excludedText)
         _notableOnly = State(initialValue: options.notableOnly)
@@ -50,6 +64,7 @@ struct TopicEditorView: View {
         _media = State(initialValue: options.places.media)
         _subscriptions = State(initialValue: options.places.subscriptions)
         skipPaywalled = options.skipPaywalled
+        _blocked = State(initialValue: options.blocked)
     }
 
     private var existing: Source? {
@@ -65,8 +80,18 @@ struct TopicEditorView: View {
             keyword: keyword, excluded: TopicOptions.excludedWords(from: leaveOut), notableOnly: notableOnly,
             places: TopicPlaces(news: news, hackerNews: hackerNews, reddit: reddit, x: x, bluesky: bluesky, media: media,
                                 subscriptions: subscriptions),
-            skipPaywalled: skipPaywalled
+            skipPaywalled: skipPaywalled, blocked: blocked
         ).cleaned
+    }
+
+    /// The collapsed Advanced row: "Everything · 6 of 7 places", then how many words and sites are left out.
+    private var advancedSummary: String {
+        let places = [news, hackerNews, reddit, x, bluesky, media, subscriptions]
+        var parts = [notableOnly ? "Notable only" : "Everything", "\(places.filter { $0 }.count) of \(places.count) places"]
+        let leftOut = TopicOptions.excludedWords(from: leaveOut).count
+        if leftOut > 0 { parts.append("\(leftOut) left out") }
+        if !blocked.isEmpty { parts.append("\(blocked.count) blocked") }
+        return parts.joined(separator: " \u{00B7} ")
     }
 
     var body: some View {
@@ -92,7 +117,7 @@ struct TopicEditorView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 460, height: 640)
+        .frame(width: 460, height: showsAdvanced ? 640 : Self.collapsedHeight)
         .background(Color.ofSurface)
         .modifier(sheetBehavior)
         #else
@@ -111,11 +136,16 @@ struct TopicEditorView: View {
                     }
                 }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .modifier(sheetBehavior)
         #endif
     }
+
+    #if os(macOS)
+    /// Title, the keyword and Notify, the Advanced row and the buttons.
+    private static let collapsedHeight: CGFloat = 240
+    #endif
 
     private var sheetBehavior: some ViewModifier {
         SheetBehavior(
@@ -136,41 +166,13 @@ struct TopicEditorView: View {
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
                     #endif
-                TextField("Leave out", text: $leaveOut, prompt: Text("Words to skip, separated by commas"))
-                    .autocorrectionDisabled()
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    #endif
-            }
-            Section {
-                Picker("Show", selection: $notableOnly) {
-                    Text("Everything").tag(false)
-                    Text("Notable only").tag(true)
-                }
-                .pickerStyle(.segmented)
-            } footer: {
-                Text("Notable: HN 100+, Reddit 200+, X 1,000+ likes, Bluesky 100+, or from a source you follow.")
-            }
-            Section("Search in") {
-                Toggle("News sites", isOn: $news)
-                Toggle("Hacker News", isOn: $hackerNews)
-                Toggle("Reddit", isOn: $reddit)
-                Toggle(isOn: $x) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("X")
-                        Text(model.accounts.isSignedIn(.x)
-                             ? "As you, at most every 30 minutes."
-                             : "Only while signed in: Settings \u{203A} Integrations.")
-                            .font(OFFont.ui(12))
-                            .foregroundStyle(.ofMuted)
-                    }
-                }
-                Toggle("Bluesky", isOn: $bluesky)
-                Toggle("YouTube & podcasts", isOn: $media)
-                Toggle("Your subscriptions", isOn: $subscriptions)
-            }
-            Section {
                 Toggle("Notify on new matches", isOn: $notify)
+            }
+            Section {
+                advancedRow
+            }
+            if showsAdvanced {
+                advancedSections
             }
             #if os(iOS)
             if existing != nil {
@@ -184,6 +186,96 @@ struct TopicEditorView: View {
         .scrollContentBackground(.hidden)
         .background(Color.ofSurface)
         .disabled(saving)
+    }
+
+    /// Opens and closes what's below it, and says what's in there while it's closed.
+    private var advancedRow: some View {
+        Button(action: toggleAdvanced) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.ofMuted)
+                    .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
+                Text("Advanced")
+                    .foregroundStyle(.ofInk)
+                    .layoutPriority(1)
+                Spacer(minLength: 12)
+                if !showsAdvanced {
+                    Text(advancedSummary)
+                        .foregroundStyle(.ofMuted)
+                        .lineLimit(1)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Advanced")
+        .accessibilityValue(showsAdvanced ? "Expanded" : advancedSummary)
+    }
+
+    private func toggleAdvanced() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            showsAdvanced.toggle()
+            #if os(iOS)
+            detent = showsAdvanced ? .large : .medium
+            #endif
+        }
+    }
+
+    @ViewBuilder private var advancedSections: some View {
+        Section {
+            TextField("Leave out", text: $leaveOut, prompt: Text("Words to skip, separated by commas"))
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+        }
+        Section {
+            Picker("Show", selection: $notableOnly) {
+                Text("Everything").tag(false)
+                Text("Notable only").tag(true)
+            }
+            .pickerStyle(.segmented)
+        } footer: {
+            Text("Notable: HN 100+, Reddit 200+, X 1,000+ likes, Bluesky 100+, or from a source you follow.")
+        }
+        Section("Search in") {
+            Toggle("News sites", isOn: $news)
+            Toggle("Hacker News", isOn: $hackerNews)
+            Toggle("Reddit", isOn: $reddit)
+            Toggle(isOn: $x) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("X")
+                    Text(model.accounts.isSignedIn(.x)
+                         ? "As you, at most every 30 minutes."
+                         : "Only while signed in: Settings \u{203A} Integrations.")
+                        .font(OFFont.ui(12))
+                        .foregroundStyle(.ofMuted)
+                }
+            }
+            Toggle("Bluesky", isOn: $bluesky)
+            Toggle("YouTube & podcasts", isOn: $media)
+            Toggle("Your subscriptions", isOn: $subscriptions)
+        }
+        if !blocked.isEmpty {
+            Section {
+                ForEach(blocked, id: \.self) { entry in
+                    HStack {
+                        Text(entry)
+                            .lineLimit(1)
+                        Spacer(minLength: 12)
+                        Button("Unblock") { blocked.removeAll { $0 == entry } }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.ofAccent)
+                            .accessibilityLabel("Unblock \(entry)")
+                    }
+                }
+            } header: {
+                Text("Blocked")
+            } footer: {
+                Text("Block a site from a row\u{2019}s menu. Saved items stay.")
+            }
+        }
     }
 
     // MARK: Actions

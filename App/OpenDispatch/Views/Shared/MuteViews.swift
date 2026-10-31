@@ -55,6 +55,50 @@ struct MuteRowMenuItem: View {
     }
 }
 
+/// "Remove Adam Schefter" in a feed row's menu, under Mute: gone at once with Undo in the toast, or asked first when its saved
+/// items would go with it.
+struct RemoveRowMenuItem: View {
+    let item: FeedItem
+    var icons = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if !item.source.isTopic, !item.source.isOpenedLinks {
+            let source = model.sources.first { $0.id == item.source.id } ?? item.source
+            Button(role: .destructive) {
+                Task { await model.removeSourceFromRow(source) }
+            } label: {
+                if icons {
+                    Label("Remove \(source.shortTitle)", systemImage: "trash")
+                } else {
+                    Text("Remove \(source.shortTitle)")
+                }
+            }
+        }
+    }
+}
+
+/// "Block note.com" in the menu of a topic's row: what the row came from leaves this topic, with Undo in the toast.
+struct BlockRowMenuItem: View {
+    let item: FeedItem
+    var icons = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let target = model.blockTarget(for: item) {
+            Button {
+                Task { await model.block(target.key, inTopic: target.topic) }
+            } label: {
+                if icons {
+                    Label("Block \(target.key)", systemImage: "nosign")
+                } else {
+                    Text("Block \(target.key)")
+                }
+            }
+        }
+    }
+}
+
 /// A checkable item on the Mac and iPad sidebar's plain menus; with icons, a button whose words say what it does.
 private struct MuteMenuToggle: View {
     let title: String
@@ -147,9 +191,10 @@ struct MutedListPillInset: ViewModifier {
     }
 }
 
-/// The confirmation after muting or unmuting: what happened and Undo, at the bottom of the window for 6 s. On iPhone it
-/// sits above the list's bubbles. With Reduce Motion it fades instead of sliding up.
-struct MuteToastOverlay: ViewModifier {
+/// The confirmation after muting, removing a source from a row or blocking in a topic: what happened and Undo, at the bottom of
+/// the window for 6 s. On iPhone it sits above the list's bubbles. With Reduce Motion it fades instead of sliding up. It also holds
+/// the question a row's Remove asks when saved items would go with the source, since the row's menu is gone by then.
+struct UndoToastOverlay: ViewModifier {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
@@ -167,25 +212,36 @@ struct MuteToastOverlay: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
             ZStack {
-                if let toast = model.muteToast {
-                    MuteToastView(toast: toast)
+                if let toast = model.undoToast {
+                    UndoToastView(toast: toast)
                         .id(toast.id)
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
                 }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, bottomInset)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.muteToast)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.undoToast)
+        }
+        .confirmationDialog(
+            model.sourceRemovalToConfirm.map { "Remove \($0.source.shortTitle)?" } ?? "Remove source?",
+            isPresented: Binding(get: { model.sourceRemovalToConfirm != nil }, set: { if !$0 { model.sourceRemovalToConfirm = nil } }),
+            titleVisibility: .visible,
+            presenting: model.sourceRemovalToConfirm
+        ) { request in
+            Button("Remove", role: .destructive) { Task { await model.holdSourceRemoval(request.source) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { request in
+            Text(request.message)
         }
     }
 }
 
 extension View {
-    func muteToastOverlay() -> some View { modifier(MuteToastOverlay()) }
+    func undoToastOverlay() -> some View { modifier(UndoToastOverlay()) }
 }
 
-private struct MuteToastView: View {
-    let toast: MuteToast
+private struct UndoToastView: View {
+    let toast: UndoToast
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -194,7 +250,7 @@ private struct MuteToastView: View {
                 .font(OFFont.ui(13.5, .medium))
                 .foregroundStyle(.ofInk)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Undo") { Task { await model.undoMute() } }
+            Button("Undo") { Task { await model.undoLastAction() } }
                 .buttonStyle(.plain)
                 .font(OFFont.ui(13.5, .semibold))
                 .foregroundStyle(.ofAccent)

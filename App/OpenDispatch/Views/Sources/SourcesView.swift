@@ -127,7 +127,7 @@ struct SourcesView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
-                Text("Removing a source also removes its items.")
+                Text("Removing a source also removes its items, including any you saved.")
             }
             .confirmationDialog(
                 pendingFolderDelete.map { "Delete \($0.title)?" } ?? "Delete folder?",

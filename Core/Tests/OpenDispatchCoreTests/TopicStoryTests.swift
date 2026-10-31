@@ -822,6 +822,25 @@ struct TopicRefreshRuleTests {
         #expect(search.statsRequests.count == before + 1)
     }
 
+    @Test func blockingAStorysLeadPassesItToTheNextOutlet() async throws {
+        let db = try Fixture.db()
+        let t = try await makeTopic(db)
+        try await db.writer.write { d in
+            _ = try Queries.upsertItems(d, sourceId: t.id, items: [
+                ParsedItem(guid: "a", url: "https://lead.example/a", title: Headline.khou, author: "Lead", publishedAt: Date().addingTimeInterval(-3_600)),
+                ParsedItem(guid: "b", url: "https://next.example/b", title: Headline.khou, author: "Next", publishedAt: Date()),
+            ])
+        }
+        try await group(db, t)
+        let lead = try #require(try await rows(db, t).first)
+        #expect(try await rows(db, t).count == 1)
+        let key = try #require(lead.topicBlockKey)
+        try await db.setTopicBlocked(id: t.id, blocked: [key])
+        #expect(try await db.tidyTopic(id: t.id) == 1)
+        let after = try await rows(db, t)
+        #expect(after.count == 1 && after[0].item.id != lead.item.id)
+    }
+
     @Test func aHackerNewsStoryLinkingToAnArticleIsItsDiscussionNotADuplicate() async throws {
         let db = try Fixture.db()
         let t = try await makeTopic(db)

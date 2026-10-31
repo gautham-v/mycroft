@@ -167,7 +167,7 @@ public struct DefaultTopicSearch: TopicSearching {
         }
     }
 
-    /// Recent, on topic, in the user's language, wanted and notable as the topic asks; the newest `perProviderCap`. `languages` with
+    /// Recent, on topic, in the user's language, not blocked, wanted and notable as the topic asks; the newest `perProviderCap`. `languages` with
     /// no language in it keeps every language. `inText` finds the keyword in the summary too (posts, whose title is their first line).
     static func finish(_ candidates: [Candidate], _ o: TopicOptions, _ matcher: TopicMatcher, _ subs: TopicSubscriptions,
                        _ now: Date, inText: Bool = false, languages: TopicLanguages = TopicLanguages(preferred: [])) -> [ParsedItem] {
@@ -177,6 +177,7 @@ public struct DefaultTopicSearch: TopicSearching {
             let item = c.item
             let onTopic = inText ? matcher.matches(title: item.title, summary: item.summary) : matcher.matchesTitle(item.title, summary: item.summary)
             guard item.publishedAt >= cutoff, onTopic, !languages.rejects(item.title) else { return false }
+            if o.isBlocked(guid: item.guid, url: item.url, author: item.author, videoId: item.videoId, audioUrl: item.audioUrl) { return false }
             if o.notableOnly, !c.isNotable(subs) { return false }
             return seen.insert(item.guid).inserted
         }

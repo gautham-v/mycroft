@@ -91,7 +91,7 @@ struct SidebarView: View {
             Button("Remove", role: .destructive) { deleteSource(source) }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("Removing a source also removes its items.")
+            Text("Removing a source also removes its items, including any you saved.")
         }
         .alert(
             "Something went wrong",
