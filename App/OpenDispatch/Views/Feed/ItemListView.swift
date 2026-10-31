@@ -259,7 +259,7 @@ struct ItemListView: View {
 
     /// The list's states and rows, with the sentinel that pages in the next ones.
     @ViewBuilder private func listRows(_ items: [FeedItem], prefetchFrom: Int) -> some View {
-        if items.isEmpty && model.hiddenPaywalledCount == 0 { ListStateRows() }
+        if items.isEmpty && model.hiddenPaywalledCount == 0 && model.hiddenBlockedVideoCount == 0 { ListStateRows() }
         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             let previous = index > 0 ? items[index - 1].id : nil
             ListRow(item: item, previousID: previous, isPhone: isPhone) { row(item, previousID: previous) }
@@ -276,6 +276,7 @@ struct ItemListView: View {
             ListSentinel(page: items.count + model.hiddenPaywalledCount)
         }
         PaywallFooter()
+        BlockedVideosFooter()
     }
 
     /// Back to the top: the first row, or on the iPhone the title above it.
@@ -328,7 +329,7 @@ struct ItemListView: View {
                 ItemRowView(item: item, isSelected: marks.selected, isSecondary: marks.secondary,
                             isOpenInTab: marks.openInTab, isHovered: hovered, isPhone: isPhone,
                             isRead: marks.read, progress: marks.progress, showsTopic: model.selectedSourceID != item.source.id,
-                            paywall: marks.paywall)
+                            paywall: marks.paywall, opensOnYouTube: marks.opensOnYouTube)
                     .equatable()
             }
             .buttonStyle(.plain)
@@ -355,12 +356,18 @@ struct ItemListView: View {
         }
     }
 
-    /// Row click: ⌘ opens a new tab, ⌥ opens the other pane (macOS), otherwise the focused pane.
+    /// Row click: ⌘ opens a new tab, ⌥ opens the other pane (macOS), otherwise the focused pane, or YouTube for a video that
+    /// won't play here. ⌘ and ⌥ ask for the reader, so they get it, with its notice.
     private func open(_ item: FeedItem) {
         #if os(iOS)
         if PhoneDrawerTouch.blocksRowTap { return }
         #endif
-        show(item, Self.openMode)
+        let mode = Self.openMode
+        if mode == .focused, model.opensOnYouTube(item) {
+            model.watchOnYouTube(item)
+        } else {
+            show(item, mode)
+        }
     }
 
     /// A click on one outlet of a story's expanded list: that article opens like a row would, and the lead is read.
@@ -523,21 +530,42 @@ private struct PaywallFooter: View {
     var body: some View {
         let count = model.hiddenPaywalledCount
         if count > 0 {
-            HStack(spacing: 4) {
-                Text("\(count) hidden from sites you don\u{2019}t subscribe to \u{00B7}")
-                    .foregroundStyle(.ofMuted)
-                Button("Show") { model.showHiddenPaywalled() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.ofAccent)
-            }
-            .font(OFFont.ui(13))
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-            .plainListRow()
-            .accessibilityElement(children: .combine)
+            HiddenRowsNote(text: "\(count) hidden from sites you don\u{2019}t subscribe to \u{00B7}") { model.showHiddenPaywalled() }
         }
+    }
+}
+
+/// The same when it hides videos that won't play here.
+private struct BlockedVideosFooter: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let count = model.hiddenBlockedVideoCount
+        if count > 0 {
+            HiddenRowsNote(text: "\(count) hidden that won\u{2019}t play here \u{00B7}") { model.showHiddenBlockedVideos() }
+        }
+    }
+}
+
+private struct HiddenRowsNote: View {
+    let text: String
+    let show: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(text)
+                .foregroundStyle(.ofMuted)
+            Button("Show", action: show)
+                .buttonStyle(.plain)
+                .foregroundStyle(.ofAccent)
+        }
+        .font(OFFont.ui(13))
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
+        .plainListRow()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -588,6 +616,8 @@ private struct RowMarkState {
     var progress: Double?
     /// The site wants a subscription and the setting marks it (see `ItemRowView.paywall`).
     var paywall: PaywallStatus
+    /// A video that won't play here and the setting marks it (see `ItemRowView.opensOnYouTube`).
+    var opensOnYouTube: Bool
 }
 
 /// A row's selection-dependent part, read per row so moving the selection re-evaluates the rows on
@@ -612,7 +642,8 @@ private struct RowMarks<Content: View>: View {
             divider: previousID != nil && !selected && !secondary && previousID != highlighted && previousID != secondaryID,
             read: entry?.isRead ?? false,
             progress: entry?.progress,
-            paywall: model.paywallStatus(of: item)))
+            paywall: model.paywallStatus(of: item),
+            opensOnYouTube: model.opensOnYouTube(item)))
     }
 }
 

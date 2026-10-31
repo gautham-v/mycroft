@@ -83,6 +83,8 @@ enum OFIcon: String, CaseIterable {
     case topic = "number"
     /// A paywalled site's article (list rows' mark)
     case lock = "lock"
+    /// A video that opens on YouTube because it won't play here (list rows' mark)
+    case opensElsewhere = "arrow.up.right"
 
     /// macOS draws its toolbar and sidebar icons from our own symbols (Resources/Assets.xcassets/Icons):
     /// thin, rounded 24-unit strokes like the Claude desktop app's, where SF Symbols read heavier. The

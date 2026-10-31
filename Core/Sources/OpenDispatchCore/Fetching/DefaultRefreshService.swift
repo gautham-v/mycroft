@@ -23,6 +23,11 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     public static let maxTopicItemsPerFetch = 150
     /// Sources fetched at once. The web started all of them; URLSession caps per-host connections anyway.
     public static let sourceConcurrency = 12
+    /// Older videos of a source not yet asked about, asked per refresh so a library catches up (`checkVideos`).
+    public static let embedBackfillCap = 5
+    public static let embedCheckConcurrency = 4
+    /// How long a refresh waits for the answers, over all its sources. Those it didn't get are asked for next time.
+    public static let embedCheckBudget: TimeInterval = 6
 
     let database: AppDatabase
     let parser: any FeedParser
@@ -32,18 +37,23 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     let feedTimeout: TimeInterval
     let concurrency: Int
     let topicSearch: any TopicSearching
+    let embedCheck: any YouTubeEmbedChecking
+    let embedCheckBudget: TimeInterval
 
-    /// `topicSearch` finds a topic's matches outside the subscriptions; tests pass a fake.
+    /// `topicSearch` finds a topic's matches outside the subscriptions and `embedCheck` asks whether a video plays in other
+    /// apps; tests pass fakes.
     public init(database: AppDatabase, parser: any FeedParser, scraper: any PageScraper,
-                topicSearch: any TopicSearching = DefaultTopicSearch()) {
-        self.init(database: database, parser: parser, scraper: scraper, fetch: Self.liveFetch, topicSearch: topicSearch)
+                topicSearch: any TopicSearching = DefaultTopicSearch(),
+                embedCheck: any YouTubeEmbedChecking = DefaultYouTubeEmbedCheck()) {
+        self.init(database: database, parser: parser, scraper: scraper, fetch: Self.liveFetch, topicSearch: topicSearch, embedCheck: embedCheck)
     }
 
     /// Tests: inject the feed transport, fallbacks, timeout and concurrency.
     init(
         database: AppDatabase, parser: any FeedParser, scraper: any PageScraper, fetch: @escaping RefreshFeedFetch,
         fallbacks: [String: [String]] = Seed.feedFallbacks, feedTimeout: TimeInterval = Self.feedTimeout,
-        concurrency: Int = Self.sourceConcurrency, topicSearch: any TopicSearching = DefaultTopicSearch()
+        concurrency: Int = Self.sourceConcurrency, topicSearch: any TopicSearching = DefaultTopicSearch(),
+        embedCheck: any YouTubeEmbedChecking = DefaultYouTubeEmbedCheck(), embedCheckBudget: TimeInterval = Self.embedCheckBudget
     ) {
         self.database = database
         self.parser = parser
@@ -53,6 +63,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         self.feedTimeout = feedTimeout
         self.concurrency = max(1, concurrency)
         self.topicSearch = topicSearch
+        self.embedCheck = embedCheck
+        self.embedCheckBudget = embedCheckBudget
     }
 
     /// fetchFeedText: GET with the feed Accept header; non-2xx throws "HTTP <status>".
@@ -112,6 +124,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         }
 
         let pruned = try await database.pruneOldItems()
+        let fetched = Set(results.compactMap { $0?.ok == true ? $0?.sourceId : nil })
+        await checkVideos(sourceIds: all.filter { $0.kind == .youtube && fetched.contains($0.id) }.map(\.id), storedSince: now)
         let result = RefreshResult(ran: true, lastRefreshAt: now, results: results.compactMap { $0 }, pruned: pruned)
         progress(.finished(result))
         return result
@@ -120,7 +134,10 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     @discardableResult
     public func refreshSource(id: Int64) async throws -> Int {
         guard let src = try await database.source(id: id) else { throw QueryError.notFound("Source") }
-        return try await refresh(src)
+        let started = Date()
+        let added = try await refresh(src)
+        if src.kind == .youtube { await checkVideos(sourceIds: [src.id], storedSince: started) }
+        return added
     }
 
     // MARK: One source
@@ -283,6 +300,50 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             try Queries.markThumbnailChecked(db, itemIds: misses)
         }
         return found.count
+    }
+
+    // MARK: Videos that won't play here
+
+    /// Asks YouTube whether these sources' videos play in other apps and stores the answers: every video stored since
+    /// `storedSince`, and up to `embedBackfillCap` of each source's newest not yet known. Comes after the feeds, so it
+    /// holds none of their slots, and costs at most `embedCheckBudget` however many channels there are. A video with no
+    /// answer stays unknown and is asked about again, and nothing here fails the refresh.
+    func checkVideos(sourceIds: [Int64], storedSince: Date) async {
+        guard !sourceIds.isEmpty, let targets = try? await database.reader.read({ db in
+            try Queries.embedCheckTargets(db, sourceIds: sourceIds, storedSince: storedSince, backfill: Self.embedBackfillCap)
+        }), !targets.isEmpty else { return }
+        let answers = await Self.askPlayable(targets, check: embedCheck, concurrency: Self.embedCheckConcurrency, budget: embedCheckBudget)
+        guard !answers.isEmpty else { return }
+        try? await database.writer.write { db in try Queries.storeEmbedChecks(db, playable: answers) }
+    }
+
+    /// The answers that came within `budget`, by item id; the checks still running then are cancelled.
+    static func askPlayable(_ targets: [EmbedCheckTarget], check: any YouTubeEmbedChecking, concurrency: Int, budget: TimeInterval) async -> [Int64: Bool] {
+        // A nil result is the budget running out.
+        await withTaskGroup(of: (id: Int64, playable: Bool?)?.self) { group in
+            var answers: [Int64: Bool] = [:]
+            var next = 0, running = 0
+            func startNext() {
+                guard next < targets.count else { return }
+                let target = targets[next]
+                next += 1
+                running += 1
+                group.addTask { (target.id, await check.isPlayable(videoID: target.videoId)) }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, budget) * 1_000_000_000))
+                return nil
+            }
+            for _ in 0..<min(concurrency, targets.count) { startNext() }
+            while running > 0, let done = await group.next() {
+                guard let done else { break }
+                running -= 1
+                if let playable = done.playable { answers[done.id] = playable }
+                startNext()
+            }
+            group.cancelAll()
+            return answers
+        }
     }
 
     // MARK: Helpers

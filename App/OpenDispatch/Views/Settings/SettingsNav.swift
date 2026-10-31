@@ -36,7 +36,7 @@ extension SettingsTab {
         case .appearance: "theme color scheme light dark auto system accent lists density compact thumbnails unread read icons shortcuts keyboard"
         case .themes: "theme colors palette custom light dark mode background accent"
         case .reader: "font serif sans size text line spacing width fill window highlight links underline comments"
-        case .playback: "video youtube autoplay theater transcript sponsorblock read aloud voice speed"
+        case .playback: "video youtube autoplay theater transcript blocked embed won't play nfl sponsorblock read aloud voice speed"
         case .notifications: "alerts new posts notify"
         case .integrations: "readwise webhook send markdown copy prompt sign in x reddit paywall subscribe"
         case .data: "icloud sync refresh cache database storage"
