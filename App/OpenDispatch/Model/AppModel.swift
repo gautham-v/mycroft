@@ -7,8 +7,9 @@ import AppKit
 import UIKit
 #endif
 
-/// One reader tab. `itemID` nil follows the list's first item (the desktop default selection), unless
-/// the tab is a new, empty one (`isNew`, from + or ⌘T) waiting for something to be opened in it.
+/// One reader tab. `itemID` nil follows the list's first item (the desktop default selection), or shows the
+/// Start here board while it is up, unless the tab is a new, empty one (`isNew`, from + or ⌘T) waiting for
+/// something to be opened in it.
 /// Pinned tabs (`isPinned`) sit leftmost in their pane, keep their item and come back on relaunch.
 /// A new tab whose address field is opening a link holds it in `openingURL` until the item is stored.
 struct ReaderTab: Identifiable, Equatable, Sendable {
@@ -202,6 +203,8 @@ final class AppModel {
         didSet {
             recordTabHistory(from: oldValue)
             recordShownItems()
+            // An article opened: the reader shows it from here on.
+            if isStartHereUp, panes.contains(where: { $0.activeTab.itemID != nil }) { dismissStartHere() }
         }
     }
     /// Set while Back or Forward moves a tab, so the move isn't recorded as a new page.
@@ -238,6 +241,14 @@ final class AppModel {
     private var sourceAddFolders: [String: Int64] = [:]
     /// The source each add in `sourceAdds` made or found, once it has.
     private var sourceAddIDs: [String: Int64] = [:]
+    /// The Start here board is up (`StartHereBoard` decides): in the reader's default tab on the Mac and iPad, over the
+    /// home list on iPhone. Its own property, written only when it changes: the rows read it through `item(for:)`.
+    private(set) var isStartHereUp = false
+    /// Nothing in the library, topics included. Done and closing the board's tab wait for something to show instead.
+    private(set) var isLibraryEmpty = true
+    @ObservationIgnored private var startHere = StartHereBoard()
+    /// `start()` has read the sources and the topics; before that the library only looks empty.
+    @ObservationIgnored private var libraryLoaded = false
     var isShortcutsPresented = false
     /// Settings: the sheet on iOS/iPad, the in-window overlay on macOS. `settingsTab` picks the pane.
     var isSettingsPresented = false
@@ -378,6 +389,7 @@ final class AppModel {
         prefetcher = ArticlePrefetcher(services: services)
         prefetcher.onFetched = { [weak self] id, result in self?.didFetchContent(id, result) }
         accounts.onSitesChange = { [weak self] in self?.applyPaywallFilter() }
+        topicStore.onIDsChange = { [weak self] in self?.libraryDidChange() }
     }
 
     /// Opens the on-disk database; falls back to an in-memory one if that fails (the app still runs).
@@ -411,6 +423,9 @@ final class AppModel {
         // Topics stored by an older build, or before their rules last changed, match today's rules before anything lists them.
         _ = try? await database.tidyTopics()
         await loadSources()
+        await topicStore.reload()
+        libraryLoaded = true
+        libraryDidChange()
         await loadItems(reset: true)
         await restorePinnedTabs()
         await loadStats()
@@ -495,7 +510,11 @@ final class AppModel {
 
     /// ⌘W closes a tab instead of the window: there's a split, more than one tab, or the one tab
     /// isn't already a new tab.
-    var hasReaderTabs: Bool { isSplit || panes[0].tabs.count > 1 || !panes[0].activeTab.isNew }
+    /// The board's tab on an empty library counts as that new tab.
+    var hasReaderTabs: Bool {
+        let active = panes[0].activeTab
+        return isSplit || panes[0].tabs.count > 1 || !(active.isNew || (isStartHere(active) && isLibraryEmpty))
+    }
 
     /// Items from closed tabs, most recent first (⇧⌘T). Session only.
     private(set) var closedItems: [FeedItem] = []
@@ -505,7 +524,7 @@ final class AppModel {
     func item(for tab: ReaderTab) -> FeedItem? {
         if tab.isNew { return nil }
         if let id = tab.itemID { return items.first { $0.id == id } ?? openItems[id] }
-        guard prefersDefaultSelection, !showsHighlights, !showsHistory else { return nil }
+        guard prefersDefaultSelection, !showsHighlights, !showsHistory, !isStartHereUp else { return nil }
         let pinned = Set(panes.flatMap { $0.tabs.filter(\.isPinned).compactMap(\.itemID) })
         return items.first { !pinned.contains($0.id) }
     }
@@ -657,7 +676,8 @@ final class AppModel {
             guard gen == loadGeneration else { return }
             if hiddenVideos != hiddenBlockedVideoCount { hiddenBlockedVideoCount = hiddenVideos }
             let before = Set(loadedItems.map(\.id))
-            let arrived = countsNewRows && cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
+            // While the board is up the list is filling for the first time, so new rows just land at the top.
+            let arrived = countsNewRows && !isStartHereUp && cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
                 ? Set(page.items.map(\.id)).subtracting(before) : []
             if arrived != arrivedItemIDs { arrivedItemIDs = arrived }
             loadedItems = page.items
@@ -1226,6 +1246,7 @@ final class AppModel {
             let (s, f) = try await database.sourcesAndFolders()
             sources = s
             folders = f
+            libraryDidChange()
             counts = try await database.counts()
         } catch {
             // Keep what we had.
@@ -1318,7 +1339,10 @@ final class AppModel {
         sourceAddFolders[url] = folderID
         Task {
             do {
-                let (source, existed) = try await services.addSource(url: url, fetch: false)
+                let (source, existed) = try await trackingAdd {
+                    let added = try await services.addSource(url: url, fetch: false)
+                    return (added, [added.source.id])
+                }
                 sourceAddIDs[url] = source.id
                 if let folder = sourceAddFolders[url] {
                     try await moveSource(id: source.id, toFolder: folder)
@@ -1550,6 +1574,89 @@ final class AppModel {
         await topicStore.reload()
     }
 
+    // MARK: Start here
+
+    /// The list is one the board is filling: All and its views, no search. Saved and a source's own list say their own thing.
+    var isStartHereList: Bool {
+        isStartHereUp && !isInSourceFeed && selectedView != .saved && searchQuery.isEmpty
+    }
+
+    /// iPhone: the home list is All, so the board sits at its top.
+    var startHereFillsList: Bool { isStartHereList && selectedView == .all }
+
+    /// The tab shows the board: a default tab on the Mac or iPad. A new tab stays Explore.
+    func isStartHere(_ tab: ReaderTab) -> Bool {
+        isStartHereUp && prefersDefaultSelection && tab.itemID == nil && !tab.isNew
+    }
+
+    func dismissStartHere() {
+        updateStartHere { $0.dismiss() }
+    }
+
+    /// Where a pack's source stands. An add that finished only counts while its source is still in the library.
+    private func starterStep(_ source: StarterSource) -> StarterPackProgress.Step {
+        switch sourceAdds[source.feedUrl] {
+        case .adding: return .adding
+        case .failed: return .failed
+        case .added:
+            if let id = sourceAddIDs[source.feedUrl], sources.contains(where: { $0.id == id }) { return .added }
+        case nil: break
+        }
+        return hasSource(feedUrl: source.feedUrl) ? .added : .idle
+    }
+
+    func starterProgress(_ pack: StarterPack) -> StarterPackProgress {
+        StarterPackProgress(pack) { starterStep($0) }
+    }
+
+    /// The board's Add: starts every source of the pack not in the library yet, in no folder, without waiting.
+    func addStarterPack(_ pack: StarterPack) {
+        for source in pack.sources where starterStep(source) != .added {
+            // Removed since it was added: `beginAddSource` would take it as done.
+            if sourceAdds[source.feedUrl] == .added { sourceAdds[source.feedUrl] = nil }
+            beginAddSource(url: source.feedUrl)
+        }
+    }
+
+    /// The sources or topics changed: the board may come up or go away.
+    private func libraryDidChange() {
+        guard libraryLoaded else { return }
+        let ids = Set(sources.map(\.id)).union(topicStore.ids)
+        updateStartHere { $0.libraryRead(ids) }
+    }
+
+    private func updateStartHere(_ change: (inout StartHereBoard) -> Void) {
+        let wasUp = startHere.isUp
+        change(&startHere)
+        if isLibraryEmpty != startHere.isLibraryEmpty { isLibraryEmpty = startHere.isLibraryEmpty }
+        if isStartHereUp != startHere.isUp { isStartHereUp = startHere.isUp }
+        if startHere.isUp, !wasUp { showStartHereTab() }
+    }
+
+    /// The library was emptied with the focused tab on the New Tab page (closing a removed source's last article leaves
+    /// one there): that tab goes back to being the default one, which shows the board.
+    private func showStartHereTab() {
+        let p = focusedPane, t = panes[p].active
+        guard panes[p].tabs[t].isNew, panes[p].tabs[t].openingURL == nil else { return }
+        movingInHistory = true
+        panes[p].tabs[t].isNew = false
+        movingInHistory = false
+    }
+
+    /// Runs something that adds to the library on this device, telling the board so it doesn't take the result for what
+    /// iCloud brought. `work` returns its result and the ids it stored.
+    private func trackingAdd<Value>(_ work: @MainActor () async throws -> (Value, Set<Int64>)) async throws -> Value {
+        updateStartHere { $0.willAdd() }
+        do {
+            let (result, ids) = try await work()
+            updateStartHere { $0.didAdd(ids) }
+            return result
+        } catch {
+            updateStartHere { $0.didAdd([]) }
+            throw error
+        }
+    }
+
     // MARK: Topics
 
     /// Opens the Topic sheet for a new topic (Feed ▸ New Topic…, the sidebar's +), starting from `options`.
@@ -1567,8 +1674,11 @@ final class AppModel {
     @discardableResult
     func createTopic(_ options: TopicOptions, notify: Bool = false, select: Bool = true) async throws -> Source {
         if notify { try await requireNotificationAccess() }
-        let topic = try await database.createTopic(options)
-        await topicStore.reload()
+        let topic = try await trackingAdd {
+            let topic = try await database.createTopic(options)
+            await topicStore.reload()
+            return (topic, [topic.id])
+        }
         if select { navigate(sourceID: topic.id) }
         Task { await self.refreshTopic(id: topic.id, enableNotify: notify && !topic.notifies) }
         return topic
@@ -1737,9 +1847,11 @@ final class AppModel {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
         let xml = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
-        let result = try await services.importOPML(xml: xml)
-        await loadSources()
-        return result
+        return try await trackingAdd {
+            let result = try await services.importOPML(xml: xml)
+            await loadSources()
+            return (result, Set(sources.map(\.id)))
+        }
     }
 
     /// The whole subscription list as OPML text (for .fileExporter).
@@ -2048,11 +2160,16 @@ final class AppModel {
     /// Close a tab. A pane's last tab closes the pane in split view, else becomes a new, empty tab.
     func closeTab(pane: Int, index: Int) {
         guard panes.indices.contains(pane), panes[pane].tabs.indices.contains(index) else { return }
+        // The board's tab stays while the library is empty; after that, closing it is Done.
+        if isStartHere(panes[pane].tabs[index]) {
+            guard !isLibraryEmpty else { return }
+            dismissStartHere()
+        }
         rememberClosed(panes[pane].tabs[index])
         let wasPinned = panes[pane].tabs[index].isPinned
         defer { if wasPinned { savePinnedTabs() } }
         if panes[pane].tabs.count == 1 {
-            if isSplit { closePane(pane) } else { panes[pane].tabs[0] = ReaderTab(isNew: true) }
+            if isSplit { closePane(pane) } else { panes[pane].tabs[0] = ReaderTab(isNew: !isStartHereUp) }
             pruneOpenItems()
             return
         }

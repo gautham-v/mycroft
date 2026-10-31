@@ -177,25 +177,31 @@ struct ItemListView: View {
         #if os(iOS)
         listAnchor.expect(items.map(\.id))
         listAnchor.leadingRows = isPhone ? 1 : 0
+        listAnchor.isPaused = model.isStartHereList
         #endif
         return ScrollViewReader { proxy in
             RowStack {
                 #if os(iOS)
                 if isPhone {
-                    // Press and hold the title for the list's read actions (the Mac has them in the title menu).
-                    PhoneTitleRow()
-                        .contextMenu {
-                            if let topic = model.activeTopic {
-                                TopicListMenuItems(topic: topic, error: $topicNotifyError)
-                            } else {
-                                Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
-                                    .disabled(items.isEmpty)
+                    // `isPhoneHome`, not `isPhone`: the iPad's list column is compact too, and has the board beside it.
+                    if isPhoneHome && model.startHereFillsList {
+                        StartHereListRow()
+                    } else {
+                        // Press and hold the title for the list's read actions (the Mac has them in the title menu).
+                        PhoneTitleRow()
+                            .contextMenu {
+                                if let topic = model.activeTopic {
+                                    TopicListMenuItems(topic: topic, error: $topicNotifyError)
+                                } else {
+                                    Button("Mark All as Read", systemImage: "checkmark.circle") { model.markAllRead() }
+                                        .disabled(items.isEmpty)
+                                }
+                                Toggle(isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() })) {
+                                    Label("Hide Read Items", systemImage: "eye.slash")
+                                }
                             }
-                            Toggle(isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() })) {
-                                Label("Hide Read Items", systemImage: "eye.slash")
-                            }
-                        }
-                        .tint(Color.ofInk)
+                            .tint(Color.ofInk)
+                    }
                 }
                 listRows(items, prefetchFrom: prefetchFrom)
                 #else
@@ -230,7 +236,8 @@ struct ItemListView: View {
                 #if os(macOS)
                 // SwiftUI keeps the rows on screen in place when rows land above them, except at the very top,
                 // where it keeps the top edge: put the old first row back at the top.
-                if scrollEdge.atTop, let first = old.first, first != new.first, new.contains(first) {
+                // (Not while the Start here board is up: the list is filling for the first time.)
+                if scrollEdge.atTop, !model.isStartHereUp, let first = old.first, first != new.first, new.contains(first) {
                     proxy.scrollTo(first, anchor: .top)
                 }
                 #else
@@ -259,7 +266,7 @@ struct ItemListView: View {
 
     /// The list's states and rows, with the sentinel that pages in the next ones.
     @ViewBuilder private func listRows(_ items: [FeedItem], prefetchFrom: Int) -> some View {
-        if items.isEmpty && model.hiddenPaywalledCount == 0 && model.hiddenBlockedVideoCount == 0 { ListStateRows() }
+        if items.isEmpty && model.hiddenPaywalledCount == 0 && model.hiddenBlockedVideoCount == 0 { ListStateRows(boardAbove: isPhoneHome && model.startHereFillsList) }
         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             let previous = index > 0 ? items[index - 1].id : nil
             ListRow(item: item, previousID: previous, isPhone: isPhone) { row(item, previousID: previous) }
@@ -393,10 +400,14 @@ struct ItemListView: View {
 /// Skeleton, error and empty states (only when there are no rows). A view of its own so the list body
 /// doesn't read `isLoading`, which flips on every view change.
 private struct ListStateRows: View {
+    /// The Start here board is the list's first row, and says it all.
+    let boardAbove: Bool
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if model.isLoading {
+        if boardAbove {
+            EmptyView()
+        } else if model.isLoading && !model.isStartHereList {
             ForEach(0..<8, id: \.self) { _ in
                 ItemSkeletonRow()
                     .padding(.horizontal, 8)
@@ -437,34 +448,11 @@ private struct ListStateRows: View {
                     .foregroundStyle(.ofMuted)
             } else if let topic = model.activeTopic {
                 topicEmptyState(topic)
-            } else if model.sources.isEmpty {
-                // First run: nothing is preinstalled, so the empty list is the way in.
-                Text("Add your first sources")
-                    .font(OFFont.ui(15, .medium))
-                    .foregroundStyle(.ofInk)
-                Text("Sites, newsletters, YouTube channels and podcasts")
+            } else if model.isStartHereList {
+                // First run: nothing is preinstalled, and the Start here board beside the list is the way in.
+                Text("Add something and its stories appear here.")
                     .font(OFFont.ui(13))
                     .foregroundStyle(.ofMuted)
-                Button {
-                    model.isAddSourcePresented = true
-                } label: {
-                    HStack(spacing: 8) {
-                        OFIcon.search.image
-                            .font(.system(size: 13))
-                        Text("Search by name, or paste a link")
-                            .font(OFFont.ui(14))
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(.ofFaint)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: 300, minHeight: 40)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.ofGround))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.ofBorder, lineWidth: 1))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 12)
-                .accessibilityLabel("Add sources")
             } else {
                 Text(model.selectedView == .saved && !model.isInSourceFeed ? "Nothing saved yet" : "Nothing here yet")
                     .font(OFFont.ui(15, .medium))
