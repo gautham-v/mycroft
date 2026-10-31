@@ -36,7 +36,8 @@ public enum SourceGroup {
 }
 
 /// Post sources (X/Twitter, Bluesky, Threads, Mastodon profiles). Port of POST_SOURCE_RE in
-/// src/lib/folders.ts: `^https?://(www\.|mobile\.)?(x\.com|twitter\.com|bsky\.app|threads\.net|mastodon\.[a-z]+)/`, case-insensitive.
+/// src/lib/folders.ts: `^https?://(www\.|mobile\.)?(x\.com|twitter\.com|bsky\.app|threads\.net|mastodon\.[a-z]+)/`, case-insensitive,
+/// plus the host alone: a source added from a feed stores only its site's origin, like `https://bsky.app`.
 public enum PostSource {
     private static let hosts: Set<String> = ["x.com", "twitter.com", "bsky.app", "threads.net", "reddit.com"]
 
@@ -46,8 +47,7 @@ public enum PostSource {
         if s.hasPrefix("https://") { rest = s.dropFirst(8) }
         else if s.hasPrefix("http://") { rest = s.dropFirst(7) }
         else { return false }
-        guard let slash = rest.firstIndex(of: "/") else { return false }
-        let host = rest[rest.startIndex..<slash]
+        let host = rest[rest.startIndex..<(rest.firstIndex(of: "/") ?? rest.endIndex)]
         if matchesHost(host) { return true }
         for prefix in ["www.", "mobile."] where host.hasPrefix(prefix) {
             if matchesHost(host.dropFirst(prefix.count)) { return true }

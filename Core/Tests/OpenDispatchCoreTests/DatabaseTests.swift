@@ -148,6 +148,18 @@ struct ItemTests {
         #expect(counts.sources[pod.id] == 4)
     }
 
+    @Test func aFeedOnAPostSiteListsInPosts() async throws {
+        let db = try Fixture.db()
+        // Adding a Bluesky account's feed stores only the site's origin.
+        let bluesky = try Fixture.source(db, title: "Bluesky", url: "https://bsky.app")
+        try Fixture.items(db, sourceId: bluesky.id, Fixture.parsed(2))
+        #expect(try await db.items(ItemQuery(view: .posts)).items.count == 2)
+        #expect(try await db.items(ItemQuery(view: .articles)).items.isEmpty)
+        let counts = try await db.counts()
+        #expect(counts.views[.posts] == 2)
+        #expect(counts.views[.articles] == 0)
+    }
+
     @Test func folderFilterAndCounts() async throws {
         let db = try Fixture.db()
         let f = try await db.createFolder(title: "News")
@@ -337,7 +349,7 @@ struct SourceFolderTests {
         #expect(s.host == "example.com")
         #expect(s.type == .article)
         #expect(Source(title: "", url: "https://bsky.app/profile/a", feedUrl: "", kind: .page, group: "").type == .post)
-        #expect(Source(title: "", url: "https://x.com", feedUrl: "", kind: .page, group: "").type == .article)
+        #expect(Source(title: "", url: "https://x.com", feedUrl: "", kind: .page, group: "").type == .post)
         #expect(Source(title: "", url: "", feedUrl: "", kind: .youtube, group: "").type == .video)
         #expect(Source(title: "", url: "", feedUrl: "", kind: .podcast, group: "").type == .podcast)
     }
