@@ -12,7 +12,8 @@ public protocol YouTubeEmbedChecking: Sendable {
 }
 
 public struct DefaultYouTubeEmbedCheck: YouTubeEmbedChecking {
-    typealias Fetch = @Sendable (_ url: String, _ headers: [String: String]) async throws -> (Data, HTTPURLResponse)
+    /// GET when `body` is nil, otherwise a JSON POST.
+    typealias Fetch = @Sendable (_ url: String, _ headers: [String: String], _ body: Data?) async throws -> (Data, HTTPURLResponse)
 
     static let timeout: TimeInterval = 8
     /// The origin the player's page presents (`ReaderYouTube.origin` in the app).
@@ -21,7 +22,9 @@ public struct DefaultYouTubeEmbedCheck: YouTubeEmbedChecking {
     let fetch: Fetch
 
     public init() {
-        self.init(fetch: { url, headers in try await HTTP.fetch(url, timeout: Self.timeout, headers: headers) })
+        self.init(fetch: { url, headers, body in
+            try await HTTP.fetch(url, timeout: Self.timeout, method: body == nil ? "GET" : "POST", headers: headers, body: body)
+        })
     }
 
     /// Tests inject a fake network.
@@ -32,24 +35,36 @@ public struct DefaultYouTubeEmbedCheck: YouTubeEmbedChecking {
     public func isPlayable(videoID: String) async -> Bool? {
         var headers = HTTP.browserHeaders
         headers["Referer"] = Self.referer
-        guard let (data, res) = try? await fetch("https://www.youtube-nocookie.com/embed/\(videoID)", headers),
+        guard let (data, res) = try? await fetch("https://www.youtube-nocookie.com/embed/\(videoID)", headers, nil),
               (200..<300).contains(res.statusCode) else { return nil }
         return Self.isPlayable(embedPage: HTTP.text(data, response: res))
     }
 
     public func isPlayable(channelID: String) async -> Bool? {
-        for attempt in 0..<FeedDetection.youtubeFeedAttempts {
-            if attempt > 0 { try? await Task.sleep(for: FeedDetection.youtubeFeedRetryDelay) }
-            if let (data, res) = try? await fetch(FeedDetection.youtubeFeedURL(channelID: channelID), [:]), (200..<300).contains(res.statusCode),
-               let id = Self.newestVideoID(inFeed: HTTP.text(data, response: res)) {
-                return await isPlayable(videoID: id)
-            }
+        guard let id = await newestVideoID(channelID: channelID) else { return nil }
+        return await isPlayable(videoID: id)
+    }
+
+    /// One of the channel's videos: the newest from its feed, or, as that feed fails often (404 or 500 for channels that exist), any from
+    /// its page, a far larger answer. Owners set this per channel in practice, so any of its videos will do.
+    private func newestVideoID(channelID: String) async -> String? {
+        if let (data, res) = try? await fetch(FeedDetection.youtubeFeedURL(channelID: channelID), [:], nil), (200..<300).contains(res.statusCode),
+           let id = Self.newestVideoID(inFeed: HTTP.text(data, response: res)) {
+            return id
         }
-        return nil
+        let request: [String: Any] = [
+            "context": ["client": ["clientName": "WEB", "clientVersion": DefaultExploreSearch.clientVersion, "hl": "en", "gl": "US"]],
+            "browseId": channelID,
+        ]
+        guard let body = try? JSONSerialization.data(withJSONObject: request),
+              let (data, res) = try? await fetch("https://www.youtube.com/youtubei/v1/browse?prettyPrint=false", ["Content-Type": "application/json"], body),
+              (200..<300).contains(res.statusCode) else { return nil }
+        return Self.videoID(inPage: HTTP.text(data, response: res))
     }
 
     private static let status = ExtractionDOM.Pattern(#"previewPlayabilityStatus\W+status\W+([A-Z_]+)"#)
     private static let videoID = ExtractionDOM.Pattern(#"<yt:videoId>([^<]+)</yt:videoId>"#)
+    private static let pageVideoID = ExtractionDOM.Pattern(#""videoId":"([A-Za-z0-9_-]{11})""#)
 
     /// What an embed page says of its video; nil without a status it knows.
     static func isPlayable(embedPage html: String) -> Bool? {
@@ -62,5 +77,9 @@ public struct DefaultYouTubeEmbedCheck: YouTubeEmbedChecking {
 
     static func newestVideoID(inFeed xml: String) -> String? {
         videoID.firstMatch(xml)?[1] ?? nil
+    }
+
+    static func videoID(inPage json: String) -> String? {
+        pageVideoID.firstMatch(json)?[1] ?? nil
     }
 }

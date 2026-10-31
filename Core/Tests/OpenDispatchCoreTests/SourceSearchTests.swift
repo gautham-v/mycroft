@@ -369,18 +369,18 @@ struct YouTubeEmbedCheckTests {
         #expect(DefaultYouTubeEmbedCheck.isPlayable(embedPage: "<html></html>") == nil)
     }
 
-    @Test func aFlakyFeedIsAskedAgain() async {
-        let tries = Counter()
-        let check = DefaultYouTubeEmbedCheck(fetch: { url, _ in
-            let failing = url.contains("/feeds/") ? tries.next() < 2 : false
-            let body = url.contains("/feeds/") ? "<yt:videoId>a</yt:videoId>" : #""previewPlayabilityStatus":{"status":"OK"}"#
-            return (Data(body.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: failing ? 404 : 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
+    @Test func aFailingFeedFallsBackToTheChannelPage() async {
+        let check = DefaultYouTubeEmbedCheck(fetch: { url, _, body in
+            let status = url.contains("/feeds/") ? 404 : 200
+            let text = url.contains("/browse") ? (body == nil ? "" : #"{"x":{"videoId":"abcdefghijk"}}"#)
+                : url.hasSuffix("/embed/abcdefghijk") ? #""previewPlayabilityStatus":{"status":"UNPLAYABLE"}"# : ""
+            return (Data(text.utf8), HTTPURLResponse(url: URL(string: url)!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!)
         })
-        #expect(await check.isPlayable(channelID: "UCx") == true)
+        #expect(await check.isPlayable(channelID: "UCx") == false)
     }
 
     @Test func channelAsksAboutItsNewestVideo() async {
-        let check = DefaultYouTubeEmbedCheck(fetch: { url, _ in
+        let check = DefaultYouTubeEmbedCheck(fetch: { url, _, _ in
             let body = url.contains("/feeds/")
                 ? "<feed><entry><yt:videoId>newest</yt:videoId></entry><entry><yt:videoId>older</yt:videoId></entry></feed>"
                 : (url.hasSuffix("/embed/newest") ? #""previewPlayabilityStatus":{"status":"UNPLAYABLE"}"# : #""previewPlayabilityStatus":{"status":"OK"}"#)
@@ -388,15 +388,5 @@ struct YouTubeEmbedCheckTests {
         })
         #expect(await check.isPlayable(channelID: "UCx") == false)
         #expect(await check.isPlayable(videoID: "older") == true)
-    }
-}
-
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var n = 0
-    func next() -> Int {
-        lock.lock(); defer { lock.unlock() }
-        n += 1
-        return n - 1
     }
 }
