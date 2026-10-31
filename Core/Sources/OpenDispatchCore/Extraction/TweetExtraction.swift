@@ -224,9 +224,11 @@ enum TweetExtraction {
     }
 
     /// A link card: lead image, domain, title. `large` puts a full-width image above the text; otherwise it is a
-    /// thumbnail beside it.
-    static func cardHTML(href: String, title: String, domain: String?, image: String?, large: Bool = false, showsTitle: Bool = true) -> String {
-        let pic = image.map { "<img class=\"x-card-img\" src=\"\(DOM.escapeAttr($0))\" alt=\"\">" } ?? ""
+    /// thumbnail beside it. With `imageSize`, a large card shows the whole image at its own shape instead of cropping it.
+    static func cardHTML(href: String, title: String, domain: String?, image: String?, large: Bool = false, showsTitle: Bool = true,
+                         imageSize: (width: Int, height: Int)? = nil) -> String {
+        let size = imageSize.map { " width=\"\($0.width)\" height=\"\($0.height)\"" } ?? ""
+        let pic = image.map { "<img class=\"x-card-img\(imageSize == nil ? "" : " x-card-whole")\" src=\"\(DOM.escapeAttr($0))\"\(size) alt=\"\">" } ?? ""
         let shownDomain = domain ?? DOM.hostname(href) ?? ""
         let shownTitle = showsTitle ? "<span class=\"x-card-title\">\(DOM.escapeHTML(title))</span>" : ""
         return "<a class=\"x-card\(large ? " x-card-large" : "")\" href=\"\(DOM.escapeAttr(href))\">\(pic)<span class=\"x-card-text\"><span class=\"x-card-domain\">\(DOM.escapeHTML(shownDomain))</span>\(shownTitle)</span></a>"

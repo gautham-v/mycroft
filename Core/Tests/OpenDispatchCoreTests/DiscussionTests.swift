@@ -102,6 +102,50 @@ struct DiscussionTests {
         #expect(posts.contains { $0.title == "Love Is Blind \u{2022} S11 Ep 9" && $0.comments == 2151 })
     }
 
+    @Test func aRedditVideoPlaysInThePost() throws {
+        let post = try #require(RedditPages.post(inThread: """
+            <shreddit-post permalink="/r/nfl/comments/1xjwc7y/prank/" content-href="https://v.redd.it/p543" post-title="Prank" post-type="video" domain="v.redd.it">
+            <shreddit-player src="https://v.redd.it/p543/HLSPlaylist.m3u8?f=sd%2CsubsAll&amp;v=1&amp;a=1796007016%2CNj" poster="https://external-preview.redd.it/prank.png?format=pjpg&amp;s=afb"></shreddit-player>
+            </shreddit-post>
+            """))
+        #expect(post.video == "https://v.redd.it/p543/HLSPlaylist.m3u8")
+        #expect(post.leadImage == "https://external-preview.redd.it/prank.png?format=pjpg&s=afb")
+        let content = try #require(RedditPages.contentHTML(post))
+        #expect(content.contains("<video") && content.contains("HLSPlaylist.m3u8") && content.contains("controls") && content.contains("poster="))
+        #expect(!content.contains("x-card"))
+    }
+
+    private static let redditLinkPost = """
+        <shreddit-post permalink="/r/nfl/comments/1xjq7l0/brown/" content-href="LINK" post-title="Brown" post-type="link" domain="nypost.com" link-post-preview="description_under_media">
+        <div slot="post-media-container"><img class="post-background-image-filter" src="https://external-preview.redd.it/blur.jpeg">
+        <img id="post-image" data-post-media-primary src="https://external-preview.redd.it/b.jpeg?width=640&amp;s=1" width="640" height="336"
+          srcset="https://external-preview.redd.it/b.jpeg?width=320&amp;s=0 320w, https://external-preview.redd.it/b.jpeg?width=1080&amp;s=2 1080w, https://external-preview.redd.it/b.jpeg?width=640&amp;s=1 640w">
+        <div data-link-preview-cta-row><span>nypost.com</span><p property="schema:articleBody">  Patriots receiver missed practice.  </p></div></div>
+        <shreddit-post-text-body slot="text-body"><div slot="text-body"><div property="schema:articleBody"><p>The poster's own words.</p></div></div></shreddit-post-text-body>
+        </shreddit-post>
+        """
+
+    @Test func aRedditLinkPostShowsThePreviewAndThePostersText() throws {
+        let post = try #require(RedditPages.post(inThread: Self.redditLinkPost.replacingOccurrences(of: "LINK", with: "https://nypost.com/a/")))
+        #expect(post.linkDescription == "Patriots receiver missed practice.")
+        #expect(post.bodyHTML?.contains("own words") == true && post.bodyHTML?.contains("Patriots") == false)
+        #expect(post.preview?.url == "https://external-preview.redd.it/b.jpeg?width=1080&s=2")
+        #expect(post.leadImage == post.preview?.url)
+        let content = try #require(RedditPages.contentHTML(post))
+        #expect(content.contains("x-card-large") && content.contains("x-card-whole") && content.contains("width=1080"))
+        #expect(content.contains("width=\"640\"") && content.contains("height=\"336\""))
+        #expect(content.contains("https://nypost.com/a/") && content.contains(">nypost.com<") && content.contains("Patriots receiver"))
+        #expect(content.contains("own words"))
+    }
+
+    @Test func aRedditPostLinkingToAPostShowsThatPost() throws {
+        let linked = "https://bsky.app/profile/a.bsky.social/post/3mz"
+        #expect(EmbeddedPosts.post(at: linked) == .social(url: linked))
+        let post = try #require(RedditPages.post(inThread: Self.redditLinkPost.replacingOccurrences(of: "LINK", with: linked)))
+        let content = try #require(RedditPages.contentHTML(post, embed: "<div class=\"x-post x-embed\"><div class=\"x-body\"><p>The post</p></div></div>"))
+        #expect(content.contains("x-embed") && content.contains("The post") && !content.contains("x-card"))
+    }
+
     @Test func readsARedditPostAndItsComments() throws {
         let html = DiscussionFixtures.text("reddit-thread.html")
         let post = try #require(RedditPages.post(inThread: html))

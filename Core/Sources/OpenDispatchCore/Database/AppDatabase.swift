@@ -345,6 +345,14 @@ public final class AppDatabase: Sendable {
                 try db.execute(sql: "UPDATE history SET thumbnail_url = NULL WHERE thumbnail_url = ?", arguments: [url])
             }
         }
+        // Reddit posts read before 1.0.45 have a bare link for their video, linked post or preview; drop their cached copy so the
+        // reader reads them again.
+        m.registerMigration("v18-reread-reddit-posts") { db in
+            try db.execute(sql: """
+                UPDATE items SET content_html = NULL, content_rendered = 0
+                WHERE content_html IS NOT NULL AND url LIKE '%reddit.com/r/%/comments/%'
+                """)
+        }
         return m
     }
 }

@@ -85,11 +85,13 @@ public struct DefaultContentExtractor: ContentExtractor {
             if let t = try? await TweetExtraction.extract(url: url, timeout: Self.extractTimeout, session: session) { return t }
         } else if let place = DiscussionPlace.thread(of: url), place == .reddit || place == .hackerNews {
             let session = session
-            let post = await DiscussionContent.extract(url: url) { u in
+            let post = await DiscussionContent.extract(url: url, fetch: { u in
                 let (data, res) = try await HTTP.fetch(u, timeout: Self.extractTimeout, headers: ["Accept": "application/json"], session: session)
                 guard (200..<300).contains(res.statusCode) else { throw HTTPError.status(res.statusCode) }
                 return data
-            }
+            }, embedFetch: { u, headers in
+                try? await HTTP.fetch(u, timeout: EmbeddedPosts.timeout, headers: headers, session: session)
+            })
             if let post { return post }
         } else if SocialPosts.network(of: url) != nil {
             let session = session

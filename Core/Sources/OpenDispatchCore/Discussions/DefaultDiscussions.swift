@@ -147,7 +147,8 @@ public struct DefaultDiscussions: DiscussionLoading {
 enum DiscussionContent {
     /// The post's body; an empty paragraph for a post that is only a title, so the reader shows the title and comments
     /// rather than a failure. Nil when the post can't be read.
-    static func extract(url: String, fetch: @escaping @Sendable (String) async throws -> Data) async -> ExtractResult? {
+    /// A Reddit post linking to a post on X, Bluesky, Mastodon and the like shows that post, read through `embedFetch`.
+    static func extract(url: String, fetch: @escaping @Sendable (String) async throws -> Data, embedFetch: @escaping EmbeddedPosts.Fetch) async -> ExtractResult? {
         switch DiscussionPlace.thread(of: url) {
         case .reddit:
             #if canImport(WebKit)
@@ -161,8 +162,12 @@ enum DiscussionContent {
                 }
             }
             guard let post = found else { return nil }
-            let lead = post.kind == .image ? post.contentHref : post.images.first
-            return ExtractResult(contentHtml: RedditPages.contentHTML(post) ?? emptyBody, leadImage: lead)
+            var embed: String?
+            if post.kind == .link, let linked = post.contentHref.flatMap(EmbeddedPosts.post(at:)) {
+                embed = await EmbeddedPosts.card(for: linked, fetch: embedFetch)
+            }
+            // The linked post has its own pictures, under other addresses than Reddit's preview.
+            return ExtractResult(contentHtml: RedditPages.contentHTML(post, embed: embed) ?? emptyBody, leadImage: embed == nil ? post.leadImage : nil)
             #else
             return nil
             #endif
@@ -186,7 +191,7 @@ enum DiscussionContent {
               let post = RedditPages.post(inThread: html), !post.title.isEmpty else { return nil }
         return ParsedItem(
             guid: canonical, url: canonical, title: post.title, author: post.community, publishedAt: post.published ?? now,
-            thumbnailUrl: post.kind == .image ? post.contentHref : post.images.first, hnPoints: post.score, hnComments: post.comments)
+            thumbnailUrl: post.leadImage, hnPoints: post.score, hnComments: post.comments)
         #else
         return nil
         #endif

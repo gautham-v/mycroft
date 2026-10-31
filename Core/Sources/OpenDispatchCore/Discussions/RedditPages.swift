@@ -88,6 +88,29 @@ enum RedditPages {
         var images: [String]
         /// The body as HTML (a text post, or the text under a link or image post).
         var bodyHTML: String?
+        /// A video Reddit hosts: its HLS playlist and still.
+        var video: String?
+        var poster: String?
+        /// A link post's preview: the linked site, its picture and its description.
+        var domain: String?
+        var preview: Preview?
+        var linkDescription: String?
+
+        struct Preview: Equatable {
+            var url: String
+            var width: Int?
+            var height: Int?
+        }
+
+        /// The picture a list and the reader's header use.
+        var leadImage: String? {
+            switch kind {
+            case .image: contentHref
+            case .video: poster
+            case .link: preview?.url
+            default: images.first
+            }
+        }
     }
 
     /// The post on a post page; nil when the page has none (a removed post, a block page).
@@ -118,13 +141,39 @@ enum RedditPages {
             var seen = Set<String>()
             images = images.filter { seen.insert($0).inserted }
         }
-        let body = (try? el.select("[property=schema:articleBody]").first()) ?? (try? el.select("div[slot=text-body]").first())
+        // A link post's preview carries the site's description as an articleBody too, ahead of the poster's own text.
+        let description = try? el.select("[data-link-preview-cta-row] [property=schema:articleBody]").first()
+        let bodies = (try? el.select("[property=schema:articleBody]").array()) ?? []
+        let body = bodies.first { $0 !== description } ?? (try? el.select("div[slot=text-body]").first())
+        let player = try? el.select("shreddit-player[src]").first()
         return Post(
             url: url, title: attr("post-title") ?? "", author: attr("author"), community: attr("subreddit-prefixed-name"),
             published: DiscussionDates.parse(attr("created-timestamp")), score: attr("score").flatMap(Int.init),
             comments: attr("comment-count").flatMap(Int.init), kind: kind, contentHref: attr("content-href"), images: images,
-            bodyHTML: body.flatMap { try? $0.html() }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 })
+            bodyHTML: body.flatMap { try? $0.html() }.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
+            video: nonEmpty(try? player?.attr("src")).map(lastingPlaylist), poster: nonEmpty(try? player?.attr("poster")),
+            domain: attr("domain"), preview: (try? el.select("img[data-post-media-primary]").first()).flatMap(preview),
+            linkDescription: (description.flatMap { try? $0.text() }).flatMap { nonEmpty($0) })
     }
+
+    /// A playlist's address without its signature, which runs out in a month while a read post is kept longer; v.redd.it answers without one.
+    private static func lastingPlaylist(_ src: String) -> String {
+        guard ExtractionDOM.hostname(src) == "v.redd.it", let query = src.firstIndex(of: "?") else { return src }
+        return String(src[..<query])
+    }
+
+    /// A preview picture at its widest size.
+    private static func preview(_ img: Element) -> Post.Preview? {
+        let widest = previewCandidate.allMatches((try? img.attr("srcset")) ?? "")
+            .compactMap { m -> (url: String, width: Int)? in
+                guard let url = m[1], let width = m[2].flatMap({ Int($0) }) else { return nil }
+                return (url, width)
+            }
+            .max { $0.width < $1.width }?.url
+        guard let url = widest ?? nonEmpty(try? img.attr("src")) else { return nil }
+        return Post.Preview(url: url, width: Int((try? img.attr("width")) ?? ""), height: Int((try? img.attr("height")) ?? ""))
+    }
+    private static let previewCandidate = ExtractionDOM.Pattern(#"(https?://\S+)\s+(\d+)w"#)
 
     /// The comments on a post page, and the post's comment count.
     static func thread(_ html: String) -> DiscussionThread {
@@ -218,9 +267,10 @@ enum RedditPages {
 
     // MARK: Reader content
 
-    /// A post as reader markup: its text, its image or gallery, or a card for the page it links to. Nil for a post with
-    /// none of these (a title-only post, whose title the reader already shows).
-    static func contentHTML(_ post: Post) -> String? {
+    /// A post as reader markup: its text, its image, gallery or video, and for one that links elsewhere a card for the page, or
+    /// `embed`, the linked post as the reader draws posts. Nil for a post with none of these (a title-only post, whose title
+    /// the reader already shows).
+    static func contentHTML(_ post: Post, embed: String? = nil) -> String? {
         var parts: [String] = []
         switch post.kind {
         case .image:
@@ -228,9 +278,14 @@ enum RedditPages {
         case .gallery:
             parts += post.images.map { "<figure><img src=\"\(ExtractionDOM.escapeAttr($0))\" alt=\"\"></figure>" }
         case .link, .video:
-            if let href = post.contentHref, !isThread(href) {
-                let host = ExtractionDOM.hostname(href) ?? href
-                parts.append("<p><a href=\"\(ExtractionDOM.escapeAttr(href))\">\(ExtractionDOM.escapeHTML(host))</a></p>")
+            if let embed {
+                parts.append(embed)
+            } else if let video = post.video {
+                parts.append(TweetExtraction.mediaHTML([.init(kind: .video, url: video, poster: post.poster)]))
+            } else if let href = post.contentHref, !isThread(href) {
+                parts.append(TweetExtraction.cardHTML(
+                    href: href, title: post.linkDescription ?? "", domain: post.domain, image: post.preview?.url, large: true,
+                    showsTitle: post.linkDescription != nil, imageSize: post.preview.flatMap { p in p.width.flatMap { w in p.height.map { (w, $0) } } }))
             }
         case .text, .other:
             break
