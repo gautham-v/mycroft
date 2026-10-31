@@ -96,10 +96,11 @@ struct ReaderColumn: ViewModifier {
     @Environment(AppModel.self) private var model
 
     func body(content: Content) -> some View {
+        // Aligned to the top: the comments' LazyVStack changes height as rows appear, and centered that moves them up over the post.
         content
-            .frame(maxWidth: model.settings.readerColumnWidth ?? .infinity, alignment: .leading)
+            .frame(maxWidth: model.settings.readerColumnWidth ?? .infinity, alignment: .topLeading)
             .padding(.horizontal, padding ?? (wide ? Metrics.readerPaddingWide : Metrics.readerPaddingPhone))
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .top)
     }
 }
 
